@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PLAYER
+  GYM_OWNER
+  ADMIN
+}
+
+enum GymMemberRole {
+  OWNER
+  STAFF
+  MEMBER
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  EXPIRED
+}
+
+enum SessionStatus {
+  LOBBY
+  COUNTDOWN
+  RUNNING
+  PAUSED
+  ENDED
+  EXPIRED
+  CLOSED
+}
+
+enum ControlMode {
+  CAMERA
+  KEYBOARD
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String?          @unique
+  displayName  String
+  passwordHash String?
+  role         UserRole         @default(PLAYER)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  ownedGyms    Gym[]            @relation("GymOwner")
+  memberships  GymMembership[]
+  sessions     GameSession[]    @relation("SessionOwner")
+  players      SessionPlayer[]
+  achievements Achievement[]
+}
+
+model Gym {
+  id                 String             @id @default(cuid())
+  name               String
+  slug               String             @unique
+  ownerId            String
+  owner              User               @relation("GymOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  branding           Json
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  memberships        GymMembership[]
+  sessions           GameSession[]
+
+  @@index([ownerId])
+}
+
+model GymMembership {
+  userId    String
+  gymId     String
+  role      GymMemberRole
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gym       Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gymId])
+  @@index([gymId])
+}
+
+model Game {
+  id            String        @id @default(cuid())
+  name          String
+  slug          String        @unique
+  description   String
+  enabled       Boolean       @default(true)
+  configuration Json
+  createdAt     DateTime      @default(now())
+  sessions      GameSession[]
+}
+
+model GameSession {
+  id            String          @id @default(cuid())
+  joinCode      String          @unique
+  gymId         String?
+  gym           Gym?            @relation(fields: [gymId], references: [id], onDelete: SetNull)
+  gameId        String
+  game          Game            @relation(fields: [gameId], references: [id], onDelete: Restrict)
+  ownerId       String?
+  owner         User?           @relation("SessionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  status        SessionStatus   @default(LOBBY)
+  configuration Json
+  startedAt     DateTime?
+  endedAt       DateTime?
+  expiresAt     DateTime
+  createdAt     DateTime        @default(now())
+  players       SessionPlayer[]
+  results       GameResult[]
+
+  @@index([status, expiresAt])
+  @@index([gymId, createdAt])
+  @@index([ownerId])
+}
+
+model SessionPlayer {
+  id             String        @id @default(cuid())
+  sessionId      String
+  session        GameSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  displayName    String
+  playerSlot     Int
+  control        ControlMode   @default(CAMERA)
+  ready          Boolean       @default(false)
+  finalScore     Int?
+  connectedAt    DateTime      @default(now())
+  disconnectedAt DateTime?
+  results        GameResult[]
+
+  @@unique([sessionId, playerSlot])
+  @@index([sessionId])
+  @@index([userId])
+}
+
+model GameResult {
+  id                 String        @id @default(cuid())
+  sessionId          String
+  session            GameSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  playerId           String
+  player             SessionPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  score              Int
+  movementsCompleted Int
+  rewardsCollected   Int
+  misses             Int           @default(0)
+  maxCombo           Int           @default(0)
+  durationSeconds    Int
+  personalBest       Boolean       @default(false)
+  shareSlug          String        @unique
+  createdAt          DateTime      @default(now())
+
+  @@index([score])
+  @@index([createdAt])
+  @@index([playerId])
+}
+
+model Achievement {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key        String
+  title      String
+  unlockedAt DateTime @default(now())
+
+  @@unique([userId, key])
+}
+
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean
+  description String
+  updatedAt   DateTime @updatedAt
+}
+
+model OperationalEvent {
+  id        String   @id @default(cuid())
+  level     String
+  source    String
+  message   String
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level])
+}

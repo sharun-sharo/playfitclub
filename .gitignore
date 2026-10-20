@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+coverage
+playwright-report
+test-results
+.turbo
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+apps/web/public/mediapipe/wasm
+apps/web/public/mediapipe/*.task
+.vercel
+*.pem
+.prisma

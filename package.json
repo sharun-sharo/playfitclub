@@ -1,0 +1,40 @@
+{
+  "name": "fitplay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "FitPlay turns a TV into a body-controlled fitness arcade.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,realtime -c cyan,magenta \"npm run dev -w @fitplay/web\" \"npm run dev -w @fitplay/realtime\"",
+    "dev:phone": "concurrently -n web,realtime -c cyan,magenta \"npm run dev:https -w @fitplay/web\" \"npm run dev:https -w @fitplay/realtime\"",
+    "dev:web": "npm run dev -w @fitplay/web",
+    "dev:realtime": "npm run dev -w @fitplay/realtime",
+    "build": "npm run build -w @fitplay/db && npm run build -w @fitplay/realtime && npm run build -w @fitplay/web",
+    "start": "concurrently -n web,realtime -c cyan,magenta \"npm run start -w @fitplay/web\" \"npm run start -w @fitplay/realtime\"",
+    "typecheck": "tsc -p packages/shared/tsconfig.json --noEmit && tsc -p packages/game/tsconfig.json --noEmit && tsc -p packages/db/tsconfig.json --noEmit && tsc -p apps/realtime/tsconfig.json --noEmit && npm run typecheck -w @fitplay/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run test:e2e -w @fitplay/web",
+    "lint": "npm run lint -w @fitplay/web",
+    "db:generate": "npm run generate -w @fitplay/db",
+    "db:migrate": "npm run migrate -w @fitplay/db",
+    "db:seed": "npm run seed -w @fitplay/db",
+    "db:prune-guests": "npm run prune-guests -w @fitplay/db",
+    "vision:fetch": "npm run vision:fetch -w @fitplay/web",
+    "setup": "npm run db:generate && npm run db:migrate && npm run db:seed && npm run vision:fetch",
+    "postinstall": "npm run db:generate"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

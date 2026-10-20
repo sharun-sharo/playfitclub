@@ -1,0 +1,21 @@
+{
+  "name": "@fitplay/realtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:https": "TLS_KEY_PATH=../../certs/dev-key.pem TLS_CERT_PATH=../../certs/dev-cert.pem tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@fitplay/db": "0.1.0",
+    "@fitplay/game": "0.1.0",
+    "@fitplay/shared": "0.1.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}
