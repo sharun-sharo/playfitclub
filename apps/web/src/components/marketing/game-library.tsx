@@ -6,7 +6,7 @@ const games = [
     title: "Fit Run",
     description: "Motion-controlled running adventure",
     status: "Available",
-    href: "/dev/fitrunner-v2",
+    href: "/play/fit-run",
     image: "/marketing/fit-run.jpg",
     alt: "A woman runs in a living room toward a television showing a motion-controlled running game, with a phone tracking her pose.",
   },

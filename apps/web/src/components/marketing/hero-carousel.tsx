@@ -220,7 +220,7 @@ export function HeroShowcase() {
           <span className="fp-hero-cta fp-hero-rise">
             <Link
               className="fp-btn fp-btn-primary"
-              href="/dev/fitrunner-v2"
+              href="/play/fit-run"
               onClick={() => {
                 trackEvent("play_clicked", { surface: "home" });
                 trackEvent("fit_run_selected", { surface: "home" });
