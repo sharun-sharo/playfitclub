@@ -115,7 +115,7 @@ export class PoseEstimator {
   private landmarker: {
     detectForVideo: (video: HTMLVideoElement, timestamp: number) => {
       landmarks?: Array<Array<{ x: number; y: number; z?: number; visibility?: number }>>;
-      worldLandmarks?: Array<Array<{ x: number; y: number; z?: number }>>;
+      worldLandmarks?: Array<Array<{ x: number; y: number; z: number }>>;
     };
     close: () => void;
   } | null = null;
@@ -314,7 +314,7 @@ export class PoseEstimator {
     const inferenceStarted = performance.now();
     let result: {
       landmarks?: Array<Array<{ x: number; y: number; z?: number; visibility?: number }>>;
-      worldLandmarks?: Array<Array<{ x: number; y: number; z?: number }>>;
+      worldLandmarks?: Array<Array<{ x: number; y: number; z: number }>>;
     };
     try {
       result = landmarker.detectForVideo(video, now);
