@@ -1,50 +1,72 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { requireSuperAdmin } from "@/lib/billing-http";
 import { conversionRate, type BreakdownRow } from "@/lib/analytics";
 import { loadAnalyticsReport, reportRangeLabel, type ProviderReport } from "@/lib/analytics-report";
 
-export default async function AdminAnalyticsPage() {
+export default function AdminAnalyticsPage() {
+  return (
+    <AppShell>
+      <Suspense fallback={<AnalyticsFallback />}>
+        <AdminAnalyticsReport />
+      </Suspense>
+    </AppShell>
+  );
+}
+
+function AnalyticsFallback() {
+  return (
+    <main id="content" className="fp-wrap fp-page fp-console">
+      <Link className="fp-text-link" href="/admin">
+        Back to control
+      </Link>
+      <p className="fp-kicker">Super Admin</p>
+      <h1>Analytics</h1>
+      <p className="fp-lead">Loading analytics…</p>
+    </main>
+  );
+}
+
+async function AdminAnalyticsReport() {
   const user = await requireSuperAdmin();
   if (!user) redirect("/dashboard");
   const report = await loadAnalyticsReport();
   const range = reportRangeLabel();
 
   return (
-    <AppShell>
-      <main id="content" className="fp-wrap fp-page fp-console">
-        <Link className="fp-text-link" href="/admin">
-          Back to control
-        </Link>
-        <p className="fp-kicker">Super Admin</p>
-        <h1>Analytics</h1>
-        <p className="fp-lead">
-          Visitors, page views, popular pages, sources, devices, enquiries, and conversion rates appear here only when a reporting API returns them. This page does not estimate those numbers.
-        </p>
-        {report.vercel || report.ga4 ? (
-          <>
-            <ProviderSection title="Vercel Analytics" range={range} report={report.vercel} href={report.links.vercel} />
-            <ProviderSection title="GA4" range={range} report={report.ga4} href={report.links.ga4} />
-          </>
-        ) : (
-          <section className="fp-card">
-            <h2>Numbers are not available here</h2>
-            <p>
-              Vercel Analytics and GA4 hold the visitor counts, page views, popular pages, sources, devices, player enquiries, gym enquiries, and conversion rates. No reporting API is configured for this server, so this page does not show those figures.
-            </p>
-            <div className="fp-actions">
-              <a className="fp-btn fp-btn-primary" href={report.links.vercel} target="_blank" rel="noopener noreferrer">
-                Open Vercel Analytics
-              </a>
-              <a className="fp-btn fp-btn-ghost" href={report.links.ga4} target="_blank" rel="noopener noreferrer">
-                Open GA4
-              </a>
-            </div>
-          </section>
-        )}
-      </main>
-    </AppShell>
+    <main id="content" className="fp-wrap fp-page fp-console">
+      <Link className="fp-text-link" href="/admin">
+        Back to control
+      </Link>
+      <p className="fp-kicker">Super Admin</p>
+      <h1>Analytics</h1>
+      <p className="fp-lead">
+        Visitors, page views, popular pages, sources, devices, enquiries, and conversion rates appear here only when a reporting API returns them. This page does not estimate those numbers.
+      </p>
+      {report.vercel || report.ga4 ? (
+        <>
+          <ProviderSection title="Vercel Analytics" range={range} report={report.vercel} href={report.links.vercel} />
+          <ProviderSection title="GA4" range={range} report={report.ga4} href={report.links.ga4} />
+        </>
+      ) : (
+        <section className="fp-card">
+          <h2>Numbers are not available here</h2>
+          <p>
+            Vercel Analytics and GA4 hold the visitor counts, page views, popular pages, sources, devices, player enquiries, gym enquiries, and conversion rates. No reporting API is configured for this server, so this page does not show those figures.
+          </p>
+          <div className="fp-actions">
+            <a className="fp-btn fp-btn-primary" href={report.links.vercel} target="_blank" rel="noopener noreferrer">
+              Open Vercel Analytics
+            </a>
+            <a className="fp-btn fp-btn-ghost" href={report.links.ga4} target="_blank" rel="noopener noreferrer">
+              Open GA4
+            </a>
+          </div>
+        </section>
+      )}
+    </main>
   );
 }
 

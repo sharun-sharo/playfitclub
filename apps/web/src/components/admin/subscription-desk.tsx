@@ -465,8 +465,12 @@ function CustomerPanel({ row, panel, setPanel, onDone, onError }: { row: DeskRow
   const [amount, setAmount] = useState(String(row.amountPendingInr || row.amountInr));
   const [method, setMethod] = useState("UPI");
   const [payStatus, setPayStatus] = useState("PAID");
-  const [paidAt, setPaidAt] = useState(localDateTimeValue());
+  const [paidAt, setPaidAt] = useState("");
   const [payNote, setPayNote] = useState("");
+
+  useEffect(() => {
+    setPaidAt(localDateTimeValue(new Date()));
+  }, []);
 
   useEffect(() => {
     setEditName(row.name);
@@ -722,7 +726,7 @@ function CustomerPanel({ row, panel, setPanel, onDone, onError }: { row: DeskRow
   );
 }
 
-function localDateTimeValue(date = new Date()) {
+function localDateTimeValue(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -735,7 +739,7 @@ export function PaymentDesk() {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("UPI");
   const [status, setStatus] = useState("PAID");
-  const [paidAt, setPaidAt] = useState(localDateTimeValue());
+  const [paidAt, setPaidAt] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -747,7 +751,10 @@ export function PaymentDesk() {
     });
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    setPaidAt(localDateTimeValue(new Date()));
+    load();
+  }, []);
 
   async function search(event: FormEvent) {
     event.preventDefault();
