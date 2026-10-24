@@ -13,7 +13,7 @@ import {
   shouldApplyHostSession,
   writeStoredHostToken,
 } from "@/components/fitrunner-v2/host-session-boot";
-import { browserRealtimeUrl, clientEnv, socketUsesPageOrigin } from "@/lib/env";
+import { browserRealtimeConnection, clientEnv, devCertificateHost, GAME_SERVER_DISCONNECTED, socketUsesPageOrigin } from "@/lib/env";
 import type { PoseDiagnostics } from "@/lib/vision/pose-estimator";
 
 export { HOST_TOKEN_KEY } from "@/components/fitrunner-v2/host-session-boot";
@@ -183,6 +183,17 @@ export function useTvSession(
       setQr("");
     }
     const storedAtBoot = pageToken.current ? null : readStoredHostToken(window.localStorage);
+    const realtime = browserRealtimeConnection(window.location.origin);
+    if (!realtime.ok) {
+      setTrustUrl("");
+      setConnected(false);
+      setJoinCode("");
+      setQr("");
+      setError(GAME_SERVER_DISCONNECTED);
+      return () => {
+        stopped = true;
+      };
+    }
 
     const deliver = (event: PoseCommand) => {
       const report = commandRef.current(event);
@@ -231,7 +242,7 @@ export function useTvSession(
       .then((response) => response.json())
       .then((body: { socketToken?: string }) => {
         if (stopped) return;
-        const realtimeUrl = browserRealtimeUrl(window.location.origin);
+        const realtimeUrl = realtime.url;
         socket = io(realtimeUrl, {
           transports: ["websocket", "polling"],
           reconnection: true,
@@ -240,9 +251,9 @@ export function useTvSession(
         socketRef.current = socket;
         socket.on("connect_error", () => {
           const separateServer = !socketUsesPageOrigin(window.location.origin);
-          if (separateServer) setTrustUrl(`${realtimeUrl}/health`);
-          else setTrustUrl("");
-          setError(separateServer ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.");
+          const approveCertificate = separateServer && devCertificateHost(realtimeUrl);
+          setTrustUrl(approveCertificate ? `${realtimeUrl}/health` : "");
+          setError(approveCertificate ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.");
         });
         const sendKeyboard = () => {
           const current = socketRef.current;

@@ -6,6 +6,7 @@ import type { MouseEvent, RefObject } from "react";
 import type { FitRunnerHandle, PoseReport } from "@/components/fitrunner-v2/create-fitrunner";
 import { GESTURE_STEPS, tutorialGestureFor, type TutorialGesture } from "@/components/fitrunner-v2/tutorial-actions";
 import type { TvPlayer, TvTracking } from "@/components/fitrunner-v2/use-tv-session";
+import { GAME_SERVER_DISCONNECTED, isLoopbackRealtimeUrl } from "@/lib/env";
 
 /**
  * TV guide only.
@@ -131,6 +132,8 @@ function cameraCoach(tracking: TvTracking | null, phoneConnected: boolean) {
 
 function hostTrouble(error: string, trustUrl: string) {
   if (!error) return "";
+  if (error === GAME_SERVER_DISCONNECTED) return GAME_SERVER_DISCONNECTED;
+  if (/certificate/i.test(error) && isLoopbackRealtimeUrl(trustUrl)) return GAME_SERVER_DISCONNECTED;
   if (/certificate/i.test(error)) {
     let origin = "the game connection";
     try {
@@ -257,6 +260,8 @@ export function FitRunnerTutorial({
   const canStart = Boolean(phone) && bodyFresh;
   const guideStep = step === "screen" || step === "scan" || step === "camera";
   const trouble = hostTrouble(session.error, session.trustUrl);
+  const serverDown = trouble === GAME_SERVER_DISCONNECTED;
+  const securityCheck = session.trustUrl && !isLoopbackRealtimeUrl(session.trustUrl) && /security check/i.test(trouble) ? session.trustUrl : "";
 
   useEffect(() => {
     let cancel = false;
@@ -504,13 +509,17 @@ export function FitRunnerTutorial({
                   />
                 ) : (
                   <div className="flex h-64 w-64 items-center justify-center rounded-[1.6rem] border border-dashed border-white/20 px-6 text-center text-sm text-white/50 sm:h-80 sm:w-80">
-                    {session.error ? "The QR shows here after the connection is allowed." : "Your code is on the way"}
+                    {serverDown ? GAME_SERVER_DISCONNECTED : session.error ? "The QR shows here after the connection is allowed." : "Your code is on the way"}
                   </div>
                 )}
               </div>
               <div className="lg:col-start-1 lg:row-start-2">
-                <p className="text-sm tracking-[0.16em] text-white/50 uppercase">Join code</p>
-                <p className="mt-1 font-display text-4xl tracking-[0.28em]">{session.joinCode || "······"}</p>
+                {session.joinCode || !serverDown ? (
+                  <>
+                    <p className="text-sm tracking-[0.16em] text-white/50 uppercase">Join code</p>
+                    <p className="mt-1 font-display text-4xl tracking-[0.28em]">{session.joinCode || "······"}</p>
+                  </>
+                ) : null}
                 {session.joinUrl ? <p className="mt-3 max-w-md break-all text-sm text-white/45">{session.joinUrl}</p> : null}
                 {!session.connected && !session.error ? <p className="mt-4 text-base text-white/70">Getting your code ready…</p> : null}
                 <div className="mt-6 flex flex-wrap gap-3">
@@ -587,10 +596,10 @@ export function FitRunnerTutorial({
           {notice || trouble ? (
             <p className="mt-8 max-w-xl text-base text-rose-200">
               {notice || trouble}{" "}
-              {session.trustUrl && /security check/i.test(trouble) ? (
+              {securityCheck ? (
                 <a
                   className="text-[#BEFF39] underline"
-                  href={session.trustUrl}
+                  href={securityCheck}
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => {

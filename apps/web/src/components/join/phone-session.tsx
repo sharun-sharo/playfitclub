@@ -19,7 +19,7 @@ import {
   type RecoveryAction,
 } from "@/components/join/phone-panels";
 import { friendlyJoinError, JOIN_EXPIRED, joinNameMessage } from "@/components/join/join-name";
-import { browserRealtimeUrl, socketUsesPageOrigin } from "@/lib/env";
+import { browserRealtimeConnection, devCertificateHost, GAME_SERVER_DISCONNECTED, socketUsesPageOrigin } from "@/lib/env";
 import {
   BODY_LEFT_MESSAGE,
   BODY_RETURN_MESSAGE,
@@ -335,9 +335,10 @@ export function PhoneSession({ code }: { code: string }) {
   }
 
   function openCertificate() {
+    const realtime = browserRealtimeConnection(window.location.origin);
+    if (!realtime.ok || !devCertificateHost(realtime.url)) return;
     if (socketUsesPageOrigin(window.location.origin)) return;
-    const url = `${browserRealtimeUrl(window.location.origin)}/health`;
-    window.open(url, "_blank", "noopener");
+    window.open(`${realtime.url}/health`, "_blank", "noopener");
   }
 
   async function join(event?: React.FormEvent) {
@@ -354,8 +355,15 @@ export function PhoneSession({ code }: { code: string }) {
     setSubmitError(null);
     setNotice(null);
     noteEvent("session:join");
+    const realtime = browserRealtimeConnection(window.location.origin);
+    if (!realtime.ok) {
+      joiningRef.current = false;
+      setJoining(false);
+      setSubmitError(GAME_SERVER_DISCONNECTED);
+      return;
+    }
     const me = await fetch("/api/me").then((response) => response.json()).catch(() => ({ socketToken: undefined }));
-    const realtimeUrl = browserRealtimeUrl(window.location.origin);
+    const realtimeUrl = realtime.url;
     closePhoneSocket(true);
     const generation = ++socketGen.current;
     const socket = io(realtimeUrl, {

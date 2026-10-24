@@ -6,7 +6,7 @@ import QRCode from "qrcode";
 import { io, type Socket } from "socket.io-client";
 import { SubscriptionExpired } from "@/components/account/subscription-expired";
 import { Button } from "@/components/ui/button";
-import { browserRealtimeUrl, clientEnv, socketUsesPageOrigin } from "@/lib/env";
+import { browserRealtimeConnection, clientEnv, devCertificateHost, GAME_SERVER_DISCONNECTED, socketUsesPageOrigin } from "@/lib/env";
 
 interface LobbyPlayer {
   id: string;
@@ -57,10 +57,16 @@ export function PlayLobby() {
           setBlocked(access.message ?? "Play is paused until the PlayFit Club team renews this subscription.");
           return;
         }
+        const realtime = browserRealtimeConnection(window.location.origin);
+        if (!realtime.ok) {
+          setTrustUrl("");
+          setError(GAME_SERVER_DISCONNECTED);
+          return;
+        }
         const me = (await fetch("/api/me").then((response) => response.json())) as { socketToken?: string };
         if (cancelled) return;
         const body = me;
-        const realtimeUrl = browserRealtimeUrl(window.location.origin);
+        const realtimeUrl = realtime.url;
         const socket = io(realtimeUrl, {
           transports: ["websocket", "polling"],
           reconnection: true,
@@ -69,8 +75,9 @@ export function PlayLobby() {
         socketRef.current = socket;
         socket.on("connect_error", () => {
           const separateServer = !socketUsesPageOrigin(window.location.origin);
-          setTrustUrl(separateServer ? `${realtimeUrl}/health` : "");
-          setError(separateServer ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.");
+          const approveCertificate = separateServer && devCertificateHost(realtimeUrl);
+          setTrustUrl(approveCertificate ? `${realtimeUrl}/health` : "");
+          setError(approveCertificate ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.");
         });
         socket.on("connect", () => {
           setError("");
