@@ -3,3 +3,8 @@ export * from "./client";
 export * from "./branding";
 export * from "./queries";
 export * from "./prisma-repository";
+export * from "./billing/policy";
+export * from "./billing/service";
+export * from "./billing/desk";
+export * from "./gym/policy";
+export * from "./gym/service";

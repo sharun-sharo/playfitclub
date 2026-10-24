@@ -1,12 +1,12 @@
 import type { Landmark, PoseFrame } from "./movement-types";
 
 export function smoothFrame(
-  previous: Array<{ x: number; y: number } | null>,
+  previous: Array<{ x: number; y: number; z?: number } | null>,
   frame: PoseFrame,
   alpha: number,
-): { smoother: Array<{ x: number; y: number } | null>; landmarks: Array<Landmark | null> } {
+): { smoother: Array<{ x: number; y: number; z?: number } | null>; landmarks: Array<Landmark | null> } {
   const count = Math.max(previous.length, frame.landmarks.length, 33);
-  const smoother: Array<{ x: number; y: number } | null> = [];
+  const smoother: Array<{ x: number; y: number; z?: number } | null> = [];
   const landmarks: Array<Landmark | null> = [];
   for (let index = 0; index < count; index += 1) {
     const sample = frame.landmarks[index];
@@ -18,11 +18,17 @@ export function smoothFrame(
         : null;
       continue;
     }
+    const sampleZ = Number.isFinite(sample.z) ? (sample.z as number) : 0;
+    const priorZ = prior && Number.isFinite(prior.z) ? (prior.z as number) : sampleZ;
     const next = prior
-      ? { x: prior.x + (sample.x - prior.x) * alpha, y: prior.y + (sample.y - prior.y) * alpha }
-      : { x: sample.x, y: sample.y };
+      ? {
+          x: prior.x + (sample.x - prior.x) * alpha,
+          y: prior.y + (sample.y - prior.y) * alpha,
+          z: priorZ + (sampleZ - priorZ) * alpha,
+        }
+      : { x: sample.x, y: sample.y, z: sampleZ };
     smoother[index] = next;
-    landmarks[index] = { ...sample, x: next.x, y: next.y };
+    landmarks[index] = { ...sample, x: next.x, y: next.y, z: next.z };
   }
   return { smoother, landmarks };
 }

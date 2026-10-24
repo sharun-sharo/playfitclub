@@ -1,16 +1,22 @@
-import { assessFraming } from "./calibration";
+import { assessFraming, driftNeutral, neutralFromLandmarks } from "./calibration";
 import { classifyPose } from "./movement-classifier";
 import { smoothFrame } from "./landmark-smoothing";
 import {
   DEFAULT_THRESHOLDS,
+  type ArmPose,
   type BodyPhase,
   type DetectorState,
+  type GestureTrack,
   type MovementDraft,
   type MovementThresholds,
   type NeutralPose,
   type PoseFrame,
+  type PoseRejectReason,
   type PoseSignals,
 } from "./movement-types";
+
+/** A single dropped frame must not wipe a gesture that is still forming. */
+export const TRACK_GRACE_MS = 160;
 
 export interface DetectorUpdate {
   state: DetectorState;
@@ -20,36 +26,143 @@ export interface DetectorUpdate {
   framingReady: boolean;
 }
 
+export function movementEventId(sequence: number, timestampMs: number) {
+  const stamp = Math.max(0, Math.round(timestampMs)).toString(36).padStart(6, "0");
+  const count = Math.max(0, sequence).toString(36).padStart(2, "0");
+  return `mv${count}${stamp}`;
+}
+
+/** Returns false when this gesture id was already accepted. */
+export function claimMovementId(seen: Set<string>, eventId: string) {
+  if (seen.has(eventId)) return false;
+  seen.add(eventId);
+  return true;
+}
+
+function freshTrack(): GestureTrack {
+  return { phase: "NEUTRAL", since: 0, eventId: null, suppress: false };
+}
+
 export function createDetector(overrides: Partial<MovementThresholds> = {}): DetectorState {
   return {
     thresholds: { ...DEFAULT_THRESHOLDS, ...overrides },
     smoother: [],
     neutral: null,
-    phase: "neutral",
+    phase: "NEUTRAL",
     lastHipY: null,
+    lastAnkleY: null,
     lastTimestamp: null,
-    cooldownUntil: 0,
-    holdSince: null,
-    holdLatched: false,
     sequence: 0,
     riseWindow: [],
+    recoverUntil: 0,
+    lastReject: null,
+    rejectLatched: false,
+    left: freshTrack(),
+    right: freshTrack(),
+    squat: freshTrack(),
+    jump: freshTrack(),
+    jumpMotion: "grounded",
+    prepSince: null,
+    lostSince: null,
+    lastGesture: null,
+    awaitRelease: false,
   };
 }
 
 export function setNeutral(state: DetectorState, neutral: NeutralPose): DetectorState {
-  return { ...state, neutral, phase: "neutral", holdSince: null, holdLatched: false };
+  return {
+    ...state,
+    neutral,
+    phase: "NEUTRAL",
+    left: freshTrack(),
+    right: freshTrack(),
+    squat: freshTrack(),
+    jump: freshTrack(),
+    jumpMotion: "grounded",
+    prepSince: null,
+    recoverUntil: 0,
+    rejectLatched: false,
+    lostSince: null,
+    riseWindow: [],
+    awaitRelease: false,
+  };
+}
+
+/**
+ * Standing ready for a new run, a pause, or a resume.
+ * Keeps the calibrated neutral and the event sequence.
+ * Clears an airborne jump, a latched squat, an armed dip, and recovery.
+ * Neutral is allowed to drift again. The pose already in frame is not replayed:
+ * hip history is dropped, so that frame has no rise speed.
+ */
+export function resetMovementReady(state: DetectorState): DetectorState {
+  return {
+    ...state,
+    phase: "NEUTRAL",
+    left: freshTrack(),
+    right: freshTrack(),
+    squat: freshTrack(),
+    jump: freshTrack(),
+    jumpMotion: "grounded",
+    prepSince: null,
+    recoverUntil: 0,
+    rejectLatched: false,
+    lastReject: null,
+    lostSince: null,
+    riseWindow: [],
+    lastHipY: null,
+    lastAnkleY: null,
+    lastTimestamp: null,
+    smoother: [],
+    awaitRelease: false,
+  };
+}
+
+/**
+ * Drops any held, paused, or half-sent gesture without emitting one.
+ * The pose already in frame is ignored until the body is quiet again.
+ */
+export function settleGestures(state: DetectorState): DetectorState {
+  return {
+    ...state,
+    phase: "NEUTRAL",
+    left: freshTrack(),
+    right: freshTrack(),
+    squat: freshTrack(),
+    jump: freshTrack(),
+    jumpMotion: "grounded",
+    prepSince: null,
+    recoverUntil: 0,
+    rejectLatched: false,
+    lastReject: null,
+    lostSince: null,
+    riseWindow: [],
+    lastHipY: null,
+    lastAnkleY: null,
+    lastTimestamp: null,
+    smoother: [],
+    awaitRelease: true,
+  };
+}
+
+export function setThresholds(state: DetectorState, overrides: Partial<MovementThresholds>): DetectorState {
+  return { ...state, thresholds: { ...state.thresholds, ...overrides } };
 }
 
 export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate {
   const mirrored = state.thresholds.mirror ? mirrorFrame(frame) : frame;
   const smoothed = smoothFrame(state.smoother, mirrored, state.thresholds.smoothingAlpha);
   const framing = assessFraming(smoothed.landmarks, state.thresholds.minVisibility);
+  const dt = state.lastTimestamp !== null ? Math.max(0, mirrored.timestampMs - state.lastTimestamp) : 0;
   let riseSpeed = 0;
+  let ankleSpeed = 0;
   const hip = hipY(smoothed.landmarks);
-  if (hip !== null && state.lastHipY !== null && state.lastTimestamp !== null) {
-    const dt = (mirrored.timestampMs - state.lastTimestamp) / 1000;
-    const torso = state.neutral?.torso ?? 0.2;
-    if (dt > 0 && dt < 0.5) riseSpeed = (state.lastHipY - hip) / dt / torso;
+  const ankle = ankleY(smoothed.landmarks);
+  const seconds = dt / 1000;
+  const torso = state.neutral?.torso ?? 0.2;
+  if (seconds > 0 && seconds < 0.5) {
+    if (hip !== null && state.lastHipY !== null) riseSpeed = (state.lastHipY - hip) / seconds / torso;
+    if (ankle !== null && state.lastAnkleY !== null) ankleSpeed = (state.lastAnkleY - ankle) / seconds / torso;
   }
 
   const riseWindow = [...state.riseWindow, riseSpeed].slice(-3);
@@ -58,6 +171,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
     ...state,
     smoother: smoothed.smoother,
     lastHipY: hip ?? state.lastHipY,
+    lastAnkleY: ankle ?? state.lastAnkleY,
     lastTimestamp: mirrored.timestampMs,
     riseWindow,
   };
@@ -73,21 +187,69 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   }
 
   const signals = classifyPose(smoothed.landmarks, state.neutral, state.thresholds, peakRise);
+  signals.hipVelocity = riseSpeed;
+  signals.ankleVelocity = ankleSpeed;
   if (!signals.ok || signals.confidence < state.thresholds.minActionConfidence) {
-    const hidden = signals.reason === "missing";
+    const reason: PoseRejectReason = !signals.ok && signals.reason === "missing" ? "tracking_lost" : "low_confidence";
+    const lostSince = state.lostSince ?? mirrored.timestampMs;
+    const expired = mirrored.timestampMs - lostSince > TRACK_GRACE_MS;
+    const keep = (track: GestureTrack) => (expired ? cancelCandidate(track) : delayCandidate(track, dt));
     return {
-      state: base,
+      state: {
+        ...base,
+        lostSince,
+        lastHipY: expired ? null : base.lastHipY,
+        lastAnkleY: expired ? null : base.lastAnkleY,
+        riseWindow: expired ? [] : base.riseWindow,
+        left: keep(state.left),
+        right: keep(state.right),
+        squat: keep(state.squat),
+        jump: keep(state.jump),
+        lastReject: state.lastReject?.reason === reason ? state.lastReject : { reason, at: mirrored.timestampMs },
+      },
       events: [],
       signals,
-      guidance: hidden
-        ? "Some joints are hidden. Step fully into frame. Body controls are paused."
-        : "Tracking confidence is low. Body controls are paused until the camera sees you clearly.",
+      guidance:
+        reason === "tracking_lost"
+          ? "Some joints are hidden. Step fully into frame. Body controls are paused."
+          : "Tracking confidence is low. Body controls are paused until the camera sees you clearly.",
       framingReady: false,
     };
   }
 
-  const transition = transitionPhase(base, signals, mirrored.timestampMs);
-  const settled = transition.state.phase === "air" ? { ...transition.state, riseWindow: [] } : transition.state;
+  if (state.awaitRelease && state.neutral) {
+    const quiet = poseIsQuiet(signals, state.thresholds, state.neutral);
+    return {
+      state: {
+        ...base,
+        lastHipY: null,
+        lastAnkleY: null,
+        riseWindow: [],
+        phase: "NEUTRAL",
+        left: freshTrack(),
+        right: freshTrack(),
+        squat: freshTrack(),
+        jump: freshTrack(),
+        jumpMotion: "grounded",
+        prepSince: null,
+        recoverUntil: 0,
+        lostSince: null,
+        awaitRelease: !quiet,
+      },
+      events: [],
+      signals,
+      guidance: framing.ready ? "Tracking" : framing.guidance,
+      framingReady: framing.ready,
+    };
+  }
+
+  const transition = transitionPhase({ ...base, lostSince: null }, signals, mirrored.timestampMs);
+  const enteredJump = transition.state.phase === "JUMPING" && state.phase !== "JUMPING";
+  let settled = enteredJump ? { ...transition.state, riseWindow: [] } : transition.state;
+  if (settled.neutral && stanceIsQuiet(settled, signals)) {
+    const sample = neutralFromLandmarks(smoothed.landmarks);
+    if (sample) settled = { ...settled, neutral: driftNeutral(settled.neutral, sample, settled.thresholds.neutralDrift) };
+  }
   return {
     state: settled,
     events: transition.events,
@@ -105,88 +267,354 @@ function transitionPhase(
   const events: MovementDraft[] = [];
   const thresholds = state.thresholds;
   let phase: BodyPhase = state.phase;
-  let cooldownUntil = state.cooldownUntil;
-  let holdSince = state.holdSince;
-  let holdLatched = state.holdLatched;
+  let left = state.left;
+  let right = state.right;
+  let squat = state.squat;
+  let jump = state.jump;
+  let recoverUntil = state.recoverUntil;
   let sequence = state.sequence;
-  let leftSquat = false;
+  let lastReject = state.lastReject;
+  let rejectLatched = state.rejectLatched;
+  let lastGesture = state.lastGesture;
+  let jumpMotion = state.jumpMotion;
+  let prepSince = state.prepSince;
 
   const emit = (movementType: MovementDraft["movementType"], confidence: number) => {
-    if (now < cooldownUntil) return;
     sequence += 1;
-    cooldownUntil = now + thresholds.cooldownMs;
-    events.push({ movementType, confidence, clientTimestamp: now, sequenceNumber: sequence });
+    const eventId = movementEventId(sequence, now);
+    lastGesture = { movementType, eventId, at: now };
+    events.push({ movementType, confidence, clientTimestamp: now, sequenceNumber: sequence, eventId });
+    return { id: eventId };
   };
 
-  const squatting =
-    phase === "squat"
-      ? signals.hipDrop > thresholds.squatExitDrop && signals.kneeAngle < thresholds.squatKneeExit
-      : signals.hipDrop > thresholds.squatEnterDrop && signals.kneeAngle < thresholds.squatKneeEnter;
-  const oneArmExtended =
-    (signals.leftExtension > thresholds.punchEnter && signals.rightExtension < thresholds.punchExit) ||
-    (signals.rightExtension > thresholds.punchEnter && signals.leftExtension < thresholds.punchExit);
-  const punching = phase === "punch"
-    ? Math.max(signals.leftExtension, signals.rightExtension) > thresholds.punchExit && signals.armsOut < 2.2
-    : oneArmExtended && signals.armsOut < 2.2;
-  const leanLeft = phase === "lean_left" ? signals.lean > thresholds.leanExit : signals.lean > thresholds.leanEnter;
-  const leanRight = phase === "lean_right" ? signals.lean < -thresholds.leanExit : signals.lean < -thresholds.leanEnter;
+  const reject = (reason: PoseRejectReason) => {
+    if (rejectLatched && lastReject?.reason === reason) return;
+    lastReject = { reason, at: now };
+    rejectLatched = true;
+  };
 
-  if (phase === "air") {
-    if (signals.hipDrop > -0.04 && signals.riseSpeed < thresholds.jumpRise * 0.4) phase = "neutral";
-  } else if (squatting) {
-    if (phase !== "squat") emit("squat", signals.confidence);
-    phase = "squat";
-  } else if (phase === "squat") {
-    phase = "neutral";
-    leftSquat = true;
-  } else if (punching) {
-    if (phase !== "punch") emit("punch", signals.confidence);
-    phase = "punch";
-  } else if (phase === "punch") {
-    phase = "neutral";
-  } else if (leanLeft && phase !== "lean_right") {
-    if (phase === "neutral") emit("lean_left", signals.confidence);
-    phase = "lean_left";
-  } else if (leanRight && phase !== "lean_left") {
-    if (phase === "neutral") emit("lean_right", signals.confidence);
-    phase = "lean_right";
-  } else if (phase === "lean_left" || phase === "lean_right") {
-    phase = "neutral";
-  }
-
-  const jumping =
-    !leftSquat &&
-    phase !== "squat" &&
-    phase !== "air" &&
-    signals.hipDrop < thresholds.squatEnterDrop &&
-    signals.ankleRise > thresholds.jumpAnkleRise &&
-    signals.riseSpeed > thresholds.jumpRise * 0.65;
-  if (jumping) {
-    emit("jump", Math.min(1, signals.confidence * Math.min(1, signals.riseSpeed / (thresholds.jumpRise * 2))));
-    phase = "air";
-  }
-
-  const holding = signals.armsOut > 2.4 && phase === "neutral" && Math.abs(signals.lean) < thresholds.leanExit;
-  if (holding) {
-    if (holdSince === null) holdSince = now;
-    if (!holdLatched && now - holdSince >= thresholds.holdMs) {
-      emit("hold", signals.confidence);
-      holdLatched = true;
-    }
-  } else {
-    holdSince = null;
-    if (signals.armsOut < 1.8) holdLatched = false;
-  }
-
-  return {
+  const pack = () => ({
     events,
-    state: { ...state, phase, cooldownUntil, holdSince, holdLatched, sequence },
-  };
+    state: {
+      ...state,
+      phase,
+      recoverUntil,
+      sequence,
+      left,
+      right,
+      squat,
+      jump,
+      jumpMotion,
+      prepSince,
+      lastReject,
+      rejectLatched,
+      lastGesture,
+      lostSince: null,
+    },
+  });
+
+  const neutral = state.neutral;
+  const leftUp = neutral ? armRaised(signals.leftArm, neutral.leftWristLateral, usesExit(left), thresholds) : false;
+  const rightUp = neutral ? armRaised(signals.rightArm, neutral.rightWristLateral, usesExit(right), thresholds) : false;
+
+  const planted = signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.03);
+  const dipping =
+    signals.legsReady &&
+    !signals.forwardBend &&
+    planted &&
+    signals.hipDrop > thresholds.jumpPrepDrop &&
+    signals.kneeFlex >= thresholds.jumpPrepKnee;
+  const armedPrep = state.prepSince !== null && now - state.prepSince >= thresholds.jumpPrepMs;
+  const takeoffFromDip =
+    armedPrep &&
+    signals.legsReady &&
+    !signals.forwardBend &&
+    signals.hipVelocity > thresholds.jumpRise;
+
+  let justLanded = false;
+  if (jump.phase === "CONFIRMED" || jump.phase === "SENT" || jump.phase === "WAIT_RESET") {
+    // A few pixels above the calibrated ankles is still the floor. Only a clear flight stays open.
+    const feetClear = signals.ankleRise > 0.12 || signals.hipDrop < -0.1;
+    const descending = signals.hipVelocity < -0.45 || signals.ankleVelocity < -0.45;
+    const quiet = Math.abs(signals.hipVelocity) < 2.4 && Math.abs(signals.ankleVelocity) < 2.4;
+    const landed = !feetClear && (quiet || signals.hipVelocity < 0.8);
+    if (!landed) {
+      jump = { ...jump, phase: jump.phase === "CONFIRMED" ? "SENT" : "WAIT_RESET" };
+      jumpMotion = feetClear ? (descending || state.jumpMotion === "landing" ? "landing" : "airborne") : "takeoff";
+      phase = "JUMPING";
+      if (leftUp) left = suppressTrack(left, now);
+      if (rightUp) right = suppressTrack(right, now);
+      return pack();
+    }
+    jump = freshTrack();
+    jumpMotion = "landing";
+    prepSince = null;
+    phase = "RECOVERING";
+    recoverUntil = now + thresholds.recoverMs;
+    justLanded = true;
+  }
+
+  const squatLatched = squat.phase === "CONFIRMED" || squat.phase === "SENT" || squat.phase === "WAIT_RESET";
+  const squatOpen = squat.phase === "CANDIDATE" || squatLatched;
+  const squatShape = signals.legsReady && !signals.forwardBend && planted && signals.ankleFlex >= thresholds.squatAnkleFlex;
+  const inSquatBand =
+    squatShape &&
+    (squatOpen
+      ? signals.hipDrop > thresholds.squatExitDrop && signals.kneeAngle < thresholds.squatKneeExit
+      : signals.hipDrop > thresholds.squatEnterDrop && signals.kneeAngle < thresholds.squatKneeEnter);
+  if (signals.forwardBend) reject("forward_bend");
+
+  // A short dip, then hips rising faster than jumpRise, is one jump. It is not a squat.
+  const countermovement = takeoffFromDip && !squatLatched && (squat.phase === "CANDIDATE" || inSquatBand || state.jumpMotion === "preparing");
+
+  const standingOutOfSquat = (state.jumpMotion === "recovery" || jumpMotion === "recovery") && signals.hipDrop > thresholds.jumpPrepDrop;
+  if (dipping && !countermovement && !squatLatched && jump.phase === "NEUTRAL" && !standingOutOfSquat) {
+    if (prepSince === null) prepSince = now;
+    if (jumpMotion !== "landing") jumpMotion = "preparing";
+  }
+  if (standingOutOfSquat) prepSince = null;
+
+  if (countermovement) {
+    squat = freshTrack();
+    if (leftUp) left = suppressTrack(left, now);
+    if (rightUp) right = suppressTrack(right, now);
+  } else if (inSquatBand) {
+    if (!squatLatched) {
+      const since = squat.phase === "CANDIDATE" ? squat.since : now;
+      const held = squat.phase === "CANDIDATE" && now - since >= thresholds.squatHoldMs;
+      if (held) {
+        const sent = emit("squat", signals.confidence);
+        squat = { phase: "CONFIRMED", since: now, eventId: sent.id, suppress: false };
+        phase = "SQUATTING";
+        prepSince = null;
+        jumpMotion = "grounded";
+      } else {
+        squat = { phase: "CANDIDATE", since, eventId: null, suppress: false };
+      }
+    } else if (squat.phase === "CONFIRMED") {
+      squat = { ...squat, phase: "SENT" };
+      phase = "SQUATTING";
+    } else if (squat.phase === "SENT") {
+      squat = { ...squat, phase: "WAIT_RESET" };
+      phase = "SQUATTING";
+    } else {
+      phase = "SQUATTING";
+    }
+    if (leftUp) left = suppressTrack(left, now);
+    if (rightUp) right = suppressTrack(right, now);
+    return pack();
+  } else if (squat.phase === "CANDIDATE") {
+    squat = freshTrack();
+  }
+
+  let enteredRecovery = false;
+  if (squat.phase === "CONFIRMED" || squat.phase === "SENT" || squat.phase === "WAIT_RESET" || phase === "SQUATTING") {
+    squat = freshTrack();
+    phase = "RECOVERING";
+    jumpMotion = "recovery";
+    prepSince = null;
+    recoverUntil = now + thresholds.recoverMs;
+    enteredRecovery = true;
+  }
+
+  const calm =
+    now >= recoverUntil &&
+    signals.hipDrop < thresholds.squatExitDrop &&
+    Math.abs(signals.riseSpeed) < thresholds.jumpRise * 0.45 &&
+    signals.ankleRise < thresholds.jumpAnkleRise * 2;
+  const recovering = phase === "RECOVERING" && !calm;
+  if (phase === "RECOVERING" && calm) {
+    phase = "NEUTRAL";
+    if (jumpMotion === "recovery" || jumpMotion === "landing") jumpMotion = "grounded";
+  } else if (recovering && jumpMotion !== "landing") {
+    jumpMotion = "recovery";
+  }
+
+  const flight =
+    signals.legsReady &&
+    signals.kneeAngle > thresholds.squatKneeEnter &&
+    signals.hipDrop < thresholds.squatExitDrop &&
+    signals.ankleRise > thresholds.jumpAnkleRise &&
+    signals.riseSpeed > thresholds.jumpRise;
+  const jumping = !justLanded && !enteredRecovery && jump.phase === "NEUTRAL" && !standingOutOfSquat && (takeoffFromDip || (flight && !recovering));
+  // The fast frame of a small hop often arrives after the hips have already left the dip
+  // band, with the knees still bent. Keep the armed dip until that rise, or until the
+  // body is quiet again. Do not require straight knees on the speed frame.
+  const prepHeld = prepSince !== null && now - prepSince >= thresholds.jumpPrepMs;
+  const settled =
+    signals.hipDrop < 0.02 && Math.abs(signals.hipVelocity) < 0.2 && signals.ankleRise < thresholds.jumpAnkleRise;
+  if (!dipping && !jumping && jump.phase === "NEUTRAL" && !recovering && phase !== "RECOVERING" && (!prepHeld || settled || signals.hipVelocity < -0.4)) {
+    prepSince = null;
+    if (jumpMotion === "preparing") jumpMotion = "grounded";
+  }
+  if (jumping) {
+    const speed = Math.max(signals.hipVelocity, signals.riseSpeed);
+    const sent = emit(
+      "jump",
+      Math.min(1, signals.confidence * Math.min(1, speed / Math.max(0.2, thresholds.jumpRise * 2))),
+    );
+    jump = { phase: "CONFIRMED", since: now, eventId: sent.id, suppress: false };
+    jumpMotion = "takeoff";
+    prepSince = null;
+    phase = "JUMPING";
+    if (leftUp) left = suppressTrack(left, now);
+    if (rightUp) right = suppressTrack(right, now);
+    return pack();
+  }
+
+  const leftSent = sentPhase(left);
+  const rightSent = sentPhase(right);
+  if (leftUp && rightUp && !leftSent && !rightSent) {
+    reject("both_arms");
+    left = { phase: "NEUTRAL", since: now, eventId: null, suppress: true };
+    right = { phase: "NEUTRAL", since: now, eventId: null, suppress: true };
+    if (!recovering && phase !== "RECOVERING") phase = "NEUTRAL";
+    return pack();
+  }
+
+  left = advanceArm(left, leftUp && !(rightUp && !leftSent), thresholds.armHoldMs, now, () => emit("lean_left", signals.confidence));
+  right = advanceArm(right, rightUp && !(leftUp && !rightSent), thresholds.armHoldMs, now, () => emit("lean_right", signals.confidence));
+  if (!leftUp && !rightUp) rejectLatched = false;
+
+  if (recovering) {
+    phase = "RECOVERING";
+  } else if (left.phase !== "NEUTRAL" && right.phase === "NEUTRAL") {
+    phase = "LEFT_ARM_ACTIVE";
+  } else if (right.phase !== "NEUTRAL" && left.phase === "NEUTRAL") {
+    phase = "RIGHT_ARM_ACTIVE";
+  } else {
+    phase = "NEUTRAL";
+  }
+  return pack();
+}
+
+function advanceArm(
+  track: GestureTrack,
+  up: boolean,
+  holdMs: number,
+  now: number,
+  emit: () => { id: string },
+): GestureTrack {
+  if (track.suppress) {
+    if (!up) return freshTrack();
+    return { phase: "NEUTRAL", since: now, eventId: null, suppress: true };
+  }
+  if (track.phase === "TRIGGERED") {
+    return up ? { ...track, phase: "WAIT_FOR_RELEASE" } : freshTrack();
+  }
+  if (track.phase === "WAIT_FOR_RELEASE") {
+    return up ? track : freshTrack();
+  }
+  if (!up) return freshTrack();
+  const since = track.phase === "ARM_RISING" ? track.since : now;
+  if (now - since >= holdMs) {
+    const sent = emit();
+    return { phase: "TRIGGERED", since: now, eventId: sent.id, suppress: false };
+  }
+  return { phase: "ARM_RISING", since, eventId: null, suppress: false };
+}
+
+function sentPhase(track: GestureTrack) {
+  return track.phase === "TRIGGERED" || track.phase === "WAIT_FOR_RELEASE";
+}
+
+function usesExit(track: GestureTrack) {
+  return track.phase !== "NEUTRAL" || track.suppress;
+}
+
+function suppressTrack(track: GestureTrack, now: number): GestureTrack {
+  if (sentPhase(track)) return { ...track, suppress: true };
+  return { phase: "NEUTRAL", since: now, eventId: null, suppress: true };
+}
+
+function cancelCandidate(track: GestureTrack): GestureTrack {
+  if (track.phase === "CANDIDATE" || track.phase === "CONFIRMED" || track.phase === "ARM_RISING" || track.phase === "TRIGGERED") {
+    return { ...freshTrack(), suppress: track.suppress };
+  }
+  return track;
+}
+
+function delayCandidate(track: GestureTrack, dt: number): GestureTrack {
+  if ((track.phase !== "CANDIDATE" && track.phase !== "ARM_RISING") || dt <= 0) return track;
+  return { ...track, since: track.since + dt };
+}
+
+function poseIsQuiet(signals: PoseSignals, thresholds: MovementThresholds, neutral: NeutralPose) {
+  const leftUp = armRaised(signals.leftArm, neutral.leftWristLateral, false, thresholds);
+  const rightUp = armRaised(signals.rightArm, neutral.rightWristLateral, false, thresholds);
+  const squatting =
+    signals.legsReady &&
+    !signals.forwardBend &&
+    signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.03) &&
+    signals.ankleFlex >= thresholds.squatAnkleFlex &&
+    signals.hipDrop > thresholds.squatEnterDrop &&
+    signals.kneeAngle < thresholds.squatKneeEnter;
+  const preparing =
+    signals.legsReady &&
+    !signals.forwardBend &&
+    signals.hipDrop > thresholds.jumpPrepDrop &&
+    signals.kneeFlex >= thresholds.jumpPrepKnee;
+  const jumping =
+    signals.legsReady &&
+    (signals.ankleRise > thresholds.jumpAnkleRise || signals.hipDrop < -0.05) &&
+    (signals.riseSpeed > thresholds.jumpRise || signals.hipVelocity > thresholds.jumpRise);
+  return !leftUp && !rightUp && !squatting && !preparing && !jumping;
+}
+
+function stanceIsQuiet(state: DetectorState, signals: PoseSignals) {
+  const neutral = state.neutral;
+  if (!neutral || state.awaitRelease || state.phase !== "NEUTRAL" || state.jumpMotion !== "grounded") return false;
+  if (state.left.phase !== "NEUTRAL" || state.right.phase !== "NEUTRAL") return false;
+  if (state.squat.phase !== "NEUTRAL" || state.jump.phase !== "NEUTRAL") return false;
+  if (signals.hipDrop > 0.02 || signals.hipDrop < -0.02 || Math.abs(signals.hipVelocity) > 0.12 || signals.ankleRise > 0.02) return false;
+  return poseIsQuiet(signals, state.thresholds, neutral);
+}
+
+/**
+ * Two raises per side, plus an overhead raise that is allowed and not required.
+ * Halfway: waist-to-chest, bent elbow allowed, wrist must travel outward from the calibrated hang.
+ * Sideways: arm pointed about horizontal, extended, elbow softer than a locked straight arm.
+ */
+function armRaised(arm: ArmPose, neutralLateral: number, engaged: boolean, thresholds: MovementThresholds) {
+  if (!arm.visible) return false;
+  return halfwayRaised(arm, neutralLateral, engaged, thresholds) || sidewaysRaised(arm, engaged, thresholds) || overheadRaised(arm, engaged);
+}
+
+function halfwayRaised(arm: ArmPose, neutralLateral: number, engaged: boolean, thresholds: MovementThresholds) {
+  const travel = arm.lateral - neutralLateral;
+  const elbow = engaged ? Math.min(55, thresholds.halfwayElbowMin) : thresholds.halfwayElbowMin;
+  const outward = engaged ? thresholds.halfwayOutExit : thresholds.halfwayOutEnter;
+  const minHeight = engaged ? 0.18 : thresholds.halfwayHeightMin;
+  const maxHeight = thresholds.halfwayHeightMax;
+  return travel >= outward && arm.height >= minHeight && arm.height <= maxHeight && arm.elbowAngle >= elbow;
+}
+
+function sidewaysRaised(arm: ArmPose, engaged: boolean, thresholds: MovementThresholds) {
+  const elevation = engaged ? Math.max(50, thresholds.sidewaysElevationMin - 12) : thresholds.sidewaysElevationMin;
+  const reach = engaged ? thresholds.sidewaysReachExit : thresholds.sidewaysReachEnter;
+  const elbow = engaged ? thresholds.sidewaysElbowExit : thresholds.sidewaysElbowEnter;
+  const maxElevation = engaged ? 150 : thresholds.sidewaysElevationMax;
+  return arm.elevation >= elevation && arm.elevation <= maxElevation && arm.reach >= reach && arm.elbowAngle >= elbow;
+}
+
+/** Optional. A hand above the head still counts, and it is not required. */
+function overheadRaised(arm: ArmPose, engaged: boolean) {
+  const elevation = engaged ? 100 : 125;
+  const reach = engaged ? 0.7 : 0.9;
+  const elbow = engaged ? 80 : 90;
+  return arm.elevation >= elevation && arm.reach >= reach && arm.elbowAngle >= elbow;
 }
 
 function hipY(landmarks: Array<{ y: number } | null>): number | null {
   const left = landmarks[23];
   const right = landmarks[24];
+  if (!left || !right) return null;
+  return (left.y + right.y) / 2;
+}
+
+function ankleY(landmarks: Array<{ y: number } | null>): number | null {
+  const left = landmarks[27];
+  const right = landmarks[28];
   if (!left || !right) return null;
   return (left.y + right.y) / 2;
 }

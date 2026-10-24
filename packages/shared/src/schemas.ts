@@ -39,6 +39,8 @@ export const joinSessionSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   joinCode: joinCodeSchema,
   displayName: displayNameSchema,
+  /** Stable id for this phone. The same phone can replace its old socket. */
+  installId: z.string().trim().min(8).max(80).optional(),
 });
 
 export const readySchema = z.object({
@@ -46,17 +48,64 @@ export const readySchema = z.object({
   ready: z.boolean(),
 });
 
+export const poseDiagnosticsSchema = z.object({
+  phase: z.string().max(32),
+  confidence: z.number().min(0).max(1).finite(),
+  leftElbow: z.number().finite(),
+  rightElbow: z.number().finite(),
+  leftLateral: z.number().finite(),
+  rightLateral: z.number().finite(),
+  hipDrop: z.number().finite(),
+  kneeAngle: z.number().finite(),
+  riseSpeed: z.number().finite(),
+  ankleRise: z.number().finite(),
+  reject: z.string().max(40).nullable(),
+  leftPhase: z.string().max(32).optional(),
+  rightPhase: z.string().max(32).optional(),
+  squatPhase: z.string().max(32).optional(),
+  jumpPhase: z.string().max(32).optional(),
+  lastGesture: z.string().max(40).nullable().optional(),
+});
+
+export const movementResultSchema = z.object({
+  v: z.literal(PROTOCOL_VERSION),
+  eventId: z.string().min(8).max(80),
+  playerId: z.string().min(1).max(80),
+  sessionId: z.string().min(1).max(80),
+  movementType: movementTypeSchema,
+  accepted: z.boolean(),
+  reason: z.string().max(40).nullable(),
+  /** TV clock at the moment the game accepted or rejected the action. Not the phone clock. */
+  executedAtMs: z.number().finite().optional(),
+});
+
 export const playerStatusSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   status: z.enum(["joined", "calibrating", "ready", "tracking", "camera_error"]),
   confidence: z.number().min(0).max(1).optional(),
   message: z.string().max(180).optional(),
+  diagnostics: poseDiagnosticsSchema.optional(),
 });
 
 export const keyboardPlayerSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   displayName: displayNameSchema,
 });
+
+export const obstacleHitSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    sessionId: z.string().min(1).max(80),
+    obstacleId: z.string().min(1).max(80),
+    clientTimestamp: z.number().finite(),
+  })
+  .strict();
+
+export const runBeginSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+  })
+  .strict();
 
 export const sessionErrorSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),

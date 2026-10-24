@@ -10,12 +10,17 @@ export async function proxy(request: NextRequest) {
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/dashboard") || pathname.startsWith("/account/password")) {
     try {
       const secret = process.env.AUTH_SECRET;
       if (!secret) throw new Error("missing secret");
       const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
-      if (payload.role !== "ADMIN") return NextResponse.redirect(new URL("/dashboard", request.url));
+      if (payload.pw === true && pathname !== "/account/password") {
+        return NextResponse.redirect(new URL("/account/password", request.url));
+      }
+      if (pathname.startsWith("/admin") && payload.role !== "ADMIN" && payload.role !== "SUPER_ADMIN") {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
     } catch {
       return NextResponse.redirect(new URL("/login", request.url));
     }
@@ -24,5 +29,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/account/password"],
 };

@@ -1,4 +1,4 @@
-import { gymForOwner, leaderboard, updateGymBranding } from "@fitplay/db";
+import { gymForOwner, updateGymBranding } from "@fitplay/db";
 import { brandingSchema } from "@fitplay/shared";
 import { requireUser } from "@/lib/auth";
 import { assertSameOrigin, jsonError } from "@/lib/http";
@@ -7,8 +7,8 @@ export async function GET() {
   const user = await requireUser();
   if (!user?.sub) return jsonError(401, "UNAUTHORIZED", "Sign in required.");
   const gym = await gymForOwner(user.sub);
-  if (!gym) return Response.json({ gym: null, leaderboard: [] });
-  return Response.json({ gym, leaderboard: await leaderboard(gym.id) });
+  if (!gym) return Response.json({ gym: null, isOwner: false });
+  return Response.json({ gym, isOwner: gym.ownerId === user.sub });
 }
 
 export async function PATCH(request: Request) {

@@ -1,10 +1,10 @@
-import { adminOverview, listFlags, listGyms, listSessions, listUsers, popularGames } from "@fitplay/db";
-import { requireUser } from "@/lib/auth";
+import { adminOverview, billingOverview, listFlags, listGyms, listSessions, listUsers, popularGames } from "@fitplay/db";
+import { requireSuperAdmin } from "@/lib/billing-http";
 import { jsonError } from "@/lib/http";
 
 export async function GET() {
-  const user = await requireUser(["ADMIN"]);
-  if (!user) return jsonError(403, "FORBIDDEN", "Admin access required.");
+  const user = await requireSuperAdmin();
+  if (!user) return jsonError(403, "FORBIDDEN", "Super Admin access is required.");
   const [overview, gyms, users, sessions, flags, games] = await Promise.all([
     adminOverview(),
     listGyms(),
@@ -13,5 +13,11 @@ export async function GET() {
     listFlags(),
     popularGames(),
   ]);
-  return Response.json({ overview, gyms, users, sessions, flags, games });
+  let billing = null;
+  try {
+    billing = await billingOverview();
+  } catch {
+    billing = null;
+  }
+  return Response.json({ overview, billing, gyms, users, sessions, flags, games });
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { trackEvent } from "@/components/analytics/track-event";
 import { AppShell } from "@/components/app-shell";
 
 function LoginForm() {
@@ -21,14 +21,21 @@ function LoginForm() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
     });
-    const body = (await response.json()) as { message?: string; role?: string };
+    const body = (await response.json()) as { message?: string; role?: string; mustChangePassword?: boolean };
     setPending(false);
     if (!response.ok) {
       setError(body.message ?? "Could not sign in.");
       return;
     }
+    trackEvent("login_completed");
+    if (body.mustChangePassword) {
+      router.push("/account/password");
+      router.refresh();
+      return;
+    }
     const next = params.get("next");
-    router.push(next || (body.role === "ADMIN" ? "/admin" : "/dashboard"));
+    const admin = body.role === "ADMIN" || body.role === "SUPER_ADMIN";
+    router.push(next || (admin ? "/admin" : "/dashboard"));
     router.refresh();
   }
 
@@ -42,6 +49,13 @@ function LoginForm() {
     if (!response.ok) {
       const body = (await response.json()) as { message?: string };
       setError(body.message ?? "Demo sign-in is unavailable.");
+      return;
+    }
+    trackEvent("login_completed");
+    const body = (await response.json()) as { mustChangePassword?: boolean };
+    if (body.mustChangePassword) {
+      router.push("/account/password");
+      router.refresh();
       return;
     }
     router.push(email.startsWith("admin") ? "/admin" : "/dashboard");
@@ -69,9 +83,7 @@ function LoginForm() {
           <button className="fp-btn fp-btn-primary" type="submit" disabled={pending}>{pending ? "Signing in" : "Sign in"}</button>
         </div>
       </form>
-      <p className="fp-status">
-        New here? <Link className="fp-text-link" href="/register">Create a player account</Link>
-      </p>
+      <p className="fp-status">Accounts are created by the PlayFit Club team after subscription confirmation. Password resets are issued by the team.</p>
       {process.env.NODE_ENV !== "production" ? (
         <section className="fp-card fp-demo fp-form-narrow">
           <p className="fp-kicker">Development accounts</p>

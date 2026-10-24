@@ -1,59 +1,54 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import type { Metadata } from "next";
+import { TrackedExternal } from "@/components/analytics/tracked-link";
 import { AppShell } from "@/components/app-shell";
+import { whatsappUrl } from "@/lib/whatsapp";
+
+export const metadata: Metadata = {
+  title: "Get started — PlayFit Club",
+  description: "PlayFit Club accounts are activated by the team after subscription confirmation.",
+};
 
 export default function RegisterPage() {
-  const router = useRouter();
-  const [error, setError] = useState("");
-
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        password: form.get("password"),
-        displayName: form.get("displayName"),
-      }),
-    });
-    const body = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      setError(body.message ?? "Could not create the account.");
-      return;
-    }
-    router.push("/dashboard");
-    router.refresh();
-  }
-
   return (
     <AppShell>
       <main id="content" className="fp-wrap fp-page">
         <p className="fp-kicker">Account</p>
-        <h1>Create a player</h1>
-        <form className="fp-form fp-form-narrow" onSubmit={(event) => void onSubmit(event)}>
-          <div className="fp-form-grid">
-            <div className="fp-field">
-              <label htmlFor="displayName">Display name</label>
-              <input id="displayName" name="displayName" required minLength={2} maxLength={18} />
-            </div>
-            <div className="fp-field">
-              <label htmlFor="email">Email</label>
-              <input id="email" name="email" type="email" required />
-            </div>
-            <div className="fp-field">
-              <label htmlFor="password">Password</label>
-              <input id="password" name="password" type="password" minLength={8} required />
-            </div>
-            {error ? <p className="fp-error">{error}</p> : null}
-          </div>
-          <div className="fp-actions">
-            <button className="fp-btn fp-btn-primary" type="submit">Create account</button>
-          </div>
-        </form>
+        <h1>Accounts are opened by the team</h1>
+        <p className="fp-lead">
+          There is no public registration. The PlayFit Club team creates the account and activates the subscription after confirmation. Opening WhatsApp sends an enquiry. It does not create an account, take payment, or turn a subscription on.
+        </p>
+        <div className="fp-actions">
+          <TrackedExternal
+            className="fp-btn fp-btn-primary"
+            href={whatsappUrl("general")}
+            events={[
+              { name: "get_started_clicked", params: { surface: "register" } },
+              { name: "whatsapp_enquiry_clicked", params: { audience: "player" } },
+            ]}
+          >
+            Get Started
+          </TrackedExternal>
+          <TrackedExternal
+            className="fp-btn fp-btn-ghost"
+            href={whatsappUrl("individual")}
+            events={[
+              { name: "individual_plan_selected", params: { plan: "individual_pro" } },
+              { name: "whatsapp_enquiry_clicked", params: { audience: "player" } },
+            ]}
+          >
+            Individual subscription
+          </TrackedExternal>
+          <TrackedExternal
+            className="fp-btn fp-btn-ghost"
+            href={whatsappUrl("gym")}
+            events={[
+              { name: "gym_plan_selected", params: { plan: "gym" } },
+              { name: "whatsapp_enquiry_clicked", params: { audience: "gym" } },
+            ]}
+          >
+            Gym subscription
+          </TrackedExternal>
+        </div>
       </main>
     </AppShell>
   );

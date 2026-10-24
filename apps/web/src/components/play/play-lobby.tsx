@@ -4,14 +4,16 @@ import { PROTOCOL_VERSION, resolvePublicAppUrl, SERVER_EVENTS } from "@fitplay/s
 import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { io, type Socket } from "socket.io-client";
+import { SubscriptionExpired } from "@/components/account/subscription-expired";
 import { Button } from "@/components/ui/button";
-import { browserRealtimeUrl, clientEnv } from "@/lib/env";
+import { browserRealtimeUrl, clientEnv, socketUsesPageOrigin } from "@/lib/env";
 
 interface LobbyPlayer {
   id: string;
   displayName: string;
   ready: boolean;
   connected: boolean;
+  control?: "camera" | "keyboard";
 }
 
 interface LobbySession {
@@ -28,6 +30,7 @@ export function PlayLobby() {
   const [error, setError] = useState("");
   const [trustUrl, setTrustUrl] = useState("");
   const [copied, setCopied] = useState("");
+  const [blocked, setBlocked] = useState<string | null>(null);
 
   const joinUrl = useMemo(() => {
     if (!session || typeof window === "undefined") return "";
@@ -46,10 +49,17 @@ export function PlayLobby() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/me")
+    void fetch("/api/play/access")
       .then((response) => response.json())
-      .then((body: { socketToken?: string }) => {
+      .then(async (access: { allowed?: boolean; message?: string }) => {
         if (cancelled) return;
+        if (access.allowed === false) {
+          setBlocked(access.message ?? "Play is paused until the PlayFit Club team renews this subscription.");
+          return;
+        }
+        const me = (await fetch("/api/me").then((response) => response.json())) as { socketToken?: string };
+        if (cancelled) return;
+        const body = me;
         const realtimeUrl = browserRealtimeUrl(window.location.origin);
         const socket = io(realtimeUrl, {
           transports: ["websocket", "polling"],
@@ -58,8 +68,9 @@ export function PlayLobby() {
         });
         socketRef.current = socket;
         socket.on("connect_error", () => {
-          setTrustUrl(`${realtimeUrl}/health`);
-          setError("The session server needs a one-time certificate approval.");
+          const separateServer = !socketUsesPageOrigin(window.location.origin);
+          setTrustUrl(separateServer ? `${realtimeUrl}/health` : "");
+          setError(separateServer ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.");
         });
         socket.on("connect", () => {
           setError("");
@@ -70,6 +81,7 @@ export function PlayLobby() {
           if (!payload?.session?.joinCode) return;
           if (payload.token) {
             hostToken.current = payload.token;
+            window.localStorage.setItem("fitplay.host.token", payload.token);
             const currentAuth = socket.auth;
             socket.auth = {
               ...(typeof currentAuth === "object" && currentAuth ? currentAuth : {}),
@@ -89,7 +101,7 @@ export function PlayLobby() {
           v: PROTOCOL_VERSION,
           gameSlug: "fitrunner",
           durationSeconds: 180,
-          maxPlayers: 2,
+          maxPlayers: 1,
         });
       })
       .catch(() => {
@@ -110,6 +122,8 @@ export function PlayLobby() {
       setCopied("");
     }
   }
+
+  if (blocked) return <SubscriptionExpired message={blocked} />;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 py-8">
@@ -133,12 +147,12 @@ export function PlayLobby() {
             </Button>
           </div>
           <div>
-            <h2 className="font-display text-xl text-white">Phones in this session</h2>
-            {session.players.length === 0 ? (
+            <h2 className="font-display text-xl text-white">Phone in this session</h2>
+            {session.players.filter((player) => player.control !== "keyboard").length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground">Waiting for a phone. Open the join link and turn the camera on.</p>
             ) : (
               <ul className="mt-2 space-y-1 text-sm text-white">
-                {session.players.map((player) => (
+                {session.players.filter((player) => player.control !== "keyboard").map((player) => (
                   <li key={player.id}>
                     {player.displayName}
                     {player.connected ? "" : " · disconnected"}
@@ -147,6 +161,9 @@ export function PlayLobby() {
                 ))}
               </ul>
             )}
+            {session.players.some((player) => player.control === "keyboard") ? (
+              <p className="mt-2 text-sm text-muted-foreground">Keyboard on this screen is the fallback, not another player.</p>
+            ) : null}
           </div>
         </section>
       ) : (

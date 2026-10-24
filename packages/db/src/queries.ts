@@ -2,6 +2,7 @@ import type { GymBranding, UserRole } from "@fitplay/shared";
 import type { Prisma } from "@prisma/client";
 import { readBranding } from "./branding";
 import { getPrisma } from "./client";
+import { grantStaffSeat } from "./gym/service";
 
 export async function findUserByEmail(email: string) {
   return getPrisma().user.findUnique({ where: { email: email.toLowerCase() } });
@@ -62,10 +63,10 @@ export async function dashboardForUser(userId: string) {
   };
 }
 
-export async function leaderboard(gymId?: string) {
+/** Public recorded TV results. Gym boards do not use this list and it does not accept a gym id. */
+export async function leaderboard() {
   const rows = await getPrisma().gameResult.findMany({
-    where: gymId ? { session: { gymId } } : {},
-    include: { player: true, session: { include: { game: true, gym: true } } },
+    include: { player: true, session: { include: { game: true } } },
     orderBy: { score: "desc" },
     take: 25,
   });
@@ -73,7 +74,6 @@ export async function leaderboard(gymId?: string) {
     score: row.score,
     displayName: row.player.displayName,
     gameName: row.session.game.name,
-    gymName: row.session.gym?.name ?? null,
     createdAt: row.createdAt.toISOString(),
     shareSlug: row.shareSlug,
   }));
@@ -102,10 +102,15 @@ export async function adminOverview() {
 }
 
 export async function listGyms() {
-  const gyms = await getPrisma().gym.findMany({
-    include: { owner: true, _count: { select: { sessions: true, memberships: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const prisma = getPrisma();
+  const [gyms, activeMembers] = await Promise.all([
+    prisma.gym.findMany({
+      include: { owner: true, _count: { select: { sessions: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.gymMembership.groupBy({ by: ["gymId"], where: { role: "MEMBER", status: "ACTIVE" }, _count: { _all: true } }),
+  ]);
+  const membersByGym = new Map(activeMembers.map((row) => [row.gymId, row._count._all]));
   return gyms.map((gym) => ({
     id: gym.id,
     name: gym.name,
@@ -114,7 +119,7 @@ export async function listGyms() {
     ownerName: gym.owner.displayName,
     ownerEmail: gym.owner.email,
     sessions: gym._count.sessions,
-    members: gym._count.memberships,
+    members: membersByGym.get(gym.id) ?? 0,
     branding: readBranding(gym.branding),
     createdAt: gym.createdAt.toISOString(),
   }));
@@ -176,7 +181,7 @@ export async function updateGymBranding(gymId: string, input: { name: string; br
 export async function authorizeGymSession(userId: string, gymSlug: string) {
   const gym = await getPrisma().gym.findUnique({ where: { slug: gymSlug }, include: { memberships: true } });
   if (!gym) return { error: "Gym not found" } as const;
-  const allowed = gym.ownerId === userId || gym.memberships.some((member) => member.userId === userId && member.role !== "MEMBER");
+  const allowed = gym.ownerId === userId || gym.memberships.some((member) => member.userId === userId && member.status === "ACTIVE" && member.role !== "MEMBER");
   if (!allowed) return { error: "You cannot open sessions for this gym" } as const;
   if (gym.subscriptionStatus === "EXPIRED") {
     return { error: "This gym subscription has expired. Historical results are unchanged." } as const;
@@ -186,8 +191,13 @@ export async function authorizeGymSession(userId: string, gymSlug: string) {
 
 export async function gymForOwner(userId: string) {
   const gym = await getPrisma().gym.findFirst({
-    where: { OR: [{ ownerId: userId }, { memberships: { some: { userId, role: { in: ["OWNER", "STAFF"] } } } }] },
-    include: { memberships: { include: { user: true } }, owner: true },
+    where: {
+      OR: [
+        { ownerId: userId },
+        { memberships: { some: { userId, role: { in: ["OWNER", "STAFF"] }, status: "ACTIVE" } } },
+      ],
+    },
+    include: { memberships: { where: { status: "ACTIVE" }, include: { user: true } }, owner: true },
   });
   if (!gym) return null;
   return {
@@ -209,11 +219,7 @@ export async function gymForOwner(userId: string) {
 export async function addGymStaff(gymId: string, email: string, role: "STAFF" | "MEMBER") {
   const user = await findUserByEmail(email);
   if (!user) return null;
-  await getPrisma().gymMembership.upsert({
-    where: { userId_gymId: { userId: user.id, gymId } },
-    update: { role },
-    create: { userId: user.id, gymId, role },
-  });
+  await grantStaffSeat(gymId, user.id, role);
   return user;
 }
 

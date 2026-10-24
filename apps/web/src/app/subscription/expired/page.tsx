@@ -1,0 +1,23 @@
+import type { Metadata } from "next";
+import { playDecisionForUser } from "@fitplay/db";
+import { SubscriptionExpired } from "@/components/account/subscription-expired";
+import { readUser } from "@/lib/auth";
+
+export const metadata: Metadata = {
+  title: "Subscription expired — PlayFit Club",
+  description: "An expired PlayFit Club subscription keeps your history and waits for the team to renew it.",
+};
+
+export default async function ExpiredSubscriptionPage() {
+  const session = await readUser();
+  let message: string | undefined;
+  if (session?.sub) {
+    try {
+      const decision = await playDecisionForUser(session.sub);
+      if (!decision.allowed) message = decision.message;
+    } catch {
+      message = undefined;
+    }
+  }
+  return <SubscriptionExpired message={message} />;
+}

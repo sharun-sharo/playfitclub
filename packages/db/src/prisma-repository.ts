@@ -1,5 +1,6 @@
 import { createJoinCode, type GymBranding, type SessionStatus } from "@fitplay/shared";
-import { readBranding, readConfig } from "./branding";
+import { assertCanStartGameplay, BillingError } from "./billing/service";
+import { readBranding, readConfig, readRun } from "./branding";
 import { getPrisma } from "./client";
 import type {
   AddPlayerInput,
@@ -66,6 +67,7 @@ function mapSession(row: SessionRow): StoredSession {
     durationSeconds: config.durationSeconds,
     lives: config.lives,
     maxPlayers: config.maxPlayers,
+    run: readRun(row.configuration),
     expiresAt: row.expiresAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     endedAt: row.endedAt?.toISOString() ?? null,
@@ -90,11 +92,19 @@ export function createPrismaRepository(): SessionRepository {
     async createSession(input: CreateSessionInput): Promise<StoredSession> {
       const game = await prisma.game.findUnique({ where: { slug: input.gameSlug } });
       if (!game || !game.enabled) throw new RepositoryError("GAME_UNAVAILABLE", "That game is not available");
+      if (input.ownerId) {
+        try {
+          await assertCanStartGameplay(input.ownerId);
+        } catch (error) {
+          if (error instanceof BillingError) throw new RepositoryError(error.code, error.message);
+          throw error;
+        }
+      }
       if (input.gymId) {
         const gym = await prisma.gym.findUnique({ where: { id: input.gymId } });
         if (!gym) throw new RepositoryError("GYM_NOT_FOUND", "Gym not found");
         if (gym.subscriptionStatus === "EXPIRED") {
-          throw new RepositoryError("SUBSCRIPTION_EXPIRED", "This gym subscription is expired. Home play is still available.");
+          throw new RepositoryError("SUBSCRIPTION_EXPIRED", "This gym subscription has expired. History is unchanged. New play waits until the PlayFit Club team renews it.");
         }
       }
       let createdId = "";
@@ -143,7 +153,13 @@ export function createPrismaRepository(): SessionRepository {
       });
       if (!session) throw new RepositoryError("SESSION_NOT_FOUND", "Session not found");
       const config = readConfig(session.configuration);
-      if (session.players.length >= config.maxPlayers) throw new RepositoryError("SESSION_FULL", "This session is full");
+      const phones = session.players.filter((player) => player.control !== "KEYBOARD");
+      const hasKeyboard = session.players.some((player) => player.control === "KEYBOARD");
+      if (input.control === "keyboard") {
+        if (hasKeyboard) throw new RepositoryError("SESSION_FULL", "This session is full");
+      } else if (phones.length >= config.maxPlayers) {
+        throw new RepositoryError("SESSION_FULL", "This session is full");
+      }
       const used = new Set(session.players.map((player) => player.playerSlot));
       let slot = 0;
       while (used.has(slot)) slot += 1;
@@ -176,6 +192,12 @@ export function createPrismaRepository(): SessionRepository {
         where: { id: playerId, sessionId },
         data: { disconnectedAt: connected ? null : new Date() },
       });
+    },
+    async updateRun(sessionId, run) {
+      const row = await prisma.gameSession.findUnique({ where: { id: sessionId }, select: { configuration: true } });
+      if (!row) return;
+      const configuration = { ...(row.configuration as Record<string, unknown>), run: { ...run, obstacleIds: [...run.obstacleIds] } };
+      await prisma.gameSession.update({ where: { id: sessionId }, data: { configuration } });
     },
     async updateStatus(sessionId, status: SessionStatus, times) {
       await prisma.gameSession.update({

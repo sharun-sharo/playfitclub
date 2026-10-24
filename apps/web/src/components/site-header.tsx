@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { trackEvent } from "@/components/analytics/track-event";
+import { BrandLogo } from "@/components/marketing/brand-logo";
+import { isSuperAdminRole } from "@fitplay/shared";
 
 interface Me {
   user: { displayName: string; role: string } | null;
@@ -38,13 +41,33 @@ export function SiteHeader() {
       }
     };
     document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const previous = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
     const first = panelRef.current?.querySelector<HTMLElement>("a, button");
     first?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
+      body.style.overflow = previous.overflow;
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.left = previous.left;
+      body.style.right = previous.right;
+      body.style.width = previous.width;
+      window.scrollTo(0, scrollY);
     };
   }, [open]);
 
@@ -52,10 +75,12 @@ export function SiteHeader() {
     ? [
         ...baseLinks,
         { href: "/dashboard", label: "Account" },
-        ...(me.user.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
+        ...(isSuperAdminRole(me.user.role) ? [{ href: "/admin", label: "Admin" }] : []),
       ]
     : [...baseLinks, { href: "/login", label: "Login" }];
-  const cta = me?.user ? { href: "/play", label: "Play" } : { href: "/register", label: "Get Started" };
+  const cta = me?.user
+    ? { href: "/play", label: "Play", external: false }
+    : { href: "/games", label: "Play Now", external: false };
 
   function close() {
     setOpen(false);
@@ -63,19 +88,14 @@ export function SiteHeader() {
 
   return (
     <header className="fp-nav">
-      <Link href="/" className="fp-logo" aria-label="PlayFit Club home">
-        <span className="fp-mark" aria-hidden="true" />
-        PlayFit Club
-      </Link>
+      <BrandLogo />
       <nav className="fp-nav-desktop" aria-label="Primary">
         {links.map((link) => (
           <NavLink key={link.label} href={link.href}>
             {link.label}
           </NavLink>
         ))}
-        <Link className="fp-btn fp-btn-primary" href={cta.href}>
-          {cta.label}
-        </Link>
+        <Cta href={cta.href} external={cta.external} onClick={() => trackEvent("play_clicked", { surface: "header" })}>{cta.label}</Cta>
       </nav>
       <button
         ref={toggleRef}
@@ -100,9 +120,7 @@ export function SiteHeader() {
                 {link.label}
               </NavLink>
             ))}
-            <Link className="fp-btn fp-btn-primary" href={cta.href} onClick={close}>
-              {cta.label}
-            </Link>
+            <Cta href={cta.href} external={cta.external} onClick={() => { trackEvent("play_clicked", { surface: "header" }); close(); }}>{cta.label}</Cta>
           </nav>
           <button type="button" className="fp-btn fp-btn-ghost" onClick={close}>
             Close menu
@@ -110,6 +128,21 @@ export function SiteHeader() {
         </div>
       ) : null}
     </header>
+  );
+}
+
+function Cta({ href, external, onClick, children }: { href: string; external: boolean; onClick?: () => void; children: string }) {
+  if (external) {
+    return (
+      <a className="fp-btn fp-btn-primary" href={href} target="_blank" rel="noopener noreferrer" onClick={onClick}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link className="fp-btn fp-btn-primary" href={href} onClick={onClick}>
+      {children}
+    </Link>
   );
 }
 

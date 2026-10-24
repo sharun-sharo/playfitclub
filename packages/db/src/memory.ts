@@ -43,6 +43,7 @@ export function createMemoryRepository(): SessionRepository {
         durationSeconds: input.durationSeconds,
         lives: input.lives,
         maxPlayers: input.maxPlayers,
+        run: null,
         expiresAt: input.expiresAt.toISOString(),
         startedAt: null,
         endedAt: null,
@@ -64,7 +65,13 @@ export function createMemoryRepository(): SessionRepository {
     async addPlayer(input: AddPlayerInput): Promise<StoredPlayer> {
       const session = sessions.get(input.sessionId);
       if (!session) throw new Error("SESSION_NOT_FOUND");
-      if (session.players.length >= session.maxPlayers) throw new Error("SESSION_FULL");
+      const phones = session.players.filter((player) => player.control !== "keyboard");
+      const hasKeyboard = session.players.some((player) => player.control === "keyboard");
+      if (input.control === "keyboard") {
+        if (hasKeyboard) throw new Error("SESSION_FULL");
+      } else if (phones.length >= session.maxPlayers) {
+        throw new Error("SESSION_FULL");
+      }
       const used = new Set(session.players.map((player) => player.slot));
       let slot = 0;
       while (used.has(slot)) slot += 1;
@@ -104,6 +111,11 @@ export function createMemoryRepository(): SessionRepository {
       if (!player) return;
       player.connected = connected;
       player.disconnectedAt = connected ? null : new Date().toISOString();
+    },
+    async updateRun(sessionId: string, run) {
+      const session = sessions.get(sessionId);
+      if (!session) return;
+      session.run = { ...run, obstacleIds: [...run.obstacleIds] };
     },
     async updateStatus(sessionId: string, status: SessionStatus, times?: { startedAt?: Date; endedAt?: Date }) {
       const session = sessions.get(sessionId);

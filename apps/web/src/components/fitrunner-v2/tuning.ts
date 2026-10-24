@@ -1,10 +1,21 @@
+import { HIT_INVULNERABILITY_MS } from "@fitplay/shared";
+
+export type GraphicsQuality = "low" | "medium" | "high";
+export type LaneEasing = "smoothstep" | "cubic";
+
 /** Adjustable FitRunner V2 prototype parameters. Gameplay reads this object live. */
 export const fitRunnerTuning = {
   tileSize: 3,
   laneSpacing: 3,
-  laneChangeDuration: 0.18,
-  leanRadians: 0.28,
+  /** Seconds to travel one lane. The body eases; collision uses that position. */
+  laneChangeDuration: 0.25,
+  laneEasing: "smoothstep" as LaneEasing,
+  /** Peak parent bank while sliding, in radians. Upright again when the slide stops. */
+  leanRadians: 0.2,
   leanDamp: 12,
+  /** Extra delay before another lane key is accepted. Zero responds on the keydown frame. */
+  laneInputCooldown: 0,
+  showColliders: false,
   /** Mixamo run covers 3.32 m in 0.70 s. Playback and world speed stay near that stride. */
   runTimeScale: 1.25,
   crossfade: 0.1,
@@ -13,13 +24,17 @@ export const fitRunnerTuning = {
   maxSpeed: 8.2,
   hitSlowMultiplier: 0.55,
   hitRecovery: 0.55,
-  invulnerable: 1.15,
-  /** Gravity after JumpUp, which ends at the apex. */
-  fallGravity: 28,
+  /** Local post-hit window. Matches the server's HIT_INVULNERABILITY_MS. */
+  invulnerable: HIT_INVULNERABILITY_MS / 1000,
   laneStick: 0.45,
   coinDepth: 0.75,
-  segmentCount: 16,
+  segmentCount: 22,
   recycleBehind: 10,
+  /**
+   * Every third tile, so obstacles are 9 m apart. The jump arc at max speed
+   * travels about 5.1 m, which still fits in that gap. Spacing is not tightened
+   * and the track is not sped up to fake a longer jump.
+   */
   obstacleEvery: 3,
   obstacleLeadIn: 4,
   coinEvery: 2,
@@ -34,7 +49,11 @@ export const fitRunnerTuning = {
     lookAhead: 6.4,
     lookHeight: 0.98,
     smooth: 7,
+    fovGain: 4,
+    landingDip: 0.08,
+    jumpLook: 0.1,
   },
+  quality: "high" as GraphicsQuality,
   props: {
     treeHeight: 5.6,
     bushHeight: 1.5,
@@ -44,9 +63,12 @@ export const fitRunnerTuning = {
     sceneryFence: { x: 0.28, y: 1.05, z: 2.4 },
     sceneryRockHeight: 1.15,
     rockHeight: 0.46,
-    log: { x: 1.85, y: 0.4, z: 0.7 },
+    /** Top of the lime hurdle bar. The hit mesh is that bar, not the air under it. */
+    log: { x: 2.05, y: 0.4, z: 0.16 },
     /** Tall bar. Lifted by fenceGap so a roll fits underneath and a jump does not clear the top. */
     fence: { x: 2.05, y: 1.62, z: 0.18 },
+    /** Lane cargo crate. Outer size is the hit volume: one lane wide, taller than a jump. */
+    blocker: { x: 2.2, y: 2.78, z: 1.18 },
   },
   /** Bottom of the lane fence, in meters. The roll stays under this; a jump does not clear the top. */
   fenceGap: 1.28,

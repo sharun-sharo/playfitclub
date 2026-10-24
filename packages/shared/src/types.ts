@@ -11,8 +11,16 @@ export const MOVEMENT_TYPES = [
 
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
-export const USER_ROLES = ["PLAYER", "GYM_OWNER", "ADMIN"] as const;
+export const USER_ROLES = ["PLAYER", "GYM_OWNER", "ADMIN", "SUPER_ADMIN", "INDIVIDUAL"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
+
+export function isSuperAdminRole(role: string): boolean {
+  return role === "SUPER_ADMIN" || role === "ADMIN";
+}
+
+export function isIndividualRole(role: string): boolean {
+  return role === "INDIVIDUAL" || role === "PLAYER";
+}
 
 export const SESSION_STATUSES = [
   "LOBBY",

@@ -25,11 +25,11 @@ const questions = [
   },
   {
     q: "Can I play with friends?",
-    a: "Yes. One TV session accepts two players. Each person uses their own phone. One camera does not track two people. Both players share the same obstacle pattern and race the score.",
+    a: "These games are single player. One phone is the controller, and the TV or laptop is the screen. A second phone cannot join the same session. If the camera cannot be used, the keyboard on that screen is a fallback, not another player.",
   },
   {
     q: "Is PlayFit Club suitable for gyms?",
-    a: "A gym buys member seats so people can play FitRunner at home on a television or laptop and a phone camera. The gym does not host the game. A full seat signup is not live yet. The enquiry form on this page stores a draft in this browser and does not email it. Proposed seat packages are listed on Pricing and are not charged there.",
+    a: "A gym buys member seats so people can play FitRunner at home on a television or laptop and a phone camera. The gym does not host the game. A full seat signup is not live yet. Proposed seat packages are listed on Pricing and are not charged there.",
   },
   {
     q: "Is PlayFit Club free to play?",

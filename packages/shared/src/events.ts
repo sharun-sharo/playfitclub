@@ -9,8 +9,15 @@ export const CLIENT_EVENTS = {
   gameStart: "game:start",
   gamePause: "game:pause",
   gameResume: "game:resume",
+  gameHold: "game:hold",
+  gameLive: "game:live",
   gameEnd: "game:end",
   movement: "movement:event",
+  movementResult: "movement:result",
+  runBegin: "run:begin",
+  runAgain: "run:again",
+  obstacleHit: "obstacle:hit",
+  sessionClose: "session:close",
 } as const;
 
 export const SERVER_EVENTS = {

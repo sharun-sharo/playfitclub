@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { TrackedLink } from "@/components/analytics/tracked-link";
 import { FaqList } from "@/components/marketing/faq-list";
 import { GameLibrary } from "@/components/marketing/game-library";
-import { HeroCarousel } from "@/components/marketing/hero-carousel";
+import { HeroShowcase } from "@/components/marketing/hero-carousel";
 import { MarketingFrame } from "@/components/marketing/frame";
-import { PartnerForm } from "@/components/marketing/partner-form";
+import { motionBootScript } from "@/components/marketing/motion-css";
+import { MotionBoot } from "@/components/marketing/motion-boot";
 import { Reveal } from "@/components/marketing/reveal";
 import { ScoreBoard } from "@/components/marketing/score-board";
 import { SiteFooter } from "@/components/marketing/site-footer";
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "PlayFit Club — Move Your Body. Play Your World.",
     description:
-      "A movement-driven arcade in the browser. Play Fit Run with a phone camera, or bring a second player onto the same screen.",
+      "A movement-driven arcade in the browser. One phone is the controller. The TV or laptop is the screen.",
     type: "website",
   },
 };
@@ -25,7 +27,7 @@ export const metadata: Metadata = {
 const statements = [
   { title: "Your body. Your controls.", copy: "The phone camera is the controller. No console and no extra sensor." },
   { title: "Every move matters.", copy: "A lean changes lanes. A jump clears a low barrier. A squat slides under a high one." },
-  { title: "Play your way.", copy: "Start a home lobby, or let a second phone join the same television." },
+  { title: "Play your way.", copy: "One phone is the controller. The TV or laptop is the screen." },
 ];
 
 const moves = ["Run", "Jump", "Dodge", "Move"];
@@ -33,37 +35,15 @@ const moves = ["Run", "Jump", "Dodge", "Move"];
 export default function HomePage() {
   return (
     <MarketingFrame>
+      <script dangerouslySetInnerHTML={{ __html: motionBootScript() }} />
+      <MotionBoot />
       <a className="fp-skip" href="#content">
         Skip to content
       </a>
       <SiteNav />
       <main id="content">
         <section className="fp-wrap fp-hero" aria-labelledby="hero-title">
-          <div className="fp-hero-copy">
-            <p className="fp-kicker">Move your body. Play your world.</p>
-            <h1 id="hero-title">
-              <span className="block">Your body.</span>
-              <span className="block">Your controller.</span>
-              <span className="block">Your game.</span>
-            </h1>
-            <p>Burn calories by playing at home.</p>
-            <p>
-              Turn every workout into an adventure. Play Fit Run at home on a TV or laptop, with your phone camera as the controller. A gym buys member seats so people play that same game at home.
-            </p>
-            <div className="fp-actions">
-              <Link className="fp-btn fp-btn-primary" href="/games">
-                Play at home
-              </Link>
-              <Link className="fp-btn fp-btn-primary" href="/gyms">
-                For gyms
-              </Link>
-              <a className="fp-btn fp-btn-ghost" href="#how-it-works">
-                Watch how it works
-              </a>
-            </div>
-            <p className="fp-repeat">Move. Play. Repeat.</p>
-          </div>
-          <HeroCarousel />
+          <HeroShowcase />
         </section>
 
         <section className="fp-section fp-statement" aria-labelledby="statement-title">
@@ -80,6 +60,22 @@ export default function HomePage() {
                 </article>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section className="fp-section" id="games" aria-labelledby="games-title">
+          <div className="fp-wrap">
+            <Reveal>
+              <p className="fp-kicker">Worlds</p>
+              <h2 id="games-title">Pick your world. Make your move.</h2>
+              <p className="fp-lead">Fit Run is available now. Fit Fight and Fit Dance are coming soon.</p>
+              <div className="fp-actions">
+                <Link className="fp-btn fp-btn-ghost" href="/games">
+                  See the experience
+                </Link>
+              </div>
+            </Reveal>
+            <GameLibrary />
           </div>
         </section>
 
@@ -105,7 +101,7 @@ export default function HomePage() {
                 </Link>
               </div>
             </Reveal>
-            <Reveal>
+            <Reveal delay={1}>
               {/*
                 Future gameplay video:
                 Replace this labelled slot with a real FitPlay recording.
@@ -126,22 +122,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="fp-section" id="games" aria-labelledby="games-title">
-          <div className="fp-wrap">
-            <Reveal>
-              <p className="fp-kicker">Worlds</p>
-              <h2 id="games-title">Pick your world. Make your move.</h2>
-              <p className="fp-lead">Fit Run is available now. Fit Fight and Fit Dance are coming soon.</p>
-              <div className="fp-actions">
-                <Link className="fp-btn fp-btn-ghost" href="/games">
-                  See the experience
-                </Link>
-              </div>
-            </Reveal>
-            <GameLibrary />
-          </div>
-        </section>
-
         <section className="fp-section" id="how-it-works" aria-labelledby="how-title">
           <div className="fp-wrap">
             <Reveal>
@@ -151,7 +131,7 @@ export default function HomePage() {
                 Camera compatibility, lighting, where you place the phone, and which movements the game supports all change the session. PlayFit Club does not judge exercise form and it cannot prevent injury.
               </p>
             </Reveal>
-            <div className="fp-steps">
+            <Reveal className="fp-steps" stagger>
               <article>
                 <StepIcon name="setup" />
                 <p className="fp-step-no">Step 01</p>
@@ -173,10 +153,10 @@ export default function HomePage() {
                 <p className="fp-step-no">Step 03</p>
                 <h3>Play</h3>
                 <p>
-                  A round runs for about three minutes and ends after three hits. Coins and clean dodges build the score. A second phone can join the same lobby. If the camera is unavailable, the TV can use a labeled keyboard fallback.
+                  A round runs for about three minutes and ends after three hits. Coins and clean dodges build the score. If the camera is unavailable, the keyboard on that screen is the fallback, not another player.
                 </p>
               </article>
-            </div>
+            </Reveal>
             <div className="fp-actions">
               <Link className="fp-btn fp-btn-ghost" href="/games">
                 See the experience
@@ -191,7 +171,7 @@ export default function HomePage() {
               <p className="fp-kicker">Why come back</p>
               <h2 id="benefits-title">More play. More movement. More reasons to come back.</h2>
             </Reveal>
-            <div className="fp-benefits">
+            <Reveal className="fp-benefits" stagger>
               <article>
                 <h3>Move to play</h3>
                 <p>Use body movements to interact with supported game mechanics. In Fit Run that means lean, jump, and squat.</p>
@@ -205,10 +185,10 @@ export default function HomePage() {
                 <p>Play on a compatible television or laptop browser, with the phone joined to that screen. The world today is Fit Run’s procedural city.</p>
               </article>
               <article>
-                <h3>Make it social</h3>
-                <p>Two friends can compete now, each with their own phone on one TV. Larger groups are not a mode yet.</p>
+                <h3>One phone, one screen</h3>
+                <p>One phone is the controller. The TV or laptop is the screen. The keyboard on that screen is a fallback, not another player.</p>
               </article>
-            </div>
+            </Reveal>
           </div>
         </section>
 
@@ -222,19 +202,18 @@ export default function HomePage() {
               <article className="fp-panel">
                 <h3>Turn your space into a playground.</h3>
                 <p>Bring movement-driven gaming into your home and make play a more active experience. Home play does not need an account.</p>
-                <Link className="fp-btn fp-btn-primary" href="/play">
+                <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
                   Start Playing
-                </Link>
+                </TrackedLink>
               </article>
               <article className="fp-panel">
                 <h3>Seats for members who play at home.</h3>
-                <p>A gym buys member seats. Members play Fit Run at home. A full seat signup is not live yet. Register interest and the draft stays on this device.</p>
+                <p>A gym buys member seats. Members play Fit Run at home. A full seat signup is not live yet.</p>
                 <Link className="fp-btn fp-btn-ghost" href="/gyms">
                   For gyms
                 </Link>
               </article>
             </div>
-            <PartnerForm />
           </div>
         </section>
 
@@ -262,18 +241,20 @@ export default function HomePage() {
         </section>
 
         <section className="fp-final" aria-labelledby="final-title">
-          <div className="fp-wrap">
-            <h2 id="final-title">Your next workout won&apos;t feel like a workout.</h2>
-            <p className="fp-lead">Step into the game. Move with purpose. Make every session an experience.</p>
-            <div className="fp-actions">
-              <Link className="fp-btn fp-btn-primary" href="/play">
-                Play PlayFit Club
-              </Link>
-              <Link className="fp-btn fp-btn-ghost" href="/gyms">
-                For gyms
-              </Link>
+          <Reveal>
+            <div className="fp-wrap">
+              <h2 id="final-title">Your next workout won&apos;t feel like a workout.</h2>
+              <p className="fp-lead">Step into the game. Move with purpose. Make every session an experience.</p>
+              <div className="fp-actions">
+                <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
+                  Play PlayFit Club
+                </TrackedLink>
+                <Link className="fp-btn fp-btn-ghost" href="/gyms">
+                  For gyms
+                </Link>
+              </div>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
       <SiteFooter />

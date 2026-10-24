@@ -1,4 +1,4 @@
-import type { ControlMode, GymBranding, SessionStatus } from "@fitplay/shared";
+import type { ControlMode, GymBranding, RunLives, SessionStatus } from "@fitplay/shared";
 
 export interface StoredPlayer {
   id: string;
@@ -28,6 +28,8 @@ export interface StoredSession {
   durationSeconds: number;
   lives: number;
   maxPlayers: number;
+  /** In-progress FitRunner run. Null until the TV starts one. */
+  run: RunLives | null;
   expiresAt: string;
   startedAt: string | null;
   endedAt: string | null;
@@ -81,6 +83,7 @@ export interface SessionRepository {
   setPlayerControl(sessionId: string, playerId: string, control: ControlMode, ready: boolean): Promise<void>;
   setPlayerConnection(sessionId: string, playerId: string, connected: boolean): Promise<void>;
   updateStatus(sessionId: string, status: SessionStatus, times?: { startedAt?: Date; endedAt?: Date }): Promise<void>;
+  updateRun(sessionId: string, run: RunLives): Promise<void>;
   saveResults(sessionId: string, results: ResultInput[]): Promise<SavedResult[]>;
   expireDue(now: Date): Promise<number>;
 }

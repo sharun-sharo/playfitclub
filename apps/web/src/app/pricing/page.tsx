@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PricingViewed } from "@/components/analytics/pricing-viewed";
+import { TrackedExternal, TrackedLink } from "@/components/analytics/tracked-link";
 import { MarketingFrame } from "@/components/marketing/frame";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { whatsappUrl } from "@/lib/whatsapp";
 
 export const metadata: Metadata = {
   title: "Pricing — PlayFit Club",
-  description: "Listed PlayFit Club plans. Payment is not available on this page, and nothing here grants paid access.",
+  description: "Listed PlayFit Club plans. Accounts are activated by the PlayFit Club team after subscription confirmation.",
 };
 
 const paidPlans = [
@@ -17,6 +20,7 @@ const paidPlans = [
     period: "/ subscription period",
     audience: "For individual users playing at home.",
     points: ["Game access", "Personal workout history", "Scores and achievements"],
+    intent: "individual" as const,
   },
   {
     id: "gym-starter",
@@ -25,6 +29,7 @@ const paidPlans = [
     period: "",
     audience: "Under 50 members. For smaller gyms offering subscriptions to their members.",
     points: ["Up to 49 member accounts", "Home gaming access for members", "Gym dashboard and invitations", "Gym leaderboard"],
+    intent: "gym" as const,
   },
   {
     id: "gym-pro",
@@ -33,6 +38,7 @@ const paidPlans = [
     period: "",
     audience: "For growing gyms offering subscriptions to their members.",
     points: ["51–99 member accounts", "All Starter features", "Member engagement reports", "Gym fitness challenges"],
+    intent: "gym" as const,
   },
 ];
 
@@ -40,25 +46,26 @@ export default function PricingPage() {
   return (
     <MarketingFrame>
       <SiteNav prefix="/" />
+      <PricingViewed />
       <main className="fp-wrap fp-page">
         <p className="fp-kicker">Listed plans</p>
         <h1>Pricing</h1>
         <p className="fp-lead">
-          These are the listed PlayFit Club plans. Payment is not available yet. Nothing on this page takes payment, starts a subscription, or grants paid access.
+          These listed prices are information. Accounts are activated by the PlayFit Club team after subscription confirmation. Opening WhatsApp sends an enquiry. It does not take payment or activate an account.
         </p>
         <div className="fp-plans">
           <article className="fp-plan" id="free-demo">
             <p className="fp-kicker">Listed plan</p>
             <h2>Free demo</h2>
             <p className="fp-price">₹0</p>
-            <p>15-second FitRunner try. No paid features.</p>
+            <p>10 minutes of play. No paid features.</p>
             <ul>
-              <li>15-second FitRunner try</li>
+              <li>10 minutes of play</li>
               <li>No paid features</li>
             </ul>
-            <Link className="fp-btn fp-btn-primary" href="/play">
+            <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
               Play free demo
-            </Link>
+            </TrackedLink>
           </article>
           {paidPlans.map((plan) => (
             <article key={plan.id} className="fp-plan" id={plan.id}>
@@ -74,21 +81,41 @@ export default function PricingPage() {
                   <li key={point}>{point}</li>
                 ))}
               </ul>
-              <button className="fp-btn fp-btn-primary" type="button" disabled>
-                Payment is not available yet
-              </button>
+              <TrackedExternal
+                className="fp-btn fp-btn-primary"
+                href={whatsappUrl(plan.intent)}
+                events={
+                  plan.intent === "individual"
+                    ? [
+                        { name: "individual_plan_selected", params: { plan: "individual_pro" } },
+                        { name: "whatsapp_enquiry_clicked", params: { audience: "player" } },
+                      ]
+                    : [
+                        { name: "gym_plan_selected", params: { plan: plan.id === "gym-starter" ? "gym_starter" : "gym_pro" } },
+                        { name: "whatsapp_enquiry_clicked", params: { audience: "gym" } },
+                      ]
+                }
+              >
+                {plan.intent === "individual" ? "Ask about Individual Pro" : "Ask about this gym plan"}
+              </TrackedExternal>
             </article>
           ))}
         </div>
         <p className="fp-note">
-          A gym can register interest in member seats. Sending that note does not assign a seat, and it does not start Gym Starter or Gym Pro.
+          A gym enquiry does not assign a seat and does not start Gym Starter or Gym Pro. Upgrade and renewal messages are enquiries too.
         </p>
         <div className="fp-actions">
+          <TrackedExternal className="fp-btn fp-btn-ghost" href={whatsappUrl("pricing")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>
+            Ask about pricing
+          </TrackedExternal>
+          <TrackedExternal className="fp-btn fp-btn-ghost" href={whatsappUrl("upgrade")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>
+            Ask about an upgrade
+          </TrackedExternal>
+          <TrackedExternal className="fp-btn fp-btn-ghost" href={whatsappUrl("renewal")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>
+            Ask about renewal
+          </TrackedExternal>
           <Link className="fp-btn fp-btn-ghost" href="/gyms">
             For gyms
-          </Link>
-          <Link className="fp-btn fp-btn-ghost" href="/#partner">
-            Register interest
           </Link>
         </div>
       </main>

@@ -16,7 +16,7 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
     session: {
       gameName: session.gameName,
       status: session.status,
-      playerCount: session.players.length,
+      playerCount: session.players.filter((player) => player.control !== "keyboard").length,
       maxPlayers: session.maxPlayers,
       gymName: session.gymName,
       expiresAt: session.expiresAt,

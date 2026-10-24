@@ -11,12 +11,24 @@ enum UserRole {
   PLAYER
   GYM_OWNER
   ADMIN
+  SUPER_ADMIN
+  INDIVIDUAL
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
 }
 
 enum GymMemberRole {
   OWNER
   STAFF
   MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  ENDED
 }
 
 enum SubscriptionStatus {
@@ -44,15 +56,35 @@ model User {
   id           String           @id @default(cuid())
   email        String?          @unique
   displayName  String
+  phone        String?
   passwordHash String?
-  role         UserRole         @default(PLAYER)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  ownedGyms    Gym[]            @relation("GymOwner")
-  memberships  GymMembership[]
-  sessions     GameSession[]    @relation("SessionOwner")
-  players      SessionPlayer[]
-  achievements Achievement[]
+  role               UserRole         @default(PLAYER)
+  accountStatus      AccountStatus    @default(ACTIVE)
+  mustChangePassword Boolean          @default(false)
+  sessionVersion     Int              @default(0)
+  xpTotal            Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  ownedGyms          Gym[]            @relation("GymOwner")
+  memberships        GymMembership[]  @relation("MembershipPlayer")
+  membershipsAssigned GymMembership[] @relation("MembershipAssigner")
+  sessions           GameSession[]    @relation("SessionOwner")
+  players            SessionPlayer[]
+  achievements       Achievement[]
+  profile            PlayerProfile?
+  xpEntries          XpEntry[]
+  workouts           WorkoutSession[]
+  missions           DailyMission[]
+  individualSubscriptions Subscription[] @relation("SubscriptionUser")
+  subscriptionsCreated    Subscription[] @relation("SubscriptionCreatedBy")
+  subscriptionsUpdated    Subscription[] @relation("SubscriptionUpdatedBy")
+  paymentsRecorded        Payment[]      @relation("PaymentRecorder")
+  subscriptionEvents      SubscriptionEvent[] @relation("SubscriptionEventActor")
+  invitationsSent         Invitation[]   @relation("InvitationSender")
+  passwordTokens          PasswordActivationToken[]
+  auditLogs               AuditLog[]     @relation("AuditActor")
+
+  @@index([phone])
 }
 
 model Gym {
@@ -67,20 +99,34 @@ model Gym {
   updatedAt          DateTime           @updatedAt
   memberships        GymMembership[]
   sessions           GameSession[]
+  attributedWorkouts WorkoutSession[] @relation("WorkoutGymAttribution")
+  subscriptions      Subscription[]
+  seatAllocation     SeatAllocation?
+  invitations        Invitation[]
 
   @@index([ownerId])
+  @@index([subscriptionStatus])
 }
 
+/// Player assignment history. One ACTIVE MEMBER row per user is enforced by the partial unique index GymMembership_one_active_player.
 model GymMembership {
-  userId    String
-  gymId     String
-  role      GymMemberRole
-  createdAt DateTime      @default(now())
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gym       Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  id         String           @id @default(cuid())
+  userId     String
+  gymId      String
+  role       GymMemberRole
+  status     MembershipStatus @default(ACTIVE)
+  assignedBy String?
+  assignedAt DateTime         @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime         @default(now())
+  user       User             @relation("MembershipPlayer", fields: [userId], references: [id], onDelete: Cascade)
+  gym        Gym              @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  assigner   User?            @relation("MembershipAssigner", fields: [assignedBy], references: [id], onDelete: SetNull)
 
-  @@id([userId, gymId])
   @@index([gymId])
+  @@index([gymId, status])
+  @@index([userId, status])
+  @@index([assignedBy])
 }
 
 model Game {
@@ -90,8 +136,9 @@ model Game {
   description   String
   enabled       Boolean       @default(true)
   configuration Json
-  createdAt     DateTime      @default(now())
+  createdAt     DateTime         @default(now())
   sessions      GameSession[]
+  workouts      WorkoutSession[]
 }
 
 model GameSession {
@@ -174,6 +221,325 @@ model FeatureFlag {
   enabled     Boolean
   description String
   updatedAt   DateTime @updatedAt
+}
+
+enum WorkoutStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+/// Optional fitness profile. Readable and writable only by that user.
+model PlayerProfile {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weightKg          Float?
+  difficulty        String?
+  fitnessGoal       String?
+  tutorialCompleted Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
+}
+
+/// One XP grant. sourceId is unique per user so a mission or workout cannot pay twice.
+model XpEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int
+  reason    String
+  sourceId  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, sourceId])
+  @@index([userId])
+}
+
+/// FitRunner V2 workout. Not a TV GameSession and not the removed server simulation.
+model WorkoutSession {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         WorkoutStatus  @default(ACTIVE)
+  startedAt      DateTime       @default(now())
+  endedAt        DateTime?
+  activeMs       Int            @default(0)
+  cameraActiveMs Int            @default(0)
+  distanceM      Float          @default(0)
+  score          Int            @default(0)
+  tokens         Int            @default(0)
+  jumps          Int            @default(0)
+  squats         Int            @default(0)
+  laneDodges     Int            @default(0)
+  perfects       Int            @default(0)
+  bestCombo      Int            @default(0)
+  hits           Int            @default(0)
+  missionsDone   Int            @default(0)
+  xpAwarded      Int            @default(0)
+  calories       Int?
+  eligible       Boolean        @default(false)
+  /// Gym of the player's active member seat at completion. Null when no seat covered that instant. Never taken from the phone or TV.
+  gymIdAtSession String?
+  gymAtSession   Gym?           @relation("WorkoutGymAttribution", fields: [gymIdAtSession], references: [id], onDelete: SetNull)
+  /// FitRunner catalog id when the row was finalized. Null if that game row was missing.
+  gameId         String?
+  game           Game?          @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  events         WorkoutEvent[]
+  pauses         WorkoutPause[]
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([gymIdAtSession, endedAt])
+  @@index([gameId])
+}
+
+model WorkoutPause {
+  id        String         @id @default(cuid())
+  sessionId String
+  session   WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  pausedAt  DateTime
+  resumedAt DateTime?
+
+  @@index([sessionId])
+}
+
+model WorkoutEvent {
+  id                  String         @id @default(cuid())
+  sessionId           String
+  session             WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  eventId             String
+  kind                String
+  source              String
+  movementType        String?
+  confidence          Float?
+  clientTimestamp     Float
+  speedMps            Float?
+  distanceM           Float?
+  distanceToObstacleM Float?
+  obstacleKind        String?
+  action              String?
+  outcome             String?
+  createdAt           DateTime       @default(now())
+
+  @@unique([sessionId, eventId])
+  @@index([sessionId])
+}
+
+/// Three drawn templates per user per Asia/Kolkata day, plus an optional Triple Victory bonus. The unique key stops a refresh from reshuffling.
+model DailyMission {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayKey      String
+  templateKey String
+  title       String
+  progress    Int       @default(0)
+  target      Int
+  xp          Int
+  claimedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, dayKey, templateKey])
+  @@index([userId, dayKey])
+}
+
+enum PlanKind {
+  INDIVIDUAL
+  GYM
+}
+
+enum BillingPeriod {
+  NONE
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+enum SubscriptionRecordStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  PARTIAL
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CARD
+  OTHER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum PasswordTokenPurpose {
+  ACTIVATION
+  RESET
+}
+
+/// Listed plan. Public prices are informational. The amount on a subscription is the amount Super Admin recorded.
+model Plan {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  kind         PlanKind
+  listPriceInr Int
+  seatMin      Int?
+  seatMax      Int?
+  description  String
+  public       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  subscriptions Subscription[]
+
+  @@index([kind])
+}
+
+/// One paid or pending subscription for either an individual user or a gym. Exactly one account side is set.
+model Subscription {
+  id            String                   @id @default(cuid())
+  userId        String?
+  user          User?                    @relation("SubscriptionUser", fields: [userId], references: [id], onDelete: Restrict)
+  gymId         String?
+  gym           Gym?                     @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  planId        String
+  plan          Plan                     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status        SubscriptionRecordStatus @default(PENDING)
+  billingPeriod BillingPeriod            @default(CUSTOM)
+  amountInr     Int
+  discountInr   Int                      @default(0)
+  startsAt      DateTime
+  endsAt        DateTime
+  notes         String                   @default("")
+  createdById   String
+  createdBy     User                     @relation("SubscriptionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById   String
+  updatedBy     User                     @relation("SubscriptionUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  payments      Payment[]
+  events        SubscriptionEvent[]
+  seatAllocation SeatAllocation?
+
+  @@index([userId, status])
+  @@index([gymId, status])
+  @@index([endsAt, status])
+  @@index([planId])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+/// Seat capacity allocated by Super Admin. Gym owners cannot raise this.
+model SeatAllocation {
+  id             String        @id @default(cuid())
+  gymId          String        @unique
+  gym            Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  subscriptionId String?       @unique
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  seatLimit      Int
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amountInr      Int
+  paidAt         DateTime
+  method         PaymentMethod
+  transactionRef String        @default("")
+  invoiceRef     String        @default("")
+  status         PaymentStatus
+  notes          String        @default("")
+  recordedById   String
+  recordedBy     User          @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  createdAt      DateTime      @default(now())
+
+  @@index([subscriptionId, createdAt])
+  @@index([status])
+  @@index([recordedById])
+}
+
+model SubscriptionEvent {
+  id             String                    @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  action         String
+  fromStatus     SubscriptionRecordStatus?
+  toStatus       SubscriptionRecordStatus?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  amountInr      Int?
+  note           String                    @default("")
+  actorId        String
+  actor          User                      @relation("SubscriptionEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt      DateTime                  @default(now())
+
+  @@index([subscriptionId, createdAt])
+  @@index([actorId])
+}
+
+model Invitation {
+  id          String           @id @default(cuid())
+  gymId       String
+  gym         Gym              @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  email       String
+  tokenHash   String           @unique
+  status      InvitationStatus @default(PENDING)
+  invitedById String
+  invitedBy   User             @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Restrict)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  @@index([gymId, status])
+  @@index([email])
+  @@index([invitedById])
+}
+
+/// One-time activation or reset secret. Only the hash is stored.
+model PasswordActivationToken {
+  id        String               @id @default(cuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String               @unique
+  purpose   PasswordTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([userId, purpose])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@index([action])
 }
 
 model OperationalEvent {

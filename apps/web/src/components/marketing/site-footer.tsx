@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { TrackedExternal, TrackedLink } from "@/components/analytics/tracked-link";
+import { BrandLogo } from "@/components/marketing/brand-logo";
 import { CopyrightYear } from "@/components/marketing/copyright-year";
+import { whatsappUrl } from "@/lib/whatsapp";
 
 const links = [
   { href: "/", label: "Home" },
@@ -8,7 +11,6 @@ const links = [
   { href: "/gyms", label: "For Gyms" },
   { href: "/pricing", label: "Pricing" },
   { href: "/login", label: "Login" },
-  { href: "/register", label: "Get Started" },
 ];
 
 export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
@@ -16,10 +18,7 @@ export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
     <footer className="fp-footer">
       <div className="fp-wrap fp-footer-grid">
         <div>
-          <p className="fp-logo">
-            <span className="fp-mark" aria-hidden="true" />
-            PlayFit Club
-          </p>
+          <BrandLogo href={prefix || "/"} variant="footer" />
           <p className="fp-muted fp-tagline">Move your body. Play your world.</p>
         </div>
         <nav aria-label="Footer">
@@ -35,12 +34,20 @@ export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
               </Link>
             );
           })}
+          <TrackedLink href="/games" events={[{ name: "play_clicked", params: { surface: "footer" } }]}>
+            Play Now
+          </TrackedLink>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
         </nav>
-        <p className="fp-muted fp-contact-note">
-          No public email address is published. For Gyms explains member seats for home play. The enquiry form on the homepage stays in this browser until an API is connected.
-        </p>
+        <div className="fp-footer-contact">
+          <h2>Contact us</h2>
+          <a href="mailto:sharunsharo@gmail.com">Email sharunsharo@gmail.com</a>
+          <TrackedExternal href={whatsappUrl("general")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>
+            WhatsApp +91 95665 51345
+          </TrackedExternal>
+          <p className="fp-muted">Page views and the listed button clicks are measured. Camera frames and pose stay on the phone. Contact details are not sent to analytics.</p>
+        </div>
       </div>
       <div className="fp-wrap fp-copy">
         <p>

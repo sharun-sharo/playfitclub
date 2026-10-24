@@ -5,7 +5,7 @@ describe("camera permission states", () => {
   it("maps a denied permission to a denied state", () => {
     const failure = classifyCameraError(new DOMException("no", "NotAllowedError"));
     expect(failure.status).toBe("denied");
-    expect(failure.message).toMatch(/denied/i);
+    expect(failure.message).toMatch(/Allow the camera/i);
   });
 
   it("maps a missing camera to unavailable", () => {
@@ -17,7 +17,14 @@ describe("camera permission states", () => {
   it("maps an insecure page to unavailable", () => {
     const failure = classifyCameraError(new DOMException("blocked", "SecurityError"), false);
     expect(failure.status).toBe("unavailable");
-    expect(failure.message).toMatch(/HTTPS/i);
+    expect(failure.message).toMatch(/https/i);
+    expect(failure.message).toMatch(/certificate/i);
+  });
+
+  it("maps a busy camera to a close-and-retry message", () => {
+    const failure = classifyCameraError(new DOMException("busy", "NotReadableError"));
+    expect(failure.status).toBe("unavailable");
+    expect(failure.message).toMatch(/in use/i);
   });
 
   it("treats an ended track as disconnected and leaves a live track granted", () => {

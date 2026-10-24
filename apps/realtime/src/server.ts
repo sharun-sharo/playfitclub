@@ -8,8 +8,16 @@ import {
   joinSessionSchema,
   keyboardPlayerSchema,
   movementEventSchema,
+  movementResultSchema,
+  obstacleHitSchema,
   playerStatusSchema,
   readySchema,
+  runBeginSchema,
+  RUN_LIVES,
+  applyObstacleHit,
+  beginRun,
+  emptyRun,
+  HIT_INVULNERABILITY_MS,
   signClaims,
   verifyClaims,
   type ControlMode,
@@ -17,6 +25,7 @@ import {
   type GameSnapshot,
   type HostClaims,
   type PlayerClaims,
+  type RunLives,
   type RunnerSnapshot,
   type UserClaims,
 } from "@fitplay/shared";
@@ -34,7 +43,13 @@ interface LivePlayer {
   connected: boolean;
   departed: boolean;
   userId: string | null;
+  /** Phone installation id. Absent for the keyboard fallback and for rows restored from the database. */
+  installId: string | null;
+  /** Incremented when a new socket takes this phone. Zero means a restored row has not been replaced yet. */
+  epoch: number;
   lastSequence: number;
+  /** Event ids accepted for this live process. A new sequence cannot replay one. */
+  seenEventIds: Set<string>;
   moves: number[];
 }
 
@@ -43,6 +58,8 @@ interface RoundState {
   resumePhase: "countdown" | "running";
   time: number;
   countdownRemaining: number;
+  /** Why the current countdown is running. Absent outside a countdown. */
+  countdownPurpose?: "start" | "resume";
   endReason?: "forfeit" | "host";
   winnerId: string | null;
   tie: boolean;
@@ -58,6 +75,12 @@ interface LiveSession {
   lastBroadcast: number;
   persisted: boolean;
   disconnectPause: boolean;
+  /** False while FitRunner is still in camera setup, before GO. Absent for other hosts. */
+  raceLive?: boolean;
+  countdownTimer: ReturnType<typeof setInterval> | null;
+  countdownEndsAt: number;
+  /** Authoritative FitRunner V2 lives. The course itself stays on the TV. */
+  livesRun: RunLives;
 }
 
 interface SocketAuth {
@@ -67,6 +90,7 @@ interface SocketAuth {
   joinCode?: string;
   displayName?: string;
   slot?: number;
+  epoch?: number;
 }
 
 export interface GameServerOptions {
@@ -75,6 +99,8 @@ export interface GameServerOptions {
   corsOrigins: string[];
   allowShortSessions?: boolean;
   resolveGym?: (userId: string, gymSlug: string) => Promise<{ gymId: string } | { error: string }>;
+  /** Test override. Production uses HIT_INVULNERABILITY_MS. */
+  hitInvulnerabilityMs?: number;
 }
 
 const roomFor = (sessionId: string) => `session:${sessionId}`;
@@ -141,8 +167,8 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
           ownerId,
           gymId,
           durationSeconds: requested,
-          lives: 3,
-          maxPlayers: parsed.data.maxPlayers ?? 2,
+          lives: RUN_LIVES,
+          maxPlayers: 1,
           seed: crypto.getRandomValues(new Uint32Array(1))[0]! || 1,
           expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
         });
@@ -173,8 +199,40 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
         if (record.status === "LOBBY") await options.repository.updateStatus(record.id, "EXPIRED");
         return reply(socket, ack, "EXPIRED", "This session has expired. Start a new one on the TV.");
       }
-      if (record.status !== "LOBBY") return reply(socket, ack, "NOT_JOINABLE", "This game has already started.");
-      if (record.players.length >= record.maxPlayers) return reply(socket, ack, "SESSION_FULL", "This TV already has the maximum number of players.");
+      const installId = parsed.data.installId ?? null;
+      const auth = authOf(socket);
+      if (auth.kind === "player" && auth.sessionId && auth.playerId && auth.sessionId !== record.id) {
+        const previousLive = sessions.get(auth.sessionId);
+        const previousPlayer = auth.playerId ? previousLive?.players.get(auth.playerId) : undefined;
+        if (previousLive && previousPlayer && previousPlayer.control === "camera") {
+          await dropCameraPlayer(previousLive, previousPlayer, socket.id);
+        }
+      }
+      const liveNow = sessions.get(record.id) ?? hydrate(record);
+      const sameHere = [...liveNow.players.values()].find((player) => {
+        if (player.control !== "camera") return false;
+        if (installId && player.installId === installId) return true;
+        return auth.kind === "player" && auth.sessionId === record.id && auth.playerId === player.id;
+      });
+      if (sameHere) {
+        await resumeCamera(liveNow, sameHere, socket, installId, ack);
+        return;
+      }
+      if (installId) {
+        for (const other of [...sessions.values()]) {
+          if (other.record.id === record.id) continue;
+          for (const player of [...other.players.values()]) {
+            if (player.control !== "camera" || player.installId !== installId) continue;
+            await dropCameraPlayer(other, player, socket.id);
+          }
+        }
+      }
+      const current = (await options.repository.findByCode(parsed.data.joinCode)) ?? record;
+      const phones = current.players.filter((player) => player.control !== "keyboard");
+      if (phones.length >= current.maxPlayers) {
+        return reply(socket, ack, "SESSION_FULL", "This TV already has the maximum number of players.");
+      }
+      if (current.status !== "LOBBY") return reply(socket, ack, "NOT_JOINABLE", "This game has already started.");
       try {
         let userId: string | null = null;
         const userToken = socket.handshake.auth?.userToken;
@@ -204,12 +262,15 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
           connected: true,
           departed: false,
           userId,
+          installId,
+          epoch: 1,
           lastSequence: -1,
+          seenEventIds: new Set<string>(),
           moves: [],
         });
         if (!live.round.members.includes(player.id)) live.round.members.push(player.id);
         const token = await signClaims(
-          { kind: "player", sessionId: record.id, playerId: player.id, slot: player.slot, displayName: player.displayName },
+          { kind: "player", sessionId: record.id, playerId: player.id, slot: player.slot, displayName: player.displayName, epoch: 1 },
           options.secret,
           "2h",
         );
@@ -219,6 +280,7 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
           playerId: player.id,
           displayName: player.displayName,
           slot: player.slot,
+          epoch: 1,
         } satisfies SocketAuth;
         await socket.join(roomFor(record.id));
         const body = { v: PROTOCOL_VERSION, token, playerId: player.id, slot: player.slot, session: publicSession(live) };
@@ -242,7 +304,15 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       }
       const attached = await attachFromToken(socket);
       if (!attached) return reply(socket, ack, "SESSION_NOT_FOUND", "The session is no longer available.");
-      if (typeof ack === "function") ack({ ok: true, v: PROTOCOL_VERSION });
+      const seated = authOf(socket);
+      if (typeof ack === "function") {
+        ack({
+          ok: true,
+          v: PROTOCOL_VERSION,
+          sessionId: seated.sessionId,
+          playerId: seated.kind === "player" ? seated.playerId : undefined,
+        });
+      }
     });
 
     socket.on(CLIENT_EVENTS.keyboardPlayer, async (payload, ack) => {
@@ -251,7 +321,11 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       if (live.round.phase !== "lobby") return reply(socket, ack, "NOT_JOINABLE", "Keyboard players can only be added before the countdown.");
       const parsed = keyboardPlayerSchema.safeParse(payload);
       if (!parsed.success) return reply(socket, ack, "INVALID_PAYLOAD", "Choose a short player name.");
-      if (live.players.size >= live.record.maxPlayers) return reply(socket, ack, "SESSION_FULL", "This session is full.");
+      const existingKeyboard = [...live.players.values()].find((player) => !player.departed && player.control === "keyboard");
+      if (existingKeyboard) {
+        if (typeof ack === "function") ack({ ok: true, playerId: existingKeyboard.id, slot: existingKeyboard.slot });
+        return;
+      }
       const player = await options.repository.addPlayer({
         sessionId: live.record.id,
         displayName: parsed.data.displayName,
@@ -268,7 +342,10 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
         connected: true,
         departed: false,
         userId: null,
+        installId: null,
+        epoch: 0,
         lastSequence: -1,
+        seenEventIds: new Set<string>(),
         moves: [],
       });
       if (!live.round.members.includes(player.id)) live.round.members.push(player.id);
@@ -301,6 +378,14 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       if (!live || !player) return reply(socket, undefined, "SESSION_NOT_FOUND", "Session not found.");
       player.ready = parsed.data.ready;
       await options.repository.setPlayerReady(live.record.id, player.id, player.ready);
+      if (live.round.phase === "countdown" && live.round.countdownPurpose !== "resume" && !everyoneReady(live)) {
+        await cancelCountdown(live, "lobby");
+        return;
+      }
+      if (live.round.phase === "lobby" && everyoneReady(live) && hasCameraPlayer(live)) {
+        await armCountdown(live, "start");
+        return;
+      }
       broadcast(live);
     });
 
@@ -318,49 +403,60 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
     socket.on(CLIENT_EVENTS.gameStart, async () => {
       const live = hostLive(socket);
       if (!live) return reply(socket, undefined, "UNAUTHORIZED", "Only the TV can start the game.");
-      if (live.round.phase !== "lobby" && live.round.phase !== "ended") return reply(socket, undefined, "INVALID_STATE", "The game cannot be started right now.");
+      if (live.round.phase === "countdown" || live.round.phase === "running") return;
+      if (live.round.phase === "ended") return reply(socket, undefined, "INVALID_STATE", "The round is over.");
+      if (live.round.phase !== "lobby") return reply(socket, undefined, "INVALID_STATE", "The game cannot be started right now.");
       const active = [...live.players.values()].filter((player) => !player.departed);
       if (active.length === 0) return reply(socket, undefined, "NOT_READY", "Add a player before starting.");
       if (active.some((player) => !player.ready || !player.connected)) return reply(socket, undefined, "NOT_READY", "Every connected player needs to be ready.");
-      if (live.round.phase === "ended") {
-        live.round.endReason = undefined;
-        live.round.winnerId = null;
-        live.round.tie = false;
-      }
-      live.round.phase = "running";
-      live.round.resumePhase = "running";
-      live.round.time = 0;
-      live.round.countdownRemaining = 0;
-      live.persisted = false;
-      live.disconnectPause = false;
-      await options.repository.updateStatus(live.record.id, "RUNNING", { startedAt: new Date() });
-      broadcast(live);
+      await armCountdown(live, "start");
+    });
+
+    socket.on(CLIENT_EVENTS.gameHold, () => {
+      const live = hostLive(socket);
+      if (!live || live.raceLive === false) return;
+      live.raceLive = false;
+      broadcast(live, true);
+    });
+
+    socket.on(CLIENT_EVENTS.gameLive, () => {
+      const live = hostLive(socket);
+      if (!live || live.raceLive === true) return;
+      live.raceLive = true;
+      broadcast(live, true);
     });
 
     socket.on(CLIENT_EVENTS.gamePause, async () => {
       const live = controllable(socket);
       if (!live) return reply(socket, undefined, "UNAUTHORIZED", "You cannot pause this session.");
-      if (live.round.phase === "running" || live.round.phase === "countdown") {
-        live.round.resumePhase = live.round.phase;
+      if (live.round.phase === "paused") return;
+      const auth = authOf(socket);
+      if (live.round.phase === "countdown" && live.round.countdownPurpose === "start") {
+        await cancelCountdown(live, "lobby");
+        return;
+      }
+      if (live.round.phase === "countdown" && live.round.countdownPurpose === "resume") {
+        await cancelCountdown(live, "paused");
+        return;
+      }
+      if (live.round.phase === "running") {
+        live.round.resumePhase = "running";
         live.round.phase = "paused";
-        live.statusMessage = "The round is on hold.";
+        if (auth.kind !== "player") live.statusMessage = "The round is on hold.";
         await options.repository.updateStatus(live.record.id, "PAUSED");
       }
       live.disconnectPause = false;
-      broadcast(live);
+      broadcast(live, true);
     });
 
     socket.on(CLIENT_EVENTS.gameResume, async () => {
       const live = controllable(socket);
       if (!live) return reply(socket, undefined, "UNAUTHORIZED", "You cannot resume this session.");
+      if (live.round.phase === "countdown" || live.round.phase === "running") return;
       if (!everyoneNeeded(live)) return reply(socket, undefined, "NOT_READY", "Wait until the players reconnect.");
-      if (live.round.phase === "paused") {
-        live.round.phase = live.round.resumePhase;
-        live.statusMessage = undefined;
-        await options.repository.updateStatus(live.record.id, live.round.phase === "countdown" ? "COUNTDOWN" : "RUNNING");
-      }
+      if (live.round.phase !== "paused") return;
       live.disconnectPause = false;
-      broadcast(live);
+      await armCountdown(live, "resume");
     });
 
     socket.on(CLIENT_EVENTS.gameEnd, async () => {
@@ -375,27 +471,198 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       reply(socket, undefined, "SCORE_REJECTED", "Scores are calculated by the server from validated movements.");
     });
 
-    socket.on(CLIENT_EVENTS.movement, (payload) => {
+    socket.on(CLIENT_EVENTS.runBegin, async (payload, ack) => {
+      const supplied = clientSuppliedAuthority(payload);
+      if (supplied) return rejectSuppliedAuthority(socket, ack, supplied);
+      const parsed = runBeginSchema.safeParse(payload);
+      if (!parsed.success) return reply(socket, ack, "INVALID_PAYLOAD", "Run start was rejected.");
+      const live = hostLive(socket);
+      if (!live) return reply(socket, ack, "UNAUTHORIZED", "Only the TV can start a run.");
+      if (live.record.status === "CLOSED" || live.record.status === "EXPIRED") {
+        return reply(socket, ack, "INVALID_STATE", "This session is closed.");
+      }
+      const next = beginRun(live.livesRun);
+      live.livesRun = next.run;
+      await persistRun(live);
+      broadcast(live, true);
+      if (typeof ack === "function") {
+        ack({
+          ok: true,
+          v: PROTOCOL_VERSION,
+          lives: next.run.lives,
+          hits: next.run.hits,
+          gameOver: next.run.over,
+          resumed: next.resumed,
+        });
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.runAgain, async (payload, ack) => {
+      const supplied = clientSuppliedAuthority(payload);
+      if (supplied) return rejectSuppliedAuthority(socket, ack, supplied);
+      const parsed = runBeginSchema.safeParse(payload);
+      if (!parsed.success) return reply(socket, ack, "INVALID_PAYLOAD", "Play again was rejected.");
+      const live = hostLive(socket);
+      if (!live) return reply(socket, ack, "UNAUTHORIZED", "Only the TV can start another run.");
+      if (live.record.status === "CLOSED" || live.record.status === "EXPIRED") {
+        return reply(socket, ack, "INVALID_STATE", "This session is closed.");
+      }
+      clearCountdownTimer(live);
+      live.livesRun = emptyRun();
+      live.round.phase = "lobby";
+      live.round.countdownPurpose = undefined;
+      live.round.countdownRemaining = 0;
+      live.round.endReason = undefined;
+      live.round.resumePhase = "running";
+      live.persisted = false;
+      live.disconnectPause = false;
+      live.statusMessage = undefined;
+      for (const player of live.players.values()) {
+        player.seenEventIds.clear();
+        player.lastSequence = -1;
+        player.moves = [];
+      }
+      await persistRun(live);
+      await options.repository.updateStatus(live.record.id, "LOBBY");
+      live.record.status = "LOBBY";
+      broadcast(live, true);
+      if (everyoneReady(live) && hasCameraPlayer(live)) await armCountdown(live, "start");
+      if (typeof ack === "function") {
+        ack({
+          ok: true,
+          v: PROTOCOL_VERSION,
+          sessionId: live.record.id,
+          lives: live.livesRun.lives,
+          hits: live.livesRun.hits,
+          gameOver: live.livesRun.over,
+        });
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.obstacleHit, async (payload, ack) => {
+      // The TV detects the overlap locally. This process does not simulate the course
+      // or validate the geometry. It only decides whether that obstacle id spends a life.
+      const supplied = clientSuppliedAuthority(payload);
+      if (supplied) return rejectSuppliedAuthority(socket, ack, supplied);
+      const parsed = obstacleHitSchema.safeParse(payload);
+      if (!parsed.success) return reply(socket, ack, "INVALID_PAYLOAD", "Hit report was rejected.");
+      const live = hostLive(socket);
+      if (!live || live.record.id !== parsed.data.sessionId) {
+        return reply(socket, ack, "UNAUTHORIZED", "Only the TV can report a hit.");
+      }
+      const decision = applyObstacleHit(
+        live.livesRun,
+        parsed.data.obstacleId,
+        Date.now(),
+        options.hitInvulnerabilityMs ?? HIT_INVULNERABILITY_MS,
+      );
+      if (!decision.accepted) {
+        const message =
+          decision.code === "DUPLICATE_HIT"
+            ? "That obstacle already cost a life."
+            : decision.code === "INVULNERABLE"
+              ? "The runner is still invulnerable from the last hit."
+              : decision.code === "GAME_OVER"
+                ? "This run is already over."
+                : "The run has not started.";
+        const body = {
+          ok: false,
+          accepted: false,
+          v: PROTOCOL_VERSION,
+          code: decision.code,
+          message,
+          lives: decision.run.lives,
+          hits: decision.run.hits,
+          gameOver: decision.run.over,
+          serverTimeMs: Date.now(),
+        };
+        if (typeof ack === "function") ack(body);
+        return;
+      }
+      live.livesRun = decision.run;
+      await persistRun(live);
+      broadcast(live, true);
+      if (typeof ack === "function") {
+        ack({
+          ok: true,
+          accepted: true,
+          v: PROTOCOL_VERSION,
+          lives: decision.run.lives,
+          hits: decision.run.hits,
+          gameOver: decision.gameOver,
+          serverTimeMs: Date.now(),
+        });
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.sessionClose, async (_payload, ack) => {
+      const live = hostLive(socket);
+      if (!live) return reply(socket, ack, "UNAUTHORIZED", "Only the TV can leave this session.");
+      clearCountdownTimer(live);
+      live.round.phase = "ended";
+      live.round.endReason = "host";
+      live.livesRun = { ...live.livesRun, active: false, over: true };
+      live.statusMessage = "This game has ended. Start a new one on the TV or laptop.";
+      await persistRun(live);
+      await options.repository.updateStatus(live.record.id, "CLOSED", { endedAt: new Date() });
+      live.record.status = "CLOSED";
+      broadcast(live, true);
+      live.hostSockets.delete(socket.id);
+      socket.data.auth = { kind: "anonymous" } satisfies SocketAuth;
+      await socket.leave(roomFor(live.record.id));
+      if (typeof ack === "function") ack({ ok: true, v: PROTOCOL_VERSION });
+    });
+
+    socket.on(CLIENT_EVENTS.movement, (payload, ack) => {
       const parsed = movementEventSchema.safeParse(payload);
-      if (!parsed.success) return reply(socket, undefined, "INVALID_PAYLOAD", "Movement event was rejected.");
+      if (!parsed.success) return reply(socket, ack, "INVALID_PAYLOAD", "Movement event was rejected.");
       const live = sessions.get(parsed.data.sessionId);
-      if (!live) return reply(socket, undefined, "SESSION_NOT_FOUND", "Session not found.");
+      if (!live) return reply(socket, ack, "SESSION_NOT_FOUND", "Session not found.");
       const auth = authOf(socket);
       const player = live.players.get(parsed.data.playerId);
-      if (!player || player.departed) return reply(socket, undefined, "UNAUTHORIZED", "That player is not in this session.");
+      if (!player || player.departed) return reply(socket, ack, "UNAUTHORIZED", "That player is not in this session.");
       const ownsPlayer = auth.kind === "player" && auth.playerId === player.id;
       const hostKeyboard = auth.kind === "host" && auth.sessionId === live.record.id && player.control === "keyboard";
-      if (!ownsPlayer && !hostKeyboard) return reply(socket, undefined, "UNAUTHORIZED", "You can only send movements for your own player.");
-      if (parsed.data.sequenceNumber <= player.lastSequence) return reply(socket, undefined, "DUPLICATE_EVENT", "That movement was already processed.");
+      if (!ownsPlayer && !hostKeyboard) return reply(socket, ack, "UNAUTHORIZED", "You can only send movements for your own player.");
+      if (player.seenEventIds.has(parsed.data.eventId) || parsed.data.sequenceNumber <= player.lastSequence) {
+        return reply(socket, ack, "DUPLICATE_EVENT", "That movement was already processed.");
+      }
       const now = Date.now();
       player.moves = player.moves.filter((stamp) => now - stamp < 1000);
-      if (player.moves.length >= 12) return reply(socket, undefined, "RATE_LIMITED", "Movement events are arriving too quickly.");
+      if (player.moves.length >= 12) return reply(socket, ack, "RATE_LIMITED", "Movement events are arriving too quickly.");
       player.moves.push(now);
-      player.lastSequence = parsed.data.sequenceNumber;
-      if (live.round.phase !== "running" && live.round.phase !== "countdown") {
-        return reply(socket, undefined, "MOVEMENT_REJECTED", "The round is not running.");
+      player.seenEventIds.add(parsed.data.eventId);
+      if (player.seenEventIds.size > 200) {
+        const oldest = player.seenEventIds.values().next().value;
+        if (oldest) player.seenEventIds.delete(oldest);
       }
+      player.lastSequence = parsed.data.sequenceNumber;
+      if (live.livesRun.over) {
+        return reply(socket, ack, "GAME_OVER", "This run is over.");
+      }
+      if (live.round.phase !== "running") {
+        return reply(socket, ack, "MOVEMENT_REJECTED", "The round is not running.");
+      }
+      const relay = {
+        ...parsed.data,
+        source: player.control === "keyboard" ? "keyboard" : "camera",
+      };
+      for (const hostId of live.hostSockets) io.to(hostId).emit(CLIENT_EVENTS.movement, relay);
+      if (typeof ack === "function") ack({ ok: true, eventId: parsed.data.eventId, serverTimeMs: Date.now() });
       broadcast(live, true);
+    });
+
+    socket.on(CLIENT_EVENTS.movementResult, (payload, ack) => {
+      const parsed = movementResultSchema.safeParse(payload);
+      if (!parsed.success) return reply(socket, ack, "INVALID_PAYLOAD", "Movement result was rejected.");
+      const live = hostLive(socket);
+      if (!live || live.record.id !== parsed.data.sessionId) {
+        return reply(socket, ack, "UNAUTHORIZED", "Only the TV can report a movement result.");
+      }
+      const player = live.players.get(parsed.data.playerId);
+      if (!player) return reply(socket, ack, "SESSION_NOT_FOUND", "That player is not in this session.");
+      if (player.socketId) io.to(player.socketId).emit(CLIENT_EVENTS.movementResult, parsed.data);
+      if (typeof ack === "function") ack({ ok: true });
     });
 
     socket.on(CLIENT_EVENTS.sessionLeave, async (_payload, ack) => {
@@ -434,11 +701,18 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
           player.socketId = null;
           void options.repository.setPlayerConnection(live.record.id, player.id, false);
           if ((live.round.phase === "running" || live.round.phase === "countdown") && player.control === "camera") {
-            live.round.resumePhase = live.round.phase;
-            live.round.phase = "paused";
-            live.disconnectPause = true;
-            live.statusMessage = `${player.displayName} disconnected. The game is paused.`;
-            void options.repository.updateStatus(live.record.id, "PAUSED");
+            if (live.round.phase === "countdown" && live.round.countdownPurpose !== "resume") {
+              void cancelCountdown(live, "lobby");
+            } else {
+              clearCountdownTimer(live);
+              live.round.countdownPurpose = undefined;
+              live.round.countdownRemaining = 0;
+              live.round.resumePhase = "running";
+              live.round.phase = "paused";
+              live.disconnectPause = true;
+              live.statusMessage = `${player.displayName} disconnected. The game is paused.`;
+              void options.repository.updateStatus(live.record.id, "PAUSED");
+            }
           }
           broadcast(live);
         }
@@ -453,15 +727,23 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
   }, 30_000);
   expiry.unref?.();
 
+  async function persistRun(live: LiveSession) {
+    const run: RunLives = { ...live.livesRun, obstacleIds: [...live.livesRun.obstacleIds] };
+    live.livesRun = run;
+    live.record = { ...live.record, run };
+    await options.repository.updateRun(live.record.id, run);
+  }
+
   function hydrate(record: StoredSession): LiveSession {
     const existing = sessions.get(record.id);
     if (existing) {
-      existing.record = { ...record, players: record.players };
+      existing.record = { ...record, players: record.players, run: existing.livesRun };
       return existing;
     }
     const phase = phaseFromStatus(record.status);
     const live: LiveSession = {
       record,
+      livesRun: record.run ? { ...record.run, obstacleIds: [...record.run.obstacleIds] } : emptyRun(),
       round: {
         phase,
         resumePhase: phase === "countdown" ? "countdown" : "running",
@@ -476,6 +758,8 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       lastBroadcast: 0,
       persisted: record.status === "ENDED",
       disconnectPause: false,
+      countdownTimer: null,
+      countdownEndsAt: 0,
     };
     for (const player of record.players) {
       rememberPlayer(live, {
@@ -488,7 +772,10 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
         connected: player.connected,
         departed: false,
         userId: player.userId,
+        installId: null,
+        epoch: 0,
         lastSequence: -1,
+        seenEventIds: new Set<string>(),
         moves: [],
       });
     }
@@ -498,6 +785,65 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
 
   function rememberPlayer(live: LiveSession, player: LivePlayer) {
     live.players.set(player.id, player);
+  }
+
+  function claimSocket(live: LiveSession, player: LivePlayer, socket: Socket) {
+    const previousId = player.socketId;
+    player.connected = true;
+    player.departed = false;
+    player.socketId = socket.id;
+    if (!previousId || previousId === socket.id) return;
+    const previous = io.sockets.sockets.get(previousId);
+    if (!previous) return;
+    previous.data.auth = { kind: "anonymous" } satisfies SocketAuth;
+    void previous.leave(roomFor(live.record.id));
+  }
+
+  async function dropCameraPlayer(live: LiveSession, player: LivePlayer, keepSocketId: string) {
+    const previousId = player.socketId;
+    live.players.delete(player.id);
+    live.round.members = live.round.members.filter((id) => id !== player.id);
+    await options.repository.removePlayer(live.record.id, player.id);
+    const previous = previousId ? io.sockets.sockets.get(previousId) : undefined;
+    if (previous) {
+      void previous.leave(roomFor(live.record.id));
+      if (previousId !== keepSocketId) previous.data.auth = { kind: "anonymous" } satisfies SocketAuth;
+    }
+    io.to(roomFor(live.record.id)).emit(SERVER_EVENTS.playerLeft, { v: PROTOCOL_VERSION, playerId: player.id });
+    broadcast(live, true);
+  }
+
+  async function resumeCamera(live: LiveSession, player: LivePlayer, socket: Socket, installId: string | null, ack: unknown) {
+    if (installId) player.installId = installId;
+    player.epoch += 1;
+    claimSocket(live, player, socket);
+    if (!live.round.members.includes(player.id)) live.round.members.push(player.id);
+    await options.repository.setPlayerConnection(live.record.id, player.id, true);
+    const token = await signClaims(
+      {
+        kind: "player",
+        sessionId: live.record.id,
+        playerId: player.id,
+        slot: player.slot,
+        displayName: player.displayName,
+        epoch: player.epoch,
+      },
+      options.secret,
+      "2h",
+    );
+    socket.data.auth = {
+      kind: "player",
+      sessionId: live.record.id,
+      playerId: player.id,
+      displayName: player.displayName,
+      slot: player.slot,
+      epoch: player.epoch,
+    } satisfies SocketAuth;
+    await socket.join(roomFor(live.record.id));
+    const body = { v: PROTOCOL_VERSION, token, playerId: player.id, slot: player.slot, session: publicSession(live) };
+    io.to(roomFor(live.record.id)).emit(SERVER_EVENTS.playerJoined, body);
+    broadcast(live, true);
+    if (typeof ack === "function") (ack as (value: unknown) => void)({ ok: true, ...body });
   }
 
   async function attachFromToken(socket: Socket): Promise<boolean> {
@@ -511,8 +857,12 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
     if (auth.kind === "player" && auth.playerId) {
       const player = live.players.get(auth.playerId);
       if (!player || player.departed) return false;
-      player.connected = true;
-      player.socketId = socket.id;
+      const epoch = typeof auth.epoch === "number" ? auth.epoch : 0;
+      if (player.epoch > 0 && epoch !== player.epoch) {
+        socket.data.auth = { kind: "anonymous" } satisfies SocketAuth;
+        return false;
+      }
+      claimSocket(live, player, socket);
       await options.repository.setPlayerConnection(record.id, player.id, true);
       if (live.disconnectPause && everyoneNeeded(live) && live.hostSockets.size > 0 && live.round.phase === "paused") {
         live.round.phase = live.round.resumePhase;
@@ -525,7 +875,102 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
     return true;
   }
 
+  const COUNTDOWN_MS = 3000;
+
+  function clearCountdownTimer(live: LiveSession) {
+    if (live.countdownTimer) clearInterval(live.countdownTimer);
+    live.countdownTimer = null;
+    live.countdownEndsAt = 0;
+  }
+
+  function activePlayers(live: LiveSession) {
+    return [...live.players.values()].filter((player) => !player.departed && player.connected);
+  }
+
+  function everyoneReady(live: LiveSession) {
+    const active = activePlayers(live);
+    return active.length > 0 && active.every((player) => player.ready);
+  }
+
+  function hasCameraPlayer(live: LiveSession) {
+    return activePlayers(live).some((player) => player.control === "camera");
+  }
+
+  async function armCountdown(live: LiveSession, purpose: "start" | "resume") {
+    if (live.countdownTimer || live.round.phase === "countdown" || live.round.phase === "running") return;
+    if (purpose === "start" && live.round.phase !== "lobby") return;
+    if (purpose === "resume" && live.round.phase !== "paused") return;
+    live.round.countdownPurpose = purpose;
+    live.round.phase = "countdown";
+    live.round.resumePhase = "running";
+    live.round.countdownRemaining = 3;
+    live.countdownEndsAt = Date.now() + COUNTDOWN_MS;
+    live.statusMessage = undefined;
+    let shown = 3;
+    live.countdownTimer = setInterval(() => {
+      if (live.round.phase !== "countdown") {
+        clearCountdownTimer(live);
+        return;
+      }
+      const left = Math.max(0, (live.countdownEndsAt - Date.now()) / 1000);
+      live.round.countdownRemaining = left;
+      const next = Math.ceil(left);
+      if (next !== shown) {
+        shown = next;
+        broadcast(live, true);
+        io.to(roomFor(live.record.id)).emit(SERVER_EVENTS.gameCountdown, {
+          v: PROTOCOL_VERSION,
+          remaining: next,
+          purpose,
+        });
+      }
+      if (left <= 0) void finishCountdown(live);
+    }, 200);
+    live.countdownTimer.unref?.();
+    await options.repository.updateStatus(live.record.id, "COUNTDOWN");
+    if (live.round.phase !== "countdown") return;
+    broadcast(live, true);
+    io.to(roomFor(live.record.id)).emit(SERVER_EVENTS.gameCountdown, {
+      v: PROTOCOL_VERSION,
+      remaining: 3,
+      purpose,
+    });
+  }
+
+  async function cancelCountdown(live: LiveSession, next: "lobby" | "paused") {
+    if (live.round.phase !== "countdown" && !live.countdownTimer) return;
+    clearCountdownTimer(live);
+    live.round.countdownPurpose = undefined;
+    live.round.countdownRemaining = 0;
+    live.round.phase = next;
+    live.round.resumePhase = "running";
+    if (next === "paused") live.statusMessage = "Step Back Into Frame";
+    await options.repository.updateStatus(live.record.id, next === "lobby" ? "LOBBY" : "PAUSED");
+    broadcast(live, true);
+  }
+
+  async function finishCountdown(live: LiveSession) {
+    if (live.round.phase !== "countdown") return;
+    const purpose = live.round.countdownPurpose;
+    live.round.phase = "running";
+    clearCountdownTimer(live);
+    live.round.countdownPurpose = undefined;
+    live.round.countdownRemaining = 0;
+    live.round.resumePhase = "running";
+    live.statusMessage = undefined;
+    if (purpose !== "resume") {
+      live.round.time = 0;
+      live.persisted = false;
+      live.disconnectPause = false;
+      await options.repository.updateStatus(live.record.id, "RUNNING", { startedAt: new Date() });
+    } else {
+      await options.repository.updateStatus(live.record.id, "RUNNING");
+    }
+    broadcast(live, true);
+  }
+
   async function finishLive(live: LiveSession) {
+    clearCountdownTimer(live);
     broadcast(live, true);
     if (live.persisted) return;
     live.persisted = true;
@@ -584,6 +1029,13 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       gymName: live.record.gymName,
       branding: live.record.branding,
       statusMessage: live.statusMessage ?? null,
+      raceLive: typeof live.raceLive === "boolean" ? live.raceLive : null,
+      countdown: Math.ceil(live.round.countdownRemaining),
+      countdownPurpose: live.round.countdownPurpose ?? null,
+      lives: live.livesRun.lives,
+      hits: live.livesRun.hits,
+      runActive: live.livesRun.active,
+      runOver: live.livesRun.over,
       players: [...live.players.values()]
         .sort((a, b) => a.slot - b.slot)
         .map((player) => ({
@@ -646,7 +1098,7 @@ function snapshotOf(
       visualLane: 1,
       action: "run",
       actionElapsed: 0,
-      lives: live.record.lives,
+      lives: live.livesRun.lives,
       score: 0,
       combo: 0,
       maxCombo: 0,
@@ -679,12 +1131,25 @@ function snapshotOf(
   };
 }
 
+function clientSuppliedAuthority(payload: unknown): "lives" | "score" | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  if ("lives" in record || "livesRemaining" in record) return "lives";
+  if ("score" in record) return "score";
+  return null;
+}
+
+function rejectSuppliedAuthority(socket: Socket, ack: unknown, kind: "lives" | "score") {
+  const code = kind === "lives" ? "LIVES_REJECTED" : "SCORE_REJECTED";
+  reply(socket, ack, code, "Lives and score belong to the server.");
+}
+
 function authOf(socket: Socket): SocketAuth {
   return (socket.data.auth as SocketAuth | undefined) ?? { kind: "anonymous" };
 }
 
 function reply(socket: Socket, ack: unknown, code: string, message: string) {
-  const body = { v: PROTOCOL_VERSION, code, message };
+  const body = { v: PROTOCOL_VERSION, code, message, serverTimeMs: Date.now() };
   socket.emit(SERVER_EVENTS.sessionError, body);
   if (typeof ack === "function") (ack as (value: unknown) => void)({ ok: false, ...body });
 }

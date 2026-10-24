@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import type { UserRole } from "./types";
 
 export type TokenKind = "host" | "player" | "user";
 
@@ -14,6 +15,8 @@ export interface PlayerClaims extends JWTPayload {
   playerId: string;
   slot: number;
   displayName: string;
+  /** Bumped when this phone's socket is replaced. Older tokens stop reclaiming the seat. */
+  epoch?: number;
 }
 
 export interface UserClaims extends JWTPayload {
@@ -21,7 +24,9 @@ export interface UserClaims extends JWTPayload {
   sub: string;
   email: string;
   name: string;
-  role: "PLAYER" | "GYM_OWNER" | "ADMIN";
+  role: UserRole;
+  sv?: number;
+  pw?: boolean;
 }
 
 function keyFor(secret: string): Uint8Array {

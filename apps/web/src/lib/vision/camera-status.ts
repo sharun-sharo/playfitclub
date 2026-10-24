@@ -5,11 +5,11 @@ export interface CameraFailure {
   message: string;
 }
 
-const DENIED = "Camera permission was denied. Allow camera access in the browser settings and try again. The TV keyboard still works.";
+const DENIED = "Camera access is off. Allow the camera for this site in the browser settings, then try again. The TV keyboard still works.";
 const MISSING = "No camera was found on this phone. The TV keyboard still works.";
-const BUSY = "The camera is in use by another app. Close it and try again. The TV keyboard still works.";
-const INSECURE = "The phone browser needs HTTPS, or localhost, before it can open the camera.";
-const GENERIC = "The camera could not start. You can still use the keyboard fallback on the TV.";
+const BUSY = "The camera is in use by another app. Close it, then try again.";
+const INSECURE = "This page is not secure yet. Open the https link, accept the certificate, then try again.";
+const GENERIC = "The camera could not start. Try again. The TV keyboard still works.";
 
 export function classifyCameraError(error: unknown, secureContext = true): CameraFailure {
   if (!secureContext) return { status: "unavailable", message: INSECURE };
@@ -29,7 +29,15 @@ export function cameraStatusFromTrack(track: { readyState: "live" | "ended" }): 
   return track.readyState === "ended" ? "disconnected" : "granted";
 }
 
-export const CAMERA_LOST_MESSAGE = "The camera disconnected. Body controls stopped. The TV keyboard still works.";
+export const CAMERA_LOST_MESSAGE = "The camera disconnected. Turn it back on to keep playing. The TV keyboard still works.";
+export const MODEL_FAILED_MESSAGE = "The movement tracker could not load. Try again.";
+export const REALTIME_DOWN_MESSAGE = "The live game is unreachable. Accept the certificate if this phone has not done that yet, then try again.";
+export const PHONE_OFF_MESSAGE = "This phone disconnected from the game. Reconnect to keep playing.";
+export const TAB_HIDDEN_MESSAGE = "This tab is hidden. Come back to it so the camera can see you.";
+export const ROTATE_MESSAGE = "Turn your phone upright.";
+export const BODY_LEFT_MESSAGE = "Your body left the frame. Step back into view.";
+export const BODY_RETURN_MESSAGE = "Step back into view and hold still.";
+export const TRACKING_LOST_MESSAGE = "The camera lost track of you. Step into view and hold still.";
 
 function errorName(error: unknown) {
   if (typeof DOMException !== "undefined" && error instanceof DOMException) return error.name;

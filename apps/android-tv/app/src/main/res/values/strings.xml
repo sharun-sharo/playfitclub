@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PlayFit TV</string>
+    <string name="loading_title">Opening FitRunner</string>
+    <string name="loading_detail">Loading the television page. The phone stays the controller.</string>
+    <string name="error_title">Could not open FitRunner</string>
+    <string name="error_detail">Check the television URL and that the PlayFit server is running.</string>
+    <string name="ssl_release">This release build rejected the certificate. Use https with a certificate this device trusts.</string>
+    <string name="retry">Try again</string>
+</resources>

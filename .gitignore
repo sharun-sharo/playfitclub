@@ -15,3 +15,8 @@ apps/web/public/mediapipe/*.task
 .vercel
 *.pem
 .prisma
+apps/android-tv/.gradle/
+apps/android-tv/.idea/
+apps/android-tv/local.properties
+apps/android-tv/build/
+apps/android-tv/app/build/
