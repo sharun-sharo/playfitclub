@@ -22,7 +22,6 @@ import { COMMAND_STALE_MS, holdCommand, releaseCommand, type HeldCommand } from 
 import {
   courseDebugSnapshot,
   scheduleCourse,
-  upcomingCue,
   type CourseLevel,
   type ScheduledObstacle,
   RUN_LIVES,
@@ -72,8 +71,6 @@ export type FitRunnerHud = {
   tokens: HTMLElement | null;
   combo: HTMLElement | null;
   demoTime?: HTMLElement | null;
-  /** Upcoming action from the real obstacle. Empty when the current lane is clear. */
-  cue?: HTMLElement | null;
   /** Development readout. Production leaves this null. */
   courseDebug?: HTMLElement | null;
   onDemoOver?: (info: { activeMs: number }) => void;
@@ -1217,14 +1214,8 @@ export async function startFitRunner(
       if (hud.demoTime && demoLimit !== null) hud.demoTime.textContent = formatRemaining(demoLimit, elapsed);
       if (hud.tokens) hud.tokens.textContent = String(coins);
       if (hud.combo) hud.combo.textContent = snap.multiplier > 0 ? `x${snap.multiplier}` : "—";
-      const cueLane = Math.max(-1, Math.min(1, Math.round(visualLane))) as -1 | 0 | 1;
-      const cue = upcomingCue(courseObstacles, elapsed, cueLane);
-      if (hud.cue) {
-        hud.cue.textContent = cue?.label ?? "";
-        hud.cue.hidden = !cue;
-      }
-      canvas.dataset.cue = cue?.label ?? "";
       if (hud.courseDebug) {
+        const cueLane = Math.max(-1, Math.min(1, Math.round(visualLane))) as -1 | 0 | 1;
         const readout = courseDebugSnapshot({
           obstacles: courseObstacles,
           elapsedS: elapsed,

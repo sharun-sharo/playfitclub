@@ -40,7 +40,6 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const playScoreRef = useRef<HTMLParagraphElement>(null);
   const distanceRef = useRef<HTMLElement>(null);
   const timeRef = useRef<HTMLElement>(null);
-  const cueRef = useRef<HTMLParagraphElement>(null);
   const courseDebugRef = useRef<HTMLPreElement>(null);
   const difficultyRef = useRef<string | null>(null);
   /** Development only. Production builds never mount this readout. */
@@ -136,7 +135,6 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           playScore: playScoreRef.current,
           distance: distanceRef.current,
           time: timeRef.current,
-          cue: cueRef.current,
           courseDebug: scheduleDebug ? courseDebugRef.current : null,
           tokens: null,
           combo: null,
@@ -459,12 +457,6 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
         hidden={Boolean(graphicsError)}
       />
       <LivesHearts hidden={!playing} lives={session.lives} />
-      <p
-        ref={cueRef}
-        data-action-cue=""
-        hidden
-        className="pointer-events-none absolute left-1/2 top-28 z-10 -translate-x-1/2 rounded-full bg-[#10141ce6] px-8 py-3 text-center font-display text-5xl tracking-wide text-[#d6ff4a] sm:text-6xl"
-      />
       {scheduleDebug ? (
         <pre
           ref={courseDebugRef}
