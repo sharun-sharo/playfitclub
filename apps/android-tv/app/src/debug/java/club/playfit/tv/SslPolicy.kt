@@ -4,15 +4,12 @@ import android.net.http.SslError
 import android.webkit.SslErrorHandler
 import android.webkit.WebSettings
 
-/**
- * Debug builds accept the local dev certificate and cleartext so a LAN WebView can open the dev server.
- * This trusts certificates the device has not verified. Do not ship a debug build.
- */
+/** Debug builds keep platform TLS checks. The shell opens the public site. */
 object SslPolicy {
-    val mixedContentMode: Int = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+    val mixedContentMode: Int = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
     fun allowDevCertificate(handler: SslErrorHandler, @Suppress("UNUSED_PARAMETER") error: SslError? = null): Boolean {
-        handler.proceed()
-        return true
+        handler.cancel()
+        return false
     }
 }

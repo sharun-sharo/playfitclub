@@ -123,13 +123,19 @@ class MainActivity : AppCompatActivity() {
             if (!pageFailed) showWeb()
         }
 
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (request.url?.scheme == "https") return false
+            if (request.isForMainFrame) showError(getString(R.string.https_only))
+            return true
+        }
+
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
             if (!request.isForMainFrame) return
             showError(error.description?.toString() ?: getString(R.string.error_detail))
         }
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-            if (!SslPolicy.allowDevCertificate(handler)) {
+            if (!SslPolicy.allowDevCertificate(handler, error)) {
                 showError(getString(R.string.ssl_release))
             }
         }

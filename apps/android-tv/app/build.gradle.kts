@@ -4,10 +4,31 @@ plugins {
 }
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.URI
 
-val tvStartUrl = (findProperty("TV_START_URL") as String?)?.trim()?.ifEmpty { null } ?: "https://localhost:3000/tv"
-require(tvStartUrl.startsWith("https://") || tvStartUrl.startsWith("http://")) {
-    "TV_START_URL must start with http:// or https://"
+val tvStartUrl = (findProperty("TV_START_URL") as String?)?.trim()?.ifEmpty { null } ?: "https://playfitclub.com/tv"
+require(tvStartUrl.startsWith("https://")) {
+    "TV_START_URL must be an https URL"
+}
+val tvHost = runCatching { URI(tvStartUrl).host?.lowercase() }.getOrNull().orEmpty()
+require(
+    tvHost.isNotEmpty() &&
+        tvHost != "localhost" &&
+        tvHost != "127.0.0.1" &&
+        tvHost != "::1" &&
+        tvHost != "0.0.0.0",
+) {
+    "TV_START_URL must not point at localhost"
+}
+
+val releaseStoreFile = System.getenv("PLAYFIT_TV_STORE_FILE")?.trim().orEmpty()
+val releaseStorePassword = System.getenv("PLAYFIT_TV_STORE_PASSWORD").orEmpty()
+val releaseKeyAlias = System.getenv("PLAYFIT_TV_KEY_ALIAS").orEmpty()
+val releaseKeyPassword = System.getenv("PLAYFIT_TV_KEY_PASSWORD").orEmpty()
+if (releaseStoreFile.isNotEmpty()) {
+    require(releaseStorePassword.isNotEmpty() && releaseKeyAlias.isNotEmpty() && releaseKeyPassword.isNotEmpty()) {
+        "Set PLAYFIT_TV_STORE_PASSWORD, PLAYFIT_TV_KEY_ALIAS, and PLAYFIT_TV_KEY_PASSWORD with PLAYFIT_TV_STORE_FILE"
+    }
 }
 
 android {
@@ -19,7 +40,7 @@ android {
         minSdk = 24
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
         buildConfigField("String", "TV_START_URL", "\"${tvStartUrl.replace("\\", "\\\\").replace("\"", "")}\"")
     }
 
@@ -27,11 +48,24 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (releaseStoreFile.isNotEmpty()) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
-            // Cleartext and self-signed certificates are debug source-set only.
         }
         release {
+            if (releaseStoreFile.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

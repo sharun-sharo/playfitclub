@@ -20,3 +20,11 @@ apps/android-tv/.idea/
 apps/android-tv/local.properties
 apps/android-tv/build/
 apps/android-tv/app/build/
+*.jks
+*.keystore
+*.p12
+*.wgt
+apps/tizen-tv/.buildResult/
+apps/tizen-tv/.sign/
+apps/tizen-tv/author-signature.xml
+apps/tizen-tv/signature1.xml

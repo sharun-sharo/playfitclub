@@ -4,7 +4,7 @@ import android.net.http.SslError
 import android.webkit.SslErrorHandler
 import android.webkit.WebSettings
 
-/** Release builds keep platform TLS checks. Self-signed and cleartext dev servers are refused. */
+/** Release builds keep platform TLS checks. Cleartext and unverified certificates are refused. */
 object SslPolicy {
     val mixedContentMode: Int = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
