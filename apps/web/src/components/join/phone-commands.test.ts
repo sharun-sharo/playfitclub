@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHandsFree, type HandsFreeSample } from "../../lib/vision/hands-free";
-import { armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, canSendMovement, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, leanOverlayText, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, readMotionDiagFlag, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
+import { appendMotionDiag, armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, canSendMovement, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, groundedLabel, leanOverlayText, liveGestureName, motionDebugLines, motionDiagDownload, motionDiagnosticsEnabled, readMotionDiagFlag, shouldRetryMovement, trackingStatusLine, type MotionDiagSample } from "./phone-commands";
 
 const live = {
   controllerOn: true,
@@ -47,7 +47,47 @@ describe("phone command gate", () => {
     expect(lines).toContain("jump 42%");
     expect(lines).toContain("squat 70%");
     expect(lines).toContain("command none");
+    expect(lines).toContain("jump candidate NEUTRAL");
+    expect(lines).toContain("body grounded");
     expect(lines.join(" ")).not.toMatch(/token|session|name/i);
+  });
+
+  it("downloads a short pose log with timestamps and without identity fields", () => {
+    const sample: MotionDiagSample = {
+      t: 1200.4,
+      cameraFps: 15.2,
+      poseFps: 14.8,
+      confidence: 0.86,
+      hipVelocity: 0.17,
+      shoulderVelocity: 0.156,
+      kneeExtension: 6.2,
+      jumpCandidate: "JUMP_CONFIRMED",
+      jumpConfirmation: "CONFIRMED",
+      squatArbitration: "dropped",
+      lastJump: "mv01abc",
+      serverAck: "accepted",
+      grounded: "airborne",
+    };
+    const log = appendMotionDiag([], sample);
+    expect(log).toHaveLength(1);
+    expect(appendMotionDiag(Array.from({ length: 300 }, () => sample), sample)).toHaveLength(300);
+    const text = motionDiagDownload(log);
+    const parsed = JSON.parse(text) as { samples: Array<Record<string, unknown>> };
+    expect(parsed.samples[0]).toMatchObject({
+      t: 1200.4,
+      cameraFps: 15.2,
+      hipVelocity: 0.17,
+      shoulderVelocity: 0.156,
+      kneeExtension: 6.2,
+      jumpCandidate: "JUMP_CONFIRMED",
+      squatArbitration: "dropped",
+      serverAck: "accepted",
+      grounded: "airborne",
+    });
+    expect(text).not.toMatch(/token|email|session|name|@/i);
+    expect(groundedLabel("takeoff")).toBe("airborne");
+    expect(groundedLabel("grounded")).toBe("grounded");
+    expect(groundedLabel("landing")).toBe("grounded");
   });
 
   it("hides motion diagnostics in production unless the tester flag is set", () => {

@@ -294,6 +294,16 @@ export type BodyPhase =
 export type JumpMotion = "grounded" | "preparing" | "takeoff" | "airborne" | "landing" | "recovery";
 
 /**
+ * One physical jump, from the first dip to the next quiet stance.
+ * TAKEOFF_CANDIDATE is the frame the rise is clear. JUMP_CONFIRMED is the one event.
+ * REARMED is the quiet stance after landing. The next jump can start from there.
+ */
+export type TakeoffPhase = "NEUTRAL" | "PREPARING" | "TAKEOFF_CANDIDATE" | "JUMP_CONFIRMED" | "LANDING" | "REARMED";
+
+/** What happened to a dip that could have been a squat. A confirmed jump drops the pending one. */
+export type SquatArbitration = "idle" | "pending" | "deferred" | "dropped" | "emitted";
+
+/**
  * Jump and squat for one gesture. A dip that might be either stays in
  * POSSIBLE_JUMP_PREPARATION until takeoff, a sustained squat, or a return to neutral.
  * SUSTAINED_SQUAT is separate so standing up does not become a jump.
@@ -358,6 +368,13 @@ export interface PoseSignals {
   riseSpeed: number;
   /** Hip rise on this frame only, in torso-lengths per second. */
   hipVelocity: number;
+  /**
+   * Upward hip travel from the lowest hip in the recent timestamp window, in torso lengths.
+   * This is a distance, not a speed. A long camera gap does not shrink it.
+   */
+  hipRise: number;
+  /** Upward shoulder travel over that same window, in torso lengths. */
+  shoulderRise: number;
   /** Ankle rise on this frame only, in torso-lengths per second. Positive means the ankles moved up. */
   ankleVelocity: number;
   ankleRise: number;
@@ -391,6 +408,14 @@ export interface DetectorState {
   /** Unsmoothed hip image-y. Jump speed uses this so the blend cannot hide a small hop. */
   lastRawHipY: number | null;
   lastShoulderY: number | null;
+  /** Recent raw hip and shoulder image-y, with the frame timestamp. Jump travel uses this window. */
+  riseSamples: Array<{ t: number; hipY: number | null; shoulderY: number | null }>;
+  /** Jump path for the phone diagnostics. Squat and lane commands do not read it. */
+  takeoffPhase: TakeoffPhase;
+  /** Whether a dip is still waiting, was sent as a squat, or was dropped because a jump took off. */
+  squatArbitration: SquatArbitration;
+  /** The last jump event. A later squat or lane change does not erase it. */
+  lastJump: { eventId: string; at: number } | null;
   lastAnkleY: number | null;
   lastTimestamp: number | null;
   sequence: number;

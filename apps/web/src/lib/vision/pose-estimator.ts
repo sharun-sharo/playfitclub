@@ -63,6 +63,14 @@ export interface PoseDiagnostics {
   leftOutward: number;
   rightOutward: number;
   hipVelocity: number;
+  shoulderVelocity: number;
+  /** Degrees the knee has opened from the most bent sample of this dip. */
+  kneeExtension: number;
+  takeoffPhase: string;
+  squatArbitration: string;
+  lastJump: string | null;
+  /** airborne while the jump clip should be up. grounded the rest of the time. */
+  grounded: "grounded" | "airborne";
   ankleVelocity: number;
   ankleFlex: number;
   kneeFlex: number;
@@ -707,6 +715,13 @@ function diagnosticsFrom(
     leftOutward: (signals?.leftArm.lateral ?? 0) - (update.state.neutral?.leftWristLateral ?? 0),
     rightOutward: (signals?.rightArm.lateral ?? 0) - (update.state.neutral?.rightWristLateral ?? 0),
     hipVelocity: signals?.hipVelocity ?? 0,
+    shoulderVelocity: signals?.shoulderVelocity ?? 0,
+    kneeExtension:
+      update.state.compressionKnee === null ? 0 : Math.max(0, (signals?.kneeAngle ?? 0) - update.state.compressionKnee),
+    takeoffPhase: update.state.takeoffPhase,
+    squatArbitration: update.state.squatArbitration,
+    lastJump: update.state.lastJump?.eventId ?? null,
+    grounded: update.state.jumpMotion === "takeoff" || update.state.jumpMotion === "airborne" ? "airborne" : "grounded",
     ankleVelocity: signals?.ankleVelocity ?? 0,
     ankleFlex: signals?.ankleFlex ?? 0,
     kneeFlex: signals?.kneeFlex ?? 0,

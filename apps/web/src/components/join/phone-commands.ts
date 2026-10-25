@@ -157,9 +157,19 @@ export function motionDebugLines(input: {
   jumpConfidence: number;
   squatConfidence: number;
   command: string | null | undefined;
+  shoulderVelocity?: number;
+  kneeExtension?: number;
+  jumpCandidate?: string | null;
+  jumpConfirmation?: string | null;
+  squatArbitration?: string | null;
+  lastJump?: string | null;
+  serverAck?: string | null;
+  grounded?: string | null;
+  cameraFps?: number | null;
 }) {
   const pct = (value: number) => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
   const num = (value: number) => (Number.isFinite(value) ? value : 0);
+  const fps = typeof input.cameraFps === "number" && Number.isFinite(input.cameraFps) ? input.cameraFps.toFixed(1) : "—";
   return [
     `confidence ${pct(num(input.confidence))}`,
     `knee ${num(input.kneeAngle).toFixed(0)}°`,
@@ -169,7 +179,70 @@ export function motionDebugLines(input: {
     `jump ${pct(num(input.jumpConfidence))}`,
     `squat ${pct(num(input.squatConfidence))}`,
     `command ${input.command || "none"}`,
+    `camera ${fps} fps`,
+    `shoulder ${num(input.shoulderVelocity ?? 0).toFixed(2)} torso/s`,
+    `knee extension ${num(input.kneeExtension ?? 0).toFixed(0)}°`,
+    `jump candidate ${input.jumpCandidate || "NEUTRAL"}`,
+    `jump confirm ${input.jumpConfirmation || "NEUTRAL"}`,
+    `squat arbitration ${input.squatArbitration || "idle"}`,
+    `last jump ${input.lastJump || "none"}`,
+    `server ${input.serverAck || "none"}`,
+    `body ${input.grounded || "grounded"}`,
   ];
+}
+
+/** One diagnostics sample. Numbers and phase names only. */
+export interface MotionDiagSample {
+  t: number;
+  cameraFps: number | null;
+  poseFps: number | null;
+  confidence: number;
+  hipVelocity: number;
+  shoulderVelocity: number;
+  kneeExtension: number;
+  jumpCandidate: string;
+  jumpConfirmation: string;
+  squatArbitration: string;
+  lastJump: string | null;
+  serverAck: string;
+  grounded: string;
+}
+
+export function groundedLabel(jumpMotion: string) {
+  return jumpMotion === "takeoff" || jumpMotion === "airborne" ? "airborne" : "grounded";
+}
+
+/** Keeps a short tail. Older samples drop off the front. */
+export function appendMotionDiag(log: MotionDiagSample[], sample: MotionDiagSample, limit = 300) {
+  const next = [...log, sample];
+  return next.length > limit ? next.slice(next.length - limit) : next;
+}
+
+function diagNumber(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return null;
+  return Math.round(value * 1000) / 1000;
+}
+
+/** JSON for the phone download. Pose numbers and timestamps only. */
+export function motionDiagDownload(samples: MotionDiagSample[]) {
+  return JSON.stringify({
+    note: "Pose numbers and timestamps only.",
+    samples: samples.map((sample) => ({
+      t: diagNumber(sample.t),
+      cameraFps: diagNumber(sample.cameraFps),
+      poseFps: diagNumber(sample.poseFps),
+      confidence: diagNumber(sample.confidence),
+      hipVelocity: diagNumber(sample.hipVelocity),
+      shoulderVelocity: diagNumber(sample.shoulderVelocity),
+      kneeExtension: diagNumber(sample.kneeExtension),
+      jumpCandidate: sample.jumpCandidate,
+      jumpConfirmation: sample.jumpConfirmation,
+      squatArbitration: sample.squatArbitration,
+      lastJump: sample.lastJump,
+      serverAck: sample.serverAck,
+      grounded: sample.grounded,
+    })),
+  });
 }
 
 /** The chip on the camera. Empty until a gesture has fired. */

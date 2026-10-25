@@ -324,18 +324,27 @@ export function DiagnosticsSheet({
   rows,
   events,
   onClose,
+  onDownload,
 }: {
   rows: Array<[string, string]>;
   events: string[];
   onClose: () => void;
+  onDownload?: () => void;
 }) {
   return (
     <div className="absolute inset-x-0 bottom-0 z-30 max-h-[70dvh] overflow-y-auto rounded-t-3xl bg-[#101216] px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-white/80">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="font-display text-base tracking-[0.08em] text-white">Diagnostics</p>
-        <button type="button" className="min-h-11 px-3 text-white" onClick={onClose}>
-          Close
-        </button>
+        <div className="flex items-center gap-2">
+          {onDownload ? (
+            <button type="button" className="min-h-11 px-3 text-[#BEFF39]" onClick={onDownload}>
+              Download log
+            </button>
+          ) : null}
+          <button type="button" className="min-h-11 px-3 text-white" onClick={onClose}>
+            Close
+          </button>
+        </div>
       </div>
       <dl className="space-y-1">
         {rows.map(([label, value]) => (

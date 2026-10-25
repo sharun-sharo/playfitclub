@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { adaptThresholds, calibrateNeutral, neutralFromLandmarks } from "./calibration";
 import { COMMAND_STALE_MS, holdCommand, releaseCommand } from "./command-buffer";
-import { claimMovementId, createDetector, MAX_VELOCITY_GAP_MS, neutralDriftForGap, pushPose, resetMovementReady, resetPhoneForRound, setNeutral, settleGestures } from "./movement-state-machine";
+import { claimMovementId, createDetector, JUMP_RISE_DISPLACEMENT, MAX_VELOCITY_GAP_MS, neutralDriftForGap, pushPose, resetMovementReady, resetPhoneForRound, setNeutral, settleGestures } from "./movement-state-machine";
 import { DEFAULT_THRESHOLDS, type Landmark, type PoseFrame } from "./movement-types";
 
 function landmark(x: number, y: number, visibility = 1): Landmark {
@@ -1997,5 +1997,180 @@ describe("synthetic gesture counts at variable frame intervals", () => {
       events.push(...update.events);
     }
     expect(events.map((event) => event.movementType)).toEqual(["jump"]);
+  });
+});
+
+describe("synthetic small-hop takeoff", () => {
+  const rawDelta = 0.002244;
+  const torso = 0.2;
+
+  function play(frames: PoseFrame[]) {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    const events = [];
+    for (const frame of frames) {
+      const update = pushPose(state, frame);
+      state = update.state;
+      events.push(...update.events);
+    }
+    return { state, events };
+  }
+
+  function edgeHop(frameMs: number, extra: Partial<Parameters<typeof pose>[0]> = {}) {
+    return play(
+      Array.from({ length: 10 }, (_, index) => {
+        const dip = index === 3 || index === 4;
+        return pose({
+          time: 20_000 + index * frameMs,
+          hipDrop: dip || index === 5 ? 0.03 : 0,
+          rise: index === 5 ? rawDelta : 0,
+          ...extra,
+        });
+      }),
+    );
+  }
+
+  it("synthetic: documents the 66ms hop that was under jumpRise and is now one jump", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    expect(DEFAULT_THRESHOLDS.torsoLeanNeutral).toBe(0.07);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    expect(JUMP_RISE_DISPLACEMENT).toBe(0.011);
+    const at30 = rawDelta / 0.033 / torso;
+    const at15 = rawDelta / 0.066 / torso;
+    expect(at30).toBeCloseTo(0.34, 2);
+    expect(at15).toBeCloseTo(0.17, 2);
+    expect(at30).toBeGreaterThan(DEFAULT_THRESHOLDS.jumpRise);
+    expect(at15).toBeLessThan(DEFAULT_THRESHOLDS.jumpRise);
+    expect(rawDelta / torso).toBeGreaterThan(JUMP_RISE_DISPLACEMENT);
+    expect(0.002 / torso).toBeLessThan(JUMP_RISE_DISPLACEMENT);
+
+    const slow = edgeHop(66);
+    expect(slow.events.map((event) => event.movementType)).toEqual(["jump"]);
+    expect(new Set(slow.events.map((event) => event.eventId)).size).toBe(1);
+    const fast = edgeHop(33);
+    expect(fast.events.map((event) => event.movementType)).toEqual(["jump"]);
+  });
+
+  it("synthetic: a normal jump, a slight knee bend, and straight knees are one jump and not a squat", () => {
+    const normal = play(
+      Array.from({ length: 12 }, (_, index) =>
+        pose({
+          time: index * 33,
+          hipDrop: index === 3 ? 0.02 : 0,
+          rise: index === 4 ? 0.05 : 0,
+          kneeForward: 0.02,
+        }),
+      ),
+    );
+    expect(normal.events.map((event) => event.movementType)).toEqual(["jump"]);
+
+    const bent = edgeHop(66, { kneeForward: 0.06 });
+    expect(bent.events.map((event) => event.movementType)).toEqual(["jump"]);
+
+    const straight = edgeHop(66, { straightKnees: true });
+    expect(straight.events.map((event) => event.movementType)).toEqual(["jump"]);
+  });
+
+  it("synthetic: squat then one small jump, then a lane at the old lean line then one jump", () => {
+    const frame = 66;
+    const squatThenJump = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * frame })),
+      ...Array.from({ length: 8 }, (_, index) => pose({ time: (2 + index) * frame, hipDrop: 0.22, kneeForward: 0.1 })),
+      ...Array.from({ length: 8 }, (_, index) => pose({ time: (10 + index) * frame })),
+      ...Array.from({ length: 10 }, (_, index) => {
+        const dip = index === 3 || index === 4;
+        return pose({
+          time: (18 + index) * frame,
+          hipDrop: dip || index === 5 ? 0.03 : 0,
+          rise: index === 5 ? rawDelta : 0,
+        });
+      }),
+    ]);
+    expect(squatThenJump.events.map((event) => event.movementType)).toEqual(["squat", "jump"]);
+
+    const laneThenJump = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * frame })),
+      ...Array.from({ length: 4 }, (_, index) => pose({ time: (2 + index) * frame, shoulderLean: -0.045 })),
+      ...Array.from({ length: 6 }, (_, index) => pose({ time: (6 + index) * frame })),
+      ...Array.from({ length: 10 }, (_, index) => {
+        const dip = index === 3 || index === 4;
+        return pose({
+          time: (12 + index) * frame,
+          hipDrop: dip || index === 5 ? 0.03 : 0,
+          rise: index === 5 ? rawDelta : 0,
+        });
+      }),
+    ]);
+    expect(laneThenJump.events.map((event) => event.movementType)).toEqual(["lean_left", "jump"]);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+  });
+
+  it("synthetic: repeated hops emit one each, landing knees do not squat, tiptoes and running and a 2mm shake do not jump", () => {
+    const repeated = play(
+      [0, 1].flatMap((hop) =>
+        Array.from({ length: 14 }, (_, index) => {
+          const dip = index === 3 || index === 4;
+          return pose({
+            time: hop * 14 * 66 + index * 66,
+            hipDrop: dip || index === 5 ? 0.03 : 0,
+            rise: index === 5 ? rawDelta : 0,
+          });
+        }),
+      ),
+    );
+    const jumps = repeated.events.filter((event) => event.movementType === "jump");
+    expect(jumps).toHaveLength(2);
+    expect(jumps[0]?.eventId).not.toBe(jumps[1]?.eventId);
+    expect(repeated.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+
+    const landing = play([
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: index * 33 })),
+      pose({ time: 99, hipDrop: 0.02, kneeForward: 0.04 }),
+      pose({ time: 132, rise: 0.02, kneeForward: 0.02 }),
+      pose({ time: 165, rise: 0.03, kneeForward: 0.08 }),
+      pose({ time: 198, hipDrop: 0.04, kneeForward: 0.1 }),
+      pose({ time: 231, hipDrop: 0.02, kneeForward: 0.06 }),
+      ...Array.from({ length: 6 }, (_, index) => pose({ time: 264 + index * 33 })),
+    ]);
+    expect(landing.events.map((event) => event.movementType)).toEqual(["jump"]);
+
+    const tiptoes = play(Array.from({ length: 12 }, (_, index) => pose({ time: index * 66, rise: Math.min(0.012, index * 0.001) })));
+    expect(tiptoes.events).toHaveLength(0);
+
+    const running = play(Array.from({ length: 16 }, (_, index) => pose({ time: index * 66, hipDrop: index % 2 === 0 ? 0 : 0.008 })));
+    expect(running.events).toHaveLength(0);
+
+    const shake = play(Array.from({ length: 12 }, (_, index) => pose({ time: index * 33, rise: index % 2 === 0 ? 0 : 0.002 })));
+    expect(shake.events).toHaveLength(0);
+  });
+
+  it("synthetic: missing ankles still jump, low confidence emits nothing, and upward image motion is positive speed", () => {
+    const hidden = edgeHop(66, { hide: [27, 28] });
+    expect(hidden.events.map((event) => event.movementType)).toEqual(["jump"]);
+
+    const dim = edgeHop(66, { visibility: 0.2 });
+    expect(dim.events).toHaveLength(0);
+
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    let hipVelocity = 0;
+    for (let index = 0; index < 4; index += 1) {
+      const update = pushPose(state, pose({ time: index * 33, rise: index === 3 ? rawDelta : 0 }));
+      state = update.state;
+      if (index === 3) hipVelocity = update.signals?.hipVelocity ?? 0;
+    }
+    expect(hipVelocity).toBeGreaterThan(0);
+    let down = setNeutral(createDetector({ mirror: false }), neutral);
+    let downVelocity = 0;
+    for (let index = 0; index < 4; index += 1) {
+      const update = pushPose(down, pose({ time: index * 33, rise: index === 3 ? -rawDelta : 0 }));
+      down = update.state;
+      if (index === 3) downVelocity = update.signals?.hipVelocity ?? 0;
+    }
+    expect(downVelocity).toBeLessThan(0);
   });
 });

@@ -5,7 +5,7 @@ import { CLIENT_EVENTS, PROTOCOL_VERSION, SERVER_EVENTS } from "@fitplay/shared"
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { phoneBodyStatus, readinessInProgress } from "@/components/join/body-status";
-import { armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, readMotionDiagFlag, trackingStatusLine, type QueuedMovement } from "@/components/join/phone-commands";
+import { appendMotionDiag, armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagDownload, motionDiagnosticsEnabled, readMotionDiagFlag, trackingStatusLine, type MotionDiagSample, type QueuedMovement } from "@/components/join/phone-commands";
 import {
   CameraSetup,
   connectionCopy,
@@ -154,6 +154,8 @@ export function PhoneSession({ code }: { code: string }) {
   const sentAtRef = useRef<Map<string, number>>(new Map());
   const motionDiagRef = useRef(false);
   const [motionDiag, setMotionDiag] = useState(false);
+  const diagLogRef = useRef<MotionDiagSample[]>([]);
+  const diagAckRef = useRef("none");
   const outboxRef = useRef<QueuedMovement<MovementPacket>[]>([]);
   const flushMovesRef = useRef<() => void>(() => {});
   const [phase, setPhase] = useState("lobby");
@@ -449,6 +451,7 @@ export function PhoneSession({ code }: { code: string }) {
       if (code === "DUPLICATE_EVENT" || code === "MOVEMENT_REJECTED" || code === "SCORE_REJECTED" || code === "GAME_OVER" || (code === "RATE_LIMITED" && joinedRef.current)) {
         noteEvent(`movement ${code}`);
         if (motionDiagRef.current) console.info(`[motiondiag] ack ${code}`);
+        diagAckRef.current = code || "none";
         setTrace((current) => ({
           ...current,
           lastAck: payload.message || code,
@@ -474,6 +477,7 @@ export function PhoneSession({ code }: { code: string }) {
       const phoneRoundTripMs = typeof sent === "number" ? Date.now() - sent : null;
       const tvState = payload.accepted ? `applied ${payload.movementType ?? "move"}` : `rejected ${payload.reason || "unknown"}`;
       if (motionDiagRef.current) console.info(`[motiondiag] tv ${tvState}`);
+      diagAckRef.current = tvState;
       noteEvent(payload.accepted ? "movement applied" : "movement declined");
       setTrace((current) => ({
         ...current,
@@ -783,6 +787,24 @@ export function PhoneSession({ code }: { code: string }) {
             poseCount: state.poseCount,
           };
           setUi(state);
+          if (motionDiagRef.current && state.diagnostics) {
+            const diagnostics = state.diagnostics;
+            diagLogRef.current = appendMotionDiag(diagLogRef.current, {
+              t: diagnostics.poseAtMs,
+              cameraFps: state.rates.cameraFps,
+              poseFps: state.rates.poseFps,
+              confidence: diagnostics.confidence,
+              hipVelocity: diagnostics.hipVelocity,
+              shoulderVelocity: diagnostics.shoulderVelocity,
+              kneeExtension: diagnostics.kneeExtension,
+              jumpCandidate: diagnostics.takeoffPhase,
+              jumpConfirmation: diagnostics.jumpPhase ?? "NEUTRAL",
+              squatArbitration: diagnostics.squatArbitration,
+              lastJump: diagnostics.lastJump,
+              serverAck: diagAckRef.current,
+              grounded: diagnostics.grounded,
+            });
+          }
           const hands = syncHandsRef.current();
           publishDiagnostics(
             state.confidence,
@@ -850,6 +872,7 @@ export function PhoneSession({ code }: { code: string }) {
     for (const dropped of step.dropped) {
       const label = gestureLabel(dropped.body.movementType);
       if (motionDiagRef.current) console.info(`[motiondiag] dropped unsent ${label} age ${now - dropped.queuedAt}ms reason stale`);
+      diagAckRef.current = "stale";
       setTrace((currentTrace) => ({
         ...currentTrace,
         lastAck: "Command was too old to apply",
@@ -869,6 +892,7 @@ export function PhoneSession({ code }: { code: string }) {
         (response: { ok?: boolean; message?: string; code?: string; serverTimeMs?: number }) => {
           const code = response?.ok ? "accepted" : response?.code || "rejected";
           if (motionDiagRef.current) console.info(`[motiondiag] ack ${label} ${code}`);
+          diagAckRef.current = code;
           setTrace((currentTrace) => ({
             ...currentTrace,
             lastAck: response?.ok ? `${label} accepted` : response?.message || response?.code || "The server did not accept it.",
@@ -1109,6 +1133,16 @@ export function PhoneSession({ code }: { code: string }) {
     setDiagnosticsOpen(true);
   }
 
+  function downloadMotionLog() {
+    const blob = new Blob([motionDiagDownload(diagLogRef.current)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "fitrunner-motion.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const previewNotice: PhoneNotice | null = preview && !preview.ok && !joined
     ? {
         id: "preview",
@@ -1202,7 +1236,7 @@ export function PhoneSession({ code }: { code: string }) {
           {showDiagnostics && ui.diagnostics ? (
             <aside
               data-motion-debug=""
-              className="pointer-events-none absolute top-24 left-[max(0.75rem,env(safe-area-inset-left))] z-20 w-44 rounded-xl bg-black/70 px-2 py-1.5 font-mono text-[10px] leading-snug text-white/85"
+              className="pointer-events-none absolute top-24 left-[max(0.75rem,env(safe-area-inset-left))] z-20 max-h-[55dvh] w-60 overflow-y-auto rounded-xl bg-black/70 px-2 py-1.5 font-mono text-[10px] leading-snug text-white/85"
             >
               {motionDebugLines({
                 confidence: ui.diagnostics.confidence,
@@ -1213,10 +1247,21 @@ export function PhoneSession({ code }: { code: string }) {
                 jumpConfidence: ui.diagnostics.jumpConfidence,
                 squatConfidence: ui.diagnostics.squatConfidence,
                 command: ui.diagnostics.lastGesture,
+                shoulderVelocity: ui.diagnostics.shoulderVelocity,
+                kneeExtension: ui.diagnostics.kneeExtension,
+                jumpCandidate: ui.diagnostics.takeoffPhase,
+                jumpConfirmation: ui.diagnostics.jumpPhase,
+                squatArbitration: ui.diagnostics.squatArbitration,
+                lastJump: ui.diagnostics.lastJump,
+                serverAck: authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck }),
+                grounded: ui.diagnostics.grounded,
+                cameraFps: ui.rates.cameraFps,
               }).map((line) => (
                 <p key={line}>{line}</p>
               ))}
-              <p>fps {ui.rates.cameraFps === null ? "—" : ui.rates.cameraFps.toFixed(1)}</p>
+              <button type="button" className="pointer-events-auto mt-1 min-h-8 w-full rounded-md bg-white/15 text-left text-white" onClick={downloadMotionLog}>
+                Download log
+              </button>
               <p>candidate {candidateLabel(ui.diagnostics)}</p>
               <p>confirmed {ui.diagnostics.lastGesture || trace.lastGesture || "none"}</p>
               <p>sent {trace.lastSent || "none"}</p>
@@ -1278,6 +1323,7 @@ export function PhoneSession({ code }: { code: string }) {
         <DiagnosticsSheet
           rows={diagnosticRows(ui, trace, cameraStatus, link, phase, upright)}
           events={eventLog}
+          onDownload={downloadMotionLog}
           onClose={() => {
             diagnosticsOpenRef.current = false;
             setDiagnosticsOpen(false);
@@ -1398,7 +1444,10 @@ function diagnosticRows(
     ["Outward", diagnostics ? `L ${diagnostics.leftOutward.toFixed(2)} · R ${diagnostics.rightOutward.toFixed(2)} shoulders` : "—"],
     ["Arm angles", diagnostics ? `L ${diagnostics.leftElevation.toFixed(0)}° reach ${diagnostics.leftReach.toFixed(2)} · R ${diagnostics.rightElevation.toFixed(0)}° reach ${diagnostics.rightReach.toFixed(2)}` : "—"],
     ["Elbows", diagnostics ? `L ${diagnostics.leftElbow.toFixed(0)}° · R ${diagnostics.rightElbow.toFixed(0)}°` : "—"],
-    ["Jump", diagnostics ? `${diagnostics.jumpMotion} · hip ${diagnostics.hipVelocity.toFixed(2)} torso/s · ankle ${diagnostics.ankleRise.toFixed(2)}` : "—"],
+    ["Jump", diagnostics ? `${diagnostics.takeoffPhase} · ${diagnostics.grounded} · hip ${diagnostics.hipVelocity.toFixed(2)} · shoulder ${diagnostics.shoulderVelocity.toFixed(2)} torso/s` : "—"],
+    ["Knee extension", diagnostics ? `${diagnostics.kneeExtension.toFixed(0)}°` : "—"],
+    ["Squat arbitration", diagnostics?.squatArbitration ?? "—"],
+    ["Last jump", diagnostics?.lastJump || "none"],
     ["Gesture state", diagnostics?.recognition ?? "—"],
     ["Jump confidence", diagnostics ? `${Math.round(diagnostics.jumpConfidence * 100)}%` : "—"],
     ["Squat confidence", diagnostics ? `${Math.round(diagnostics.squatConfidence * 100)}%` : "—"],
