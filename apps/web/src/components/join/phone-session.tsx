@@ -5,7 +5,7 @@ import { CLIENT_EVENTS, PROTOCOL_VERSION, SERVER_EVENTS } from "@fitplay/shared"
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { phoneBodyStatus, readinessInProgress } from "@/components/join/body-status";
-import { armDiagnosticLabel, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDiagnosticsEnabled, trackingStatusLine } from "@/components/join/phone-commands";
+import { armDiagnosticLabel, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, trackingStatusLine } from "@/components/join/phone-commands";
 import {
   CameraSetup,
   connectionCopy,
@@ -1120,6 +1120,25 @@ export function PhoneSession({ code }: { code: string }) {
               </div>
             ) : null}
           </div>
+          {showDiagnostics && ui.diagnostics ? (
+            <aside
+              data-motion-debug=""
+              className="pointer-events-none absolute top-24 left-[max(0.75rem,env(safe-area-inset-left))] z-20 w-44 rounded-xl bg-black/70 px-2 py-1.5 font-mono text-[10px] leading-snug text-white/85"
+            >
+              {motionDebugLines({
+                confidence: ui.diagnostics.confidence,
+                kneeAngle: ui.diagnostics.kneeAngle,
+                hipDrop: ui.diagnostics.hipDrop,
+                hipVelocity: ui.diagnostics.hipVelocity,
+                recognition: ui.diagnostics.recognition,
+                jumpConfidence: ui.diagnostics.jumpConfidence,
+                squatConfidence: ui.diagnostics.squatConfidence,
+                command: ui.diagnostics.lastGesture,
+              }).map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </aside>
+          ) : null}
           {gesture ? (
             <p className="pointer-events-none absolute bottom-[max(4.75rem,calc(env(safe-area-inset-bottom)+4rem))] left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-4 py-1 font-display tracking-[0.18em] text-[#BEFF39]">
               {gesture}
@@ -1294,6 +1313,9 @@ function diagnosticRows(
     ["Arm angles", diagnostics ? `L ${diagnostics.leftElevation.toFixed(0)}° reach ${diagnostics.leftReach.toFixed(2)} · R ${diagnostics.rightElevation.toFixed(0)}° reach ${diagnostics.rightReach.toFixed(2)}` : "—"],
     ["Elbows", diagnostics ? `L ${diagnostics.leftElbow.toFixed(0)}° · R ${diagnostics.rightElbow.toFixed(0)}°` : "—"],
     ["Jump", diagnostics ? `${diagnostics.jumpMotion} · hip ${diagnostics.hipVelocity.toFixed(2)} torso/s · ankle ${diagnostics.ankleRise.toFixed(2)}` : "—"],
+    ["Gesture state", diagnostics?.recognition ?? "—"],
+    ["Jump confidence", diagnostics ? `${Math.round(diagnostics.jumpConfidence * 100)}%` : "—"],
+    ["Squat confidence", diagnostics ? `${Math.round(diagnostics.squatConfidence * 100)}%` : "—"],
     ["Gesture", diagnostics?.phase ?? "—"],
     ["Cooldown", diagnostics ? `${Math.round(diagnostics.cooldownMs)} ms` : "—"],
     ["Left check", armCheckCopy("left", gesture)],

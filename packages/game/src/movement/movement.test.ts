@@ -1727,3 +1727,160 @@ describe("body lean lane control", () => {
     expect(dim.events).toHaveLength(0);
   });
 });
+
+describe("pre-jump knee bend versus squat", () => {
+  const frame = 33;
+
+  function play(steps: Array<Omit<Parameters<typeof pose>[0], "time"> & { n?: number }>) {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+    const events = [];
+    let time = 0;
+    for (const step of steps) {
+      const count = step.n ?? 1;
+      for (let index = 0; index < count; index += 1) {
+        const update = pushPose(state, pose({ ...step, time }));
+        state = update.state;
+        events.push(...update.events);
+        time += frame;
+      }
+    }
+    return { state, events };
+  }
+
+  it("keeps the squat gate and watches an ambiguous dip inside 120–200ms", () => {
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBeGreaterThanOrEqual(120);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBeLessThanOrEqual(200);
+    expect(DEFAULT_THRESHOLDS.jumpPrepMaxDrop).toBeGreaterThan(DEFAULT_THRESHOLDS.squatEnterDrop);
+  });
+
+  it("emits one jump and no squat when a slight knee bend rises", () => {
+    const { events } = play([
+      { n: 3 },
+      { n: 3, hipDrop: 0.05, kneeForward: 0.08 },
+      { n: 2, rise: 0.06, kneeForward: 0.02 },
+      { n: 6 },
+    ]);
+    expect(events.map((event) => event.movementType)).toEqual(["jump"]);
+    expect(events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    expect(new Set(events.map((event) => event.eventId)).size).toBe(1);
+  });
+
+  it("emits one jump without a deep knee bend", () => {
+    const { events } = play([
+      { n: 3 },
+      { hipDrop: 0.012, kneeForward: 0.02 },
+      { n: 2, rise: 0.05, kneeForward: 0.02 },
+      { n: 4 },
+    ]);
+    expect(events.map((event) => event.movementType)).toEqual(["jump"]);
+  });
+
+  it("emits one deep squat and does not jump on the way up", () => {
+    const { events } = play([
+      { n: 2 },
+      { n: 6, hipDrop: 0.22, kneeForward: 0.1 },
+      { n: 6 },
+    ]);
+    expect(events.map((event) => event.movementType)).toEqual(["squat"]);
+  });
+
+  it("emits one shallow squat when the lowered posture is held", () => {
+    const moderate = play([
+      { n: 2 },
+      { n: 4, hipDrop: 0.024 },
+      { n: 4 },
+    ]);
+    expect(moderate.events.map((event) => event.movementType)).toEqual(["squat"]);
+
+    const held = play([
+      { n: 2 },
+      { n: 8, hipDrop: 0.03, kneeForward: 0.06 },
+      { n: 4 },
+    ]);
+    expect(held.events.filter((event) => event.movementType === "squat")).toHaveLength(1);
+    expect(held.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+    const squatAt = held.events[0]?.clientTimestamp ?? 0;
+    expect(squatAt - 2 * frame).toBeGreaterThanOrEqual(DEFAULT_THRESHOLDS.dipClassifyMs);
+  });
+
+  it("does not squat when the knees bend on landing", () => {
+    const { events } = play([
+      { n: 3 },
+      { n: 2, hipDrop: 0.03, kneeForward: 0.06 },
+      { n: 2, rise: 0.06, kneeForward: 0.02 },
+      { n: 3, hipDrop: 0.05, kneeForward: 0.08 },
+      { n: 6 },
+    ]);
+    expect(events.map((event) => event.movementType)).toEqual(["jump"]);
+  });
+
+  it("emits nothing for running in place", () => {
+    const { events } = play(Array.from({ length: 16 }, (_, index) => ({ hipDrop: index % 2 === 0 ? 0 : 0.04 })));
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits nothing when a slight bend returns to stand without a rise", () => {
+    const { events } = play([
+      { n: 3 },
+      { n: 2, hipDrop: 0.05, kneeForward: 0.08 },
+      { n: 6 },
+    ]);
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits two jumps after the body is neutral between them", () => {
+    const { events } = play([
+      { n: 3 },
+      { n: 2, hipDrop: 0.03, kneeForward: 0.06 },
+      { n: 2, rise: 0.05, kneeForward: 0.02 },
+      { n: 8 },
+      { n: 2, hipDrop: 0.03, kneeForward: 0.06 },
+      { n: 2, rise: 0.05, kneeForward: 0.02 },
+      { n: 4 },
+    ]);
+    const jumps = events.filter((event) => event.movementType === "jump");
+    expect(jumps).toHaveLength(2);
+    expect(jumps[0]?.eventId).not.toBe(jumps[1]?.eventId);
+    expect(events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+
+  it("emits a squat and then a jump, once each", () => {
+    const { events } = play([
+      { n: 2 },
+      { n: 5, hipDrop: 0.22, kneeForward: 0.1 },
+      { n: 8 },
+      { n: 2, hipDrop: 0.03, kneeForward: 0.06 },
+      { n: 2, rise: 0.05, kneeForward: 0.02 },
+      { n: 4 },
+    ]);
+    expect(events.map((event) => event.movementType)).toEqual(["squat", "jump"]);
+    expect(events[0]?.eventId).not.toBe(events[1]?.eventId);
+  });
+
+  it("emits nothing from partial landmarks or low confidence", () => {
+    const hidden = play([
+      { n: 2 },
+      { n: 4, hipDrop: 0.2, hide: [23, 24] },
+      { n: 2 },
+    ]);
+    expect(hidden.events).toHaveLength(0);
+
+    const dim = play([
+      { n: 2 },
+      { n: 4, hipDrop: 0.2, visibility: 0.2 },
+      { n: 2 },
+    ]);
+    expect(dim.events).toHaveLength(0);
+
+    const noFeet = play([
+      { n: 2 },
+      { n: 3, hipDrop: 0.05, kneeForward: 0.08, hide: [27, 28] },
+      { n: 2, rise: 0.06, hide: [27, 28] },
+    ]);
+    expect(noFeet.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+});

@@ -235,3 +235,9 @@ Run this on a phone against the TV, with the player in a saree. A green unit tes
 - Event-id memory lives in the realtime process. A server restart forgets it.
 - Session samples and the drifting neutral pose are wiped on recalibrate, leave, or reload. They are not a user profile.
 - This pass did not open the camera in a browser. The local HTTPS certificate was not accepted by the browser tool. The join HTML from the running dev server is a full-viewport page with no site nav.
+
+## Pre-jump knee bend
+
+A slight knee bend before takeoff was emitted as a squat. `squatEnterDrop` is 0.10 torso, and any settled drop at or above 0.22 torso confirmed on the second still frame. The rise was then treated as standing up, which must not jump. The robot ducked and the jump never started.
+
+An ambiguous dip now waits `dipClassifyMs` (160ms, inside 120–200). That wait applies when the hip drop is under `jumpPrepMaxDrop` (0.32 torso) or the hips are still falling. A rise faster than `jumpRise` 0.32 emits one jump on that frame and does not also emit a squat. A posture that is still down when the window ends emits one squat. The 0.10 gate is unchanged, so a moderate squat that is actually held still emits once, and a deeper settled squat still emits on the next still frame. Standing up from that squat is not a jump. Knee flexion on landing is not a squat; the next gesture arms only after a quiet stance. Raise `dipClassifyMs` if a slow pre-jump bend still ducks. Lower `jumpPrepMaxDrop` if a medium squat feels late. Both live in the motion thresholds, not as scattered phone-UI numbers. Commands older than 400ms are still dropped and are not resent. No phone was used.

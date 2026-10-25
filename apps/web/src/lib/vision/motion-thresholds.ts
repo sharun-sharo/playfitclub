@@ -1,5 +1,15 @@
 import { DEFAULT_THRESHOLDS, type MovementThresholds } from "@fitplay/game";
 
+/**
+ * An ambiguous dip (hips between squatEnterDrop and jumpPrepMaxDrop, or still falling)
+ * waits dipClassifyMs before it can become a squat. That window is 120–200ms.
+ * If the hips or shoulders then rise faster than jumpRise, the phone emits one jump
+ * on that frame and does not also emit a squat. A posture that is still down when the
+ * window ends emits one squat. The squat gate stays 0.10 torso. A deeper settled squat
+ * does not wait out the window. Standing up from a squat is not a jump, and a knee bend
+ * on landing is not a squat until the body is quiet again.
+ */
+
 export const MOTION_THRESHOLD_KEY = "fitplay.motion.thresholds";
 
 export const MOTION_THRESHOLD_FIELDS = [
@@ -16,6 +26,8 @@ export const MOTION_THRESHOLD_FIELDS = [
   { key: "squatEnterDrop", label: "squat drop", min: 0.06, max: 0.55, step: 0.01 },
   { key: "squatKneeEnter", label: "knee °", min: 100, max: 160, step: 1 },
   { key: "jumpRise", label: "jump rise", min: 0.2, max: 1.4, step: 0.01 },
+  { key: "dipClassifyMs", label: "dip window", min: 120, max: 200, step: 10 },
+  { key: "jumpPrepMaxDrop", label: "jump prep depth", min: 0.12, max: 0.5, step: 0.01 },
   { key: "jumpAnkleRise", label: "ankle rise", min: 0, max: 0.2, step: 0.005 },
   { key: "recoverMs", label: "recover ms", min: 0, max: 500, step: 10 },
   { key: "cooldownMs", label: "cooldown", min: 0, max: 600, step: 10 },

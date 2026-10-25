@@ -67,6 +67,11 @@ export interface PoseDiagnostics {
   ankleFlex: number;
   kneeFlex: number;
   jumpMotion: string;
+  /** Jump-versus-squat phase. Development panel only. */
+  recognition: string;
+  /** 0–1 display score. Not a second emit gate. */
+  jumpConfidence: number;
+  squatConfidence: number;
   cooldownMs: number;
   /** Phone performance clock for this frame. Not Date.now(). */
   poseAtMs: number;
@@ -639,6 +644,9 @@ function diagnosticsFrom(
     ankleFlex: signals?.ankleFlex ?? 0,
     kneeFlex: signals?.kneeFlex ?? 0,
     jumpMotion: update.state.jumpMotion,
+    recognition: update.state.recognition,
+    jumpConfidence: update.state.jumpConfidence,
+    squatConfidence: update.state.squatConfidence,
     cooldownMs: Math.max(0, update.state.recoverUntil - stamp),
     poseAtMs,
     gestureAtMs: update.state.lastGesture?.at ?? null,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHandsFree, type HandsFreeSample } from "../../lib/vision/hands-free";
-import { armDiagnosticLabel, canSendMovement, framingStatusCue, gameplaySendAllowed, leanOverlayText, liveGestureName, motionDiagnosticsEnabled, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
+import { armDiagnosticLabel, canSendMovement, framingStatusCue, gameplaySendAllowed, leanOverlayText, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
 
 const live = {
   controllerOn: true,
@@ -25,6 +25,29 @@ describe("phone command gate", () => {
     expect(shouldRetryMovement("stale", 500)).toBe(false);
     expect(shouldRetryMovement("DUPLICATE_EVENT", 10)).toBe(false);
     expect(shouldRetryMovement(null, 10)).toBe(false);
+  });
+
+  it("shows jump and squat numbers on the phone debug panel and hides them in production", () => {
+    expect(motionDiagnosticsEnabled("production")).toBe(false);
+    const lines = motionDebugLines({
+      confidence: 0.86,
+      kneeAngle: 141.2,
+      hipDrop: 0.18,
+      hipVelocity: 1.4,
+      recognition: "POSSIBLE_JUMP_PREPARATION",
+      jumpConfidence: 0.42,
+      squatConfidence: 0.7,
+      command: "none",
+    });
+    expect(lines).toContain("confidence 86%");
+    expect(lines).toContain("knee 141°");
+    expect(lines).toContain("hip 0.18 torso");
+    expect(lines).toContain("vertical 1.40 torso/s");
+    expect(lines).toContain("state POSSIBLE_JUMP_PREPARATION");
+    expect(lines).toContain("jump 42%");
+    expect(lines).toContain("squat 70%");
+    expect(lines).toContain("command none");
+    expect(lines.join(" ")).not.toMatch(/token|session|name/i);
   });
 
   it("hides motion diagnostics in production", () => {

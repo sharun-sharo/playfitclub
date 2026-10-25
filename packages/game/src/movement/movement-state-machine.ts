@@ -7,12 +7,14 @@ import {
   type BodyPhase,
   type DetectorState,
   type GestureTrack,
+  type JumpMotion,
   type MovementDraft,
   type MovementThresholds,
   type NeutralPose,
   type PoseFrame,
   type PoseRejectReason,
   type PoseSignals,
+  type RecognitionPhase,
 } from "./movement-types";
 
 /** A single dropped frame must not wipe a gesture that is still forming. */
@@ -65,6 +67,11 @@ export function createDetector(overrides: Partial<MovementThresholds> = {}): Det
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
+    recognition: "NEUTRAL",
+    compressionKnee: null,
+    dipStillFrames: 0,
+    jumpConfidence: 0,
+    squatConfidence: 0,
     prepSince: null,
     dipOpen: false,
     squatCalm: false,
@@ -85,6 +92,11 @@ export function setNeutral(state: DetectorState, neutral: NeutralPose): Detector
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
+    recognition: "NEUTRAL",
+    compressionKnee: null,
+    dipStillFrames: 0,
+    jumpConfidence: 0,
+    squatConfidence: 0,
     prepSince: null,
     dipOpen: false,
     squatCalm: false,
@@ -113,6 +125,11 @@ export function resetMovementReady(state: DetectorState): DetectorState {
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
+    recognition: "NEUTRAL",
+    compressionKnee: null,
+    dipStillFrames: 0,
+    jumpConfidence: 0,
+    squatConfidence: 0,
     prepSince: null,
     dipOpen: false,
     squatCalm: false,
@@ -150,6 +167,11 @@ export function settleGestures(state: DetectorState): DetectorState {
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
+    recognition: "NEUTRAL",
+    compressionKnee: null,
+    dipStillFrames: 0,
+    jumpConfidence: 0,
+    squatConfidence: 0,
     prepSince: null,
     dipOpen: false,
     squatCalm: false,
@@ -246,6 +268,9 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
         prepSince: expired ? null : state.prepSince,
         dipOpen: expired ? false : state.dipOpen,
         squatCalm: expired ? false : state.squatCalm,
+        compressionKnee: expired ? null : state.compressionKnee,
+        dipStillFrames: expired ? 0 : state.dipStillFrames,
+        recognition: expired ? "NEUTRAL" : state.recognition,
         left: keep(state.left),
         right: keep(state.right),
         torso: keepTorso(state.torso),
@@ -280,6 +305,11 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
         squat: freshTrack(),
         jump: freshTrack(),
         jumpMotion: "grounded",
+        recognition: "NEUTRAL",
+        compressionKnee: null,
+        dipStillFrames: 0,
+        jumpConfidence: 0,
+        squatConfidence: 0,
         prepSince: null,
         dipOpen: false,
         squatCalm: false,
@@ -332,6 +362,8 @@ function transitionPhase(
   let prepSince = state.prepSince;
   let dipOpen = state.dipOpen;
   let squatCalm = state.squatCalm;
+  let compressionKnee = state.compressionKnee;
+  let dipStillFrames = state.dipStillFrames;
 
   const emit = (movementType: MovementDraft["movementType"], confidence: number) => {
     sequence += 1;
@@ -347,28 +379,39 @@ function transitionPhase(
     rejectLatched = true;
   };
 
-  const pack = () => ({
-    events,
-    state: {
-      ...state,
-      phase,
-      recoverUntil,
-      sequence,
-      left,
-      right,
-      torso,
-      squat,
-      jump,
-      jumpMotion,
-      prepSince,
-      dipOpen,
-      squatCalm,
-      lastReject,
-      rejectLatched,
-      lastGesture,
-      lostSince: null,
-    },
-  });
+  const pack = () => {
+    const recognition = recognizePhase(phase, jumpMotion, squat.phase);
+    if (process.env.NODE_ENV === "development" && recognition !== state.recognition) {
+      console.info(`[motion] ${new Date().toISOString()} ${state.recognition} -> ${recognition}`);
+    }
+    return {
+      events,
+      state: {
+        ...state,
+        phase,
+        recoverUntil,
+        sequence,
+        left,
+        right,
+        torso,
+        squat,
+        jump,
+        jumpMotion,
+        recognition,
+        compressionKnee,
+        dipStillFrames,
+        jumpConfidence: jumpScore(signals, thresholds),
+        squatConfidence: squatScore(signals, thresholds),
+        prepSince,
+        dipOpen,
+        squatCalm,
+        lastReject,
+        rejectLatched,
+        lastGesture,
+        lostSince: null,
+      },
+    };
+  };
 
   const neutral = state.neutral;
   const leftUp = neutral ? armRaised(signals.leftArm, neutral.leftWristLateral, usesExit(left), thresholds) : false;
@@ -397,12 +440,30 @@ function transitionPhase(
   // Back near standing, feet down. A speed frame that is still in the dip is the hop, not the stand-up.
   const plantedAfterDuck =
     squatCalm && signals.ankleRise < 0.015 && signals.hipDrop < thresholds.jumpPrepDrop && signals.hipDrop > -0.03;
+  if (dipping && signals.legsReady) {
+    compressionKnee = Math.min(compressionKnee ?? signals.kneeAngle, signals.kneeAngle);
+  }
+  // A bent-knee dip can jump only after the knees open and the feet leave the floor.
+  // Straight knees, and hidden knees, keep the hip-rise path. Image y grows downward;
+  // hipVelocity is already positive when the hips move up.
+  const kneeCompressed =
+    signals.legsReady &&
+    compressionKnee !== null &&
+    neutral !== null &&
+    neutral.kneeAngle - compressionKnee >= thresholds.jumpPrepKnee;
+  const kneeExtended = compressionKnee !== null && signals.kneeAngle >= compressionKnee + thresholds.kneeExtendDeg;
+  const ankleLifted = !signals.legsReady || signals.ankleRise > thresholds.jumpAnkleRise || signals.ankleVelocity > thresholds.jumpRise;
+  // Knee extension and foot lift support a jump. They do not block a hop the rise gate already accepts.
+  // A planted stand-up has neither foot lift nor an elevated hip, so it stays out of this path.
+  const evidencedRise =
+    kneeCompressed && kneeExtended && ankleLifted && risingNow && !signals.forwardBend && !plantedAfterDuck;
   const takeoffFromDip =
-    (dipReal || oneFrameHop) &&
-    !signals.forwardBend &&
-    !plantedAfterDuck &&
-    (risingNow || (signals.riseSpeed > thresholds.jumpRise && elevated)) &&
-    (signals.legsReady || elevated);
+    evidencedRise ||
+    ((dipReal || oneFrameHop) &&
+      !signals.forwardBend &&
+      !plantedAfterDuck &&
+      (risingNow || (signals.riseSpeed > thresholds.jumpRise && elevated)) &&
+      (signals.legsReady || elevated));
 
   let justLanded = false;
   if (jump.phase === "CONFIRMED" || jump.phase === "SENT" || jump.phase === "WAIT_RESET") {
@@ -423,6 +484,8 @@ function transitionPhase(
     prepSince = null;
     dipOpen = false;
     squatCalm = false;
+    dipStillFrames = 0;
+    compressionKnee = null;
     phase = "RECOVERING";
     recoverUntil = now + thresholds.recoverMs;
     justLanded = true;
@@ -443,12 +506,20 @@ function transitionPhase(
   // so the next hop can arm during the squat recovery instead of being thrown away.
   const standingOutOfSquat =
     jumpMotion === "recovery" && signals.hipVelocity > 0.35 && signals.hipDrop > thresholds.jumpPrepDrop;
-  if (dipping && !countermovement && !squatLatched && jump.phase === "NEUTRAL" && !standingOutOfSquat) {
+  // Landing stays disarmed until the body is quiet. A knee bend on the way down is not a new gesture.
+  // The next dip can arm on the frame after that quiet stance, without waiting out recoverMs.
+  const stanceSettled =
+    signals.hipDrop < 0.02 &&
+    signals.hipDrop > -0.03 &&
+    Math.abs(signals.hipVelocity) < 0.2 &&
+    signals.ankleRise < thresholds.jumpAnkleRise;
+  if (jumpMotion === "landing" && stanceSettled && !justLanded) jumpMotion = "grounded";
+  if (dipping && !countermovement && !squatLatched && jump.phase === "NEUTRAL" && !standingOutOfSquat && jumpMotion !== "landing") {
     // Keep the clock from the frame the dip started. Resetting it on every downward
     // sample made the rise 33ms later, which is after a one-frame hop has already slowed.
     if (!state.dipOpen || prepSince === null) prepSince = now;
     dipOpen = true;
-    if (jumpMotion !== "landing") jumpMotion = "preparing";
+    jumpMotion = "preparing";
   } else if (!dipping || countermovement) {
     dipOpen = false;
   }
@@ -457,31 +528,41 @@ function transitionPhase(
   // Nearly still, in torso-lengths per second. A hop is still moving at its bottom.
   // Two still frames is a duck. One still frame at the bottom of a hop is not.
   const squatStill = Math.abs(signals.hipVelocity) < 0.75;
+  // Airborne and landing keep the squat disarmed. A bent knee on the way down is not a duck.
+  // The next squat can arm only after a stable neutral, which is the calm check below.
+  const jumpLocked = jumpMotion === "landing" || jumpMotion === "airborne" || jumpMotion === "takeoff";
   let holdingSquat = false;
-  if (countermovement) {
+  if (jumpLocked) {
     squat = freshTrack();
     squatCalm = false;
+    dipStillFrames = 0;
+    compressionKnee = null;
+  } else if (countermovement) {
+    squat = freshTrack();
+    squatCalm = false;
+    dipStillFrames = 0;
   } else if (inSquatBand) {
     holdingSquat = true;
+    dipStillFrames = squatStill ? dipStillFrames + 1 : 0;
     if (!squatLatched) {
       const since = squat.phase === "CANDIDATE" ? squat.since : now;
       const held = squat.phase === "CANDIDATE" && now - since >= thresholds.squatHoldMs;
-      // A hop crouch can sit still at squat depth for a few frames and then leave the floor.
-      // Confirming the duck at the second still frame cleared the dip, so the rise never jumped.
-      // Keep the candidate while that dip is under 150ms. The rise still in that window is the hop.
-      // A squat that stays down past the window, or stands back up with planted feet, still ducks.
+      // An ambiguous dip waits dipClassifyMs. Takeoff during that window is a jump, handled above.
+      // A deeper settled squat does not wait. A dip that is still falling does not confirm yet.
       const dipAgeNow = prepSince !== null ? now - prepSince : Number.POSITIVE_INFINITY;
-      // Only a shallow crouch waits. A clear squat (0.22 torso and deeper) still ducks on the next frame.
-      // 0.15 is the still hop-crouch that must stay a jump. 0.40 and 1.1 are the squats that must emit by 66ms.
-      const shallowCrouch = signals.hipDrop < 0.22;
-      const jumpStillLoading = jumpMotion === "preparing" && dipAgeNow < 150 && shallowCrouch;
-      if (held && squatStill && squatCalm && !jumpStillLoading) {
+      const ambiguousDip = signals.hipDrop < thresholds.jumpPrepMaxDrop;
+      const falling = signals.hipVelocity < -thresholds.jumpRise;
+      const windowOpen = dipAgeNow < thresholds.dipClassifyMs;
+      const deferSquat = jumpMotion === "preparing" && windowOpen && (ambiguousDip || falling);
+      if (held && squatStill && squatCalm && !deferSquat) {
         const sent = emit("squat", signals.confidence);
         squat = { phase: "CONFIRMED", since: now, eventId: sent.id, suppress: false };
         phase = "SQUATTING";
         prepSince = null;
         dipOpen = false;
         squatCalm = false;
+        dipStillFrames = 0;
+        compressionKnee = null;
         jumpMotion = "grounded";
       } else {
         squat = { phase: "CANDIDATE", since, eventId: null, suppress: false };
@@ -497,21 +578,28 @@ function transitionPhase(
       phase = "SQUATTING";
     }
   } else if (squat.phase === "CANDIDATE") {
-    // The hop rose before the 150ms duck window. A planted return is the squat the window was holding.
+    // Standing back up with the feet planted, after a real hold, is the squat.
+    // A 50ms bend has not been still for two frames, so it emits nothing.
+    // A rise that already qualified as takeoff is not this path.
     const held = now - squat.since >= thresholds.squatHoldMs;
     const plantedReturn =
       squatCalm && signals.ankleRise < 0.015 && signals.hipDrop < thresholds.squatEnterDrop && !signals.forwardBend;
-    if (held && plantedReturn && !takeoffFromDip) {
+    const sustained =
+      dipStillFrames >= 2 || (prepSince !== null && now - prepSince >= thresholds.dipClassifyMs);
+    if (held && plantedReturn && !takeoffFromDip && sustained) {
       const sent = emit("squat", signals.confidence);
       squat = { phase: "CONFIRMED", since: now, eventId: sent.id, suppress: false };
       phase = "SQUATTING";
       prepSince = null;
       dipOpen = false;
       squatCalm = false;
+      dipStillFrames = 0;
+      compressionKnee = null;
       jumpMotion = "grounded";
     } else {
       squat = freshTrack();
       squatCalm = false;
+      dipStillFrames = 0;
     }
   } else {
     squatCalm = false;
@@ -556,6 +644,7 @@ function transitionPhase(
     !justLanded &&
     !enteredRecovery &&
     jump.phase === "NEUTRAL" &&
+    jumpMotion !== "landing" &&
     !standingOutOfSquat &&
     (takeoffFromDip || (flight && !recovering));
   // The fast frame of a small hop often arrives after the hips have already left the dip
@@ -569,7 +658,11 @@ function transitionPhase(
   if (!dipping && !jumping && jump.phase === "NEUTRAL" && !risingHot && (!prepHeld || settled)) {
     prepSince = null;
     dipOpen = false;
-    if (jumpMotion === "preparing") jumpMotion = "grounded";
+    compressionKnee = null;
+    if (jumpMotion === "preparing") {
+      jumpMotion = "grounded";
+      dipStillFrames = 0;
+    }
   }
   if (jumping) {
     const speed = Math.max(signals.hipVelocity, signals.riseSpeed);
@@ -582,6 +675,8 @@ function transitionPhase(
     prepSince = null;
     dipOpen = false;
     squatCalm = false;
+    dipStillFrames = 0;
+    compressionKnee = null;
     phase = "JUMPING";
     if (leftUp) left = suppressTrack(left, now);
     if (rightUp) right = suppressTrack(right, now);
@@ -781,6 +876,29 @@ function overheadRaised(arm: ArmPose, engaged: boolean) {
   const reach = engaged ? 0.7 : 0.9;
   const elbow = engaged ? 80 : 90;
   return arm.elevation >= elevation && arm.reach >= reach && arm.elbowAngle >= elbow;
+}
+
+function recognizePhase(phase: BodyPhase, jumpMotion: JumpMotion, squatPhase: string): RecognitionPhase {
+  if (jumpMotion === "takeoff") return "JUMP_TAKEOFF";
+  if (jumpMotion === "airborne") return "JUMP_AIRBORNE";
+  if (jumpMotion === "landing") return "LANDING";
+  if (squatPhase === "CONFIRMED" || squatPhase === "SENT" || squatPhase === "WAIT_RESET" || phase === "SQUATTING") {
+    return "SUSTAINED_SQUAT";
+  }
+  if (jumpMotion === "preparing") return "POSSIBLE_JUMP_PREPARATION";
+  return "NEUTRAL";
+}
+
+function jumpScore(signals: PoseSignals, thresholds: MovementThresholds) {
+  const speed = Math.max(0, signals.hipVelocity, signals.shoulderVelocity, signals.riseSpeed);
+  const gate = Math.max(0.2, thresholds.jumpRise * 2);
+  return Math.min(1, Math.max(0, signals.confidence) * Math.min(1, speed / gate));
+}
+
+function squatScore(signals: PoseSignals, thresholds: MovementThresholds) {
+  if (signals.forwardBend || !(signals.hipDrop > 0)) return 0;
+  const depth = Math.min(1, signals.hipDrop / Math.max(0.05, thresholds.squatEnterDrop));
+  return Math.min(1, Math.max(0, signals.confidence) * depth);
 }
 
 function midY(

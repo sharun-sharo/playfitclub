@@ -76,6 +76,34 @@ export function armDiagnosticLabel(side: "left" | "right", phase: string | null 
   return "—";
 }
 
+/**
+ * Development readout on the phone camera. Numbers and the gesture phase only.
+ * No name, token, or session secret belongs in this text.
+ */
+export function motionDebugLines(input: {
+  confidence: number;
+  kneeAngle: number;
+  hipDrop: number;
+  hipVelocity: number;
+  recognition: string;
+  jumpConfidence: number;
+  squatConfidence: number;
+  command: string | null | undefined;
+}) {
+  const pct = (value: number) => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+  const num = (value: number) => (Number.isFinite(value) ? value : 0);
+  return [
+    `confidence ${pct(num(input.confidence))}`,
+    `knee ${num(input.kneeAngle).toFixed(0)}°`,
+    `hip ${num(input.hipDrop).toFixed(2)} torso`,
+    `vertical ${num(input.hipVelocity).toFixed(2)} torso/s`,
+    `state ${input.recognition || "NEUTRAL"}`,
+    `jump ${pct(num(input.jumpConfidence))}`,
+    `squat ${pct(num(input.squatConfidence))}`,
+    `command ${input.command || "none"}`,
+  ];
+}
+
 /** The chip on the camera. Empty until a gesture has fired. */
 export function liveGestureName(movement: string | null | undefined) {
   if (movement === "lean_left" || movement === "MOVE LEFT") return "LEFT";

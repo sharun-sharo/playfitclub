@@ -102,6 +102,30 @@ export interface MovementThresholds {
   jumpPrepKnee: number;
   /** How long a dip must already have lasted. A 1-frame twitch jumps if this is 0. The rise frame does not add another wait once the dip is real. */
   jumpPrepMs: number;
+  /**
+   * How long an ambiguous dip is watched before it can become a squat.
+   * This is only for a short knee bend that could still be a jump.
+   * A rise that clears jumpRise emits a jump on that frame and does not wait out the rest.
+   * A posture that is still down when the window ends emits one squat.
+   * Keep this inside 120–200ms. Raise it if a slow pre-jump bend still ducks.
+   * Lower it if a short squat is missed. A settled squat the current tests already
+   * accept does not have to wait when the dip is deeper than jumpPrepMaxDrop,
+   * or when the player has already stood back up after two still frames.
+   */
+  dipClassifyMs: number;
+  /**
+   * Deepest hip drop, in torso lengths, that can still be jump preparation.
+   * From squatEnterDrop up to this value, the dip waits dipClassifyMs.
+   * At or above this value, two settled frames emit a squat without that wait.
+   * 0.32 keeps a 0.30 torso pre-jump crouch from ducking, and keeps a 0.40 torso squat immediate.
+   */
+  jumpPrepMaxDrop: number;
+  /**
+   * Degrees the knee must open from the most bent sample of this dip.
+   * Used only when the knees actually compressed and the legs are visible.
+   * Straight knees, and hidden knees, do not have to pass it.
+   */
+  kneeExtendDeg: number;
   /** Shin angle from vertical, in degrees, required for a planted squat. */
   squatAnkleFlex: number;
   /** Elbow angle in degrees. Kept for stored tuning. Lane changes do not require this straight-arm gate. */
@@ -182,6 +206,20 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   jumpPrepDrop: 0.1,
   jumpPrepKnee: 12,
   jumpPrepMs: 50,
+  /**
+   * Ambiguous dips wait this long. A pre-jump knee bend is inside it.
+   * A rise above jumpRise leaves the window early and emits one jump.
+   * 160 sits inside the 120–200ms band.
+   */
+  dipClassifyMs: 160,
+  /**
+   * Hip drops under this can still be the crouch before a jump.
+   * The working squat gate stays squatEnterDrop 0.10. This does not make squats deep-only.
+   * A settled drop at or above 0.32 confirms on the next still frame, which is how the
+   * 0.40 torso squat fixtures stay inside one or two camera frames.
+   */
+  jumpPrepMaxDrop: 0.32,
+  kneeExtendDeg: 8,
   squatAnkleFlex: 8,
   elbowEnter: 122,
   elbowExit: 100,
@@ -244,6 +282,19 @@ export type BodyPhase =
 
 /** One physical jump. A landing frame is not a second jump. */
 export type JumpMotion = "grounded" | "preparing" | "takeoff" | "airborne" | "landing" | "recovery";
+
+/**
+ * Jump and squat for one gesture. A dip that might be either stays in
+ * POSSIBLE_JUMP_PREPARATION until takeoff, a sustained squat, or a return to neutral.
+ * SUSTAINED_SQUAT is separate so standing up does not become a jump.
+ */
+export type RecognitionPhase =
+  | "NEUTRAL"
+  | "POSSIBLE_JUMP_PREPARATION"
+  | "JUMP_TAKEOFF"
+  | "JUMP_AIRBORNE"
+  | "LANDING"
+  | "SUSTAINED_SQUAT";
 
 export type GesturePhase = "NEUTRAL" | "CANDIDATE" | "CONFIRMED" | "SENT" | "WAIT_RESET";
 
@@ -344,6 +395,16 @@ export interface DetectorState {
   squat: GestureTrack;
   jump: GestureTrack;
   jumpMotion: JumpMotion;
+  /** Jump-versus-squat phase. Dev diagnostics read this. It does not change lane commands. */
+  recognition: RecognitionPhase;
+  /** Most bent knee angle during the current dip. Null when no dip is open. */
+  compressionKnee: number | null;
+  /** Consecutive settled frames inside the squat band. A one-frame bob stays at zero. */
+  dipStillFrames: number;
+  /** Display score for the dev panel. Not a second emit gate. */
+  jumpConfidence: number;
+  /** Display score for the dev panel. Not a second emit gate. */
+  squatConfidence: number;
   /** Timestamp of the current planted dip. Null when the body is not preparing. */
   prepSince: number | null;
   /**
