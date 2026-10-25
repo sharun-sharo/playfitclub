@@ -20,7 +20,7 @@ import {
   type MovementThresholds,
   type PoseFrame,
 } from "@fitplay/game";
-import { emptyCameraGate, finishCameraFrame, offerCameraFrame, type CameraFrameGate } from "@/lib/vision/frame-gate";
+import { classificationTimestamp, emptyCameraGate, finishCameraFrame, offerCameraFrame, type CameraFrameGate } from "@/lib/vision/frame-gate";
 import { CAMERA_LOST_MESSAGE, classifyCameraError } from "@/lib/vision/camera-status";
 import { frontCameraAttempts, frontCameraFallback, portraitScore } from "@/lib/vision/front-camera";
 import {
@@ -366,9 +366,10 @@ export class PoseEstimator {
     const video = this.video;
     const landmarker = this.landmarker;
     if (!video || !landmarker || video.readyState < 2 || this.mode === "idle") return;
-    const now = Math.max(frameNow, this.lastDetectAt + 1);
+    const arrived = performance.now();
+    const now = classificationTimestamp(frameNow, arrived, this.lastDetectAt, COMMAND_STALE_MS);
     this.lastDetectAt = now;
-    const inferenceStarted = performance.now();
+    const inferenceStarted = arrived;
     let result: {
       landmarks?: Array<Array<{ x: number; y: number; z?: number; visibility?: number }>>;
       worldLandmarks?: Array<Array<{ x: number; y: number; z: number }>>;
@@ -379,7 +380,7 @@ export class PoseEstimator {
       this.suspend(CAMERA_LOST_MESSAGE);
       return;
     }
-    this.sampleRates(now, performance.now() - inferenceStarted);
+    this.sampleRates(performance.now(), performance.now() - inferenceStarted);
     this.poseCount = result.landmarks?.length ?? 0;
     const raw = result.landmarks?.[0];
     this.pendingDraw = now - this.lastDraw > 50 ? { points: raw } : null;
@@ -568,8 +569,10 @@ export class PoseEstimator {
 
   /**
    * Latest frame only. A frame that arrives while detectForVideo is running replaces
-   * the queued one. Two poses are never in flight. A frame older than the stale
-   * bound is not classified.
+   * the queued one. Two poses are never in flight.
+   * `frameAt` is the video presentation time. performance.now() is only the arrival
+   * clock. A media timestamp, a 0, or a microsecond stamp is not treated as 800ms old.
+   * A queued frame that then waits longer than the stale bound is still dropped.
    */
   private acceptFrame(frameAt: number) {
     const decision = offerCameraFrame(this.frameGate, frameAt, performance.now(), COMMAND_STALE_MS);
@@ -609,7 +612,7 @@ export class PoseEstimator {
         if (presented >= 0) this.presentedFrames = presented;
         this.cameraClock = true;
         this.cameraFrames += 1;
-        this.sampleRates(now, null);
+        this.sampleRates(performance.now(), null);
         this.acceptFrame(now);
       };
       this.videoFrameHandle = withFrames.requestVideoFrameCallback(onFrame);

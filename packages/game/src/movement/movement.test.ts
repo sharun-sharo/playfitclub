@@ -2001,6 +2001,59 @@ describe("synthetic gesture counts at variable frame intervals", () => {
     }
     expect(events.map((event) => event.movementType)).toEqual(["jump"]);
   });
+
+  it("emits jump, squat, left, and right on one video-timestamp sequence at 15fps and 30fps", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    const round: Array<Omit<Parameters<typeof pose>[0], "time"> & { n?: number }> = [
+      { n: 3 },
+      { hipDrop: 0.012, kneeForward: 0.02 },
+      { n: 2, rise: 0.05, kneeForward: 0.02 },
+      { n: 2, hipDrop: 0.08, kneeForward: 0.08 },
+      { n: 8 },
+      { n: 8, hipDrop: 0.22, kneeForward: 0.1 },
+      { n: 8 },
+      { n: 4, shoulderLean: -0.045 },
+      { n: 6, shoulderLean: -0.045 },
+      { n: 6 },
+      { n: 4, shoulderLean: 0.045 },
+      { n: 6, shoulderLean: 0.045 },
+      { n: 6 },
+      { n: 4, armsOut: true },
+      { n: 4 },
+    ];
+    for (const frameMs of [33, 66]) {
+      const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+      if (!neutral) throw new Error("Failed to build a neutral pose");
+      let state = setNeutral(createDetector({ mirror: false }), neutral);
+      const events = [];
+      let time = 0;
+      let firstRiseAt: number | null = null;
+      for (const step of [...round, ...round]) {
+        const count = step.n ?? 1;
+        for (let index = 0; index < count; index += 1) {
+          if (step.rise && firstRiseAt === null) firstRiseAt = time;
+          const update = pushPose(state, pose({ ...step, time }));
+          state = update.state;
+          events.push(...update.events);
+          time += frameMs;
+        }
+      }
+      expect(events.map((event) => event.movementType)).toEqual([
+        "jump",
+        "squat",
+        "lean_left",
+        "lean_right",
+        "jump",
+        "squat",
+        "lean_left",
+        "lean_right",
+      ]);
+      expect(events[0]?.clientTimestamp).toBe(firstRiseAt);
+      expect(new Set(events.map((event) => event.eventId)).size).toBe(events.length);
+    }
+  });
 });
 
 describe("synthetic small-hop takeoff", () => {
