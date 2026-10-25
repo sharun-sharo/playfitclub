@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { adaptThresholds, calibrateNeutral, neutralFromLandmarks } from "./calibration";
 import { COMMAND_STALE_MS, holdCommand, releaseCommand } from "./command-buffer";
-import { claimMovementId, createDetector, JUMP_RISE_DISPLACEMENT, MAX_VELOCITY_GAP_MS, neutralDriftForGap, pushPose, resetMovementReady, resetPhoneForRound, setNeutral, settleGestures } from "./movement-state-machine";
+import { claimMovementId, createDetector, JUMP_RISE_DISPLACEMENT, JUMP_RISE_WINDOW_MS, MAX_VELOCITY_GAP_MS, neutralDriftForGap, peakUpwardTravel, pushPose, resetMovementReady, resetPhoneForRound, setNeutral, settleGestures, torsoLeanReleaseLine } from "./movement-state-machine";
 import { DEFAULT_THRESHOLDS, type Landmark, type PoseFrame } from "./movement-types";
 
 function landmark(x: number, y: number, visibility = 1): Landmark {
@@ -298,7 +298,7 @@ describe("movement detection", () => {
     }));
   });
 
-  it("emits a clear raise on the next smoothed frame", () => {
+  it("emits a clear raise on the smoothed frame that is already past the line", () => {
     let state = createDetector({ mirror: false });
     const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
     if (!neutral) throw new Error("Failed to build a neutral pose");
@@ -315,8 +315,8 @@ describe("movement detection", () => {
     }
     expect(emittedAt).not.toBeNull();
     const smoothingLatencyMs = (emittedAt ?? stepAt) - stepAt;
-    expect(smoothingLatencyMs).toBeGreaterThan(0);
-    expect(smoothingLatencyMs).toBeLessThan(100);
+    expect(smoothingLatencyMs).toBe(0);
+    expect(smoothingLatencyMs).toBeLessThan(70);
     console.log(JSON.stringify({ smoothingLatencyMs, smoothingAlpha: DEFAULT_THRESHOLDS.smoothingAlpha, frameMs, armHoldMs: DEFAULT_THRESHOLDS.armHoldMs }));
   });
 
@@ -399,9 +399,11 @@ describe("phone camera gestures", () => {
     expect(events.filter((event) => event.movementType === "squat")).toHaveLength(0);
   });
 
-  it("does not trigger when an arm only swings through the pose", () => {
+  it("emits once for each one-frame arm that is already up", () => {
     const { events } = feed(12, (index) => pose({ time: index * 40, leftArm: index === 4, rightArm: index === 8 }));
-    expect(events).toHaveLength(0);
+    expect(events.map((event) => event.movementType)).toEqual(["lean_left", "lean_right"]);
+    expect(events[0]?.clientTimestamp).toBe(4 * 40);
+    expect(events[1]?.clientTimestamp).toBe(8 * 40);
   });
 
   it("does not trigger while the player stands still", () => {
@@ -567,8 +569,9 @@ describe("phone camera gestures", () => {
       }),
     );
     const left = hole.events.filter((event) => event.movementType === "lean_left");
-    expect(left).toHaveLength(1);
-    expect(left[0]?.clientTimestamp).toBeGreaterThanOrEqual(13 * 40 + DEFAULT_THRESHOLDS.armHoldMs);
+    expect(left).toHaveLength(2);
+    expect(left[0]?.clientTimestamp).toBe(2 * 40);
+    expect(left[1]?.clientTimestamp).toBeGreaterThanOrEqual(13 * 40);
   });
 
   it("gives each confirmed gesture one id and rejects a duplicate id", () => {
@@ -835,8 +838,7 @@ describe("motion reliability sequences", () => {
       }),
     );
     const left = gap.events.filter((event) => event.movementType === "lean_left");
-    expect(left.every((event) => event.clientTimestamp >= 9 * 40)).toBe(true);
-    expect(gap.events.filter((event) => event.clientTimestamp < 9 * 40)).toHaveLength(0);
+    expect(left.map((event) => event.clientTimestamp)).toEqual([2 * 40]);
   });
 
   it("sends one left command for a halfway raise and one for a sideways point", () => {
@@ -1172,7 +1174,7 @@ describe("motion reliability sequences", () => {
     }));
   });
 
-  it("does not fire a one-frame arm spike or a one-frame hip bob", () => {
+  it("emits a one-frame arm that is already up, and ignores a one-frame hip bob", () => {
     const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
     if (!neutral) throw new Error("Failed to build a neutral pose");
     let arm = setNeutral(createDetector({ mirror: false }), neutral);
@@ -1182,7 +1184,7 @@ describe("motion reliability sequences", () => {
       arm = update.state;
       armEvents.push(...update.events);
     }
-    expect(armEvents).toHaveLength(0);
+    expect(armEvents.map((event) => event.movementType)).toEqual(["lean_left"]);
 
     let bob = setNeutral(createDetector({ mirror: false }), neutral);
     const bobEvents = [];
@@ -1552,7 +1554,7 @@ describe("motion reliability sequences", () => {
     expect(back.map((event) => event.movementType)).toEqual(["jump", "lean_left", "squat"]);
   });
 
-  it("emits left then right, and right then left, on the frame after the hand is out", () => {
+  it("emits left then right, and right then left, on the frame the hand is already out", () => {
     const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
     if (!neutral) throw new Error("Failed to build a neutral pose");
     const frame = 33;
@@ -1578,12 +1580,12 @@ describe("motion reliability sequences", () => {
     };
     const leftRight = runSide("leftArm", "rightArm");
     expect(leftRight.events.map((event) => event.movementType)).toEqual(["lean_left", "lean_right"]);
-    expect((leftRight.events[0]?.clientTimestamp ?? 0) - leftRight.firstAt).toBe(frame);
-    expect((leftRight.events[1]?.clientTimestamp ?? 0) - leftRight.secondAt).toBe(frame);
+    expect((leftRight.events[0]?.clientTimestamp ?? 0) - leftRight.firstAt).toBe(0);
+    expect((leftRight.events[1]?.clientTimestamp ?? 0) - leftRight.secondAt).toBe(0);
     const rightLeft = runSide("rightArm", "leftArm");
     expect(rightLeft.events.map((event) => event.movementType)).toEqual(["lean_right", "lean_left"]);
-    expect((rightLeft.events[0]?.clientTimestamp ?? 0) - rightLeft.firstAt).toBe(frame);
-    expect((rightLeft.events[1]?.clientTimestamp ?? 0) - rightLeft.secondAt).toBe(frame);
+    expect((rightLeft.events[0]?.clientTimestamp ?? 0) - rightLeft.firstAt).toBe(0);
+    expect((rightLeft.events[1]?.clientTimestamp ?? 0) - rightLeft.secondAt).toBe(0);
 
     let held = setNeutral(createDetector({ mirror: false }), neutral);
     const heldEvents = [];
@@ -1601,12 +1603,13 @@ describe("body lean lane control", () => {
 
   it("sends one lane per lean and requires a return to upright before the next", () => {
     expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBeGreaterThan(DEFAULT_THRESHOLDS.torsoLeanNeutral);
-    expect(DEFAULT_THRESHOLDS.torsoLeanHoldMs).toBeGreaterThan(0);
+    expect(DEFAULT_THRESHOLDS.torsoLeanHoldMs).toBe(0);
+    expect(DEFAULT_THRESHOLDS.armHoldMs).toBe(0);
     expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
 
     const left = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0 }));
     expect(left.events.map((event) => event.movementType)).toEqual(["lean_left"]);
-    expect((left.events[0]?.clientTimestamp ?? 0) - 2 * 33).toBe(33);
+    expect((left.events[0]?.clientTimestamp ?? 0) - 2 * 33).toBe(0);
     expect((left.events[0]?.clientTimestamp ?? 0) - 2 * 33).toBeLessThan(70);
 
     const right = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? clear : 0 }));
@@ -1628,7 +1631,7 @@ describe("body lean lane control", () => {
     expect(chained.events.map((event) => event.movementType)).toEqual(["lean_left"]);
 
     const wobble = feed(8, (index) => pose({ time: index * 33, shoulderLean: index === 3 ? -clear : 0 }));
-    expect(wobble.events).toHaveLength(0);
+    expect(wobble.events.map((event) => event.movementType)).toEqual(["lean_left"]);
 
     const sway = feed(24, (index) =>
       pose({
@@ -1732,7 +1735,7 @@ describe("body lean lane control", () => {
       events.push(...update.events);
     }
     expect(events.map((event) => event.movementType)).toEqual(["lean_left"]);
-    expect(events[0]?.clientTimestamp).toBe(4 * 33);
+    expect(events[0]?.clientTimestamp).toBe(2 * 33);
 
     const hole = feed(8, (index) =>
       pose({
@@ -2172,5 +2175,131 @@ describe("synthetic small-hop takeoff", () => {
       if (index === 3) downVelocity = update.signals?.hipVelocity ?? 0;
     }
     expect(downVelocity).toBeLessThan(0);
+  });
+});
+
+describe("same-frame jump and partial lane re-arm", () => {
+  function play(frames: PoseFrame[], smoothingAlpha = 1) {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha }), neutral);
+    const events = [];
+    for (const frame of frames) {
+      const update = pushPose(state, frame);
+      state = update.state;
+      events.push(...update.events);
+    }
+    return { state, events };
+  }
+
+  function hopFrames(start: number, frameMs: number) {
+    return Array.from({ length: 8 }, (_, index) => {
+      const dip = index === 3 || index === 4;
+      return pose({
+        time: start + index * frameMs,
+        hipDrop: dip || index === 5 ? 0.03 : 0,
+        rise: index === 5 ? 0.002244 : 0,
+      });
+    });
+  }
+
+  it("emits the jump on the rise sample at 15fps and 30fps, not 160ms later", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    expect(JUMP_RISE_WINDOW_MS).toBe(220);
+    for (const frameMs of [33, 66]) {
+      const frames = hopFrames(1_000, frameMs);
+      const riseAt = 1_000 + 5 * frameMs;
+      const played = play(frames);
+      const jump = played.events.find((event) => event.movementType === "jump");
+      expect(jump?.clientTimestamp).toBe(riseAt);
+      expect((jump?.clientTimestamp ?? 0) - riseAt).toBeLessThan(DEFAULT_THRESHOLDS.dipClassifyMs);
+      expect(played.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    }
+  });
+
+  it("emits a second small hop after landing and a brief neutral", () => {
+    for (const frameMs of [33, 66]) {
+      const first = hopFrames(0, frameMs);
+      const gap = Array.from({ length: 4 }, (_, index) => pose({ time: first.length * frameMs + index * frameMs }));
+      const secondStart = (first.length + gap.length) * frameMs;
+      const second = hopFrames(secondStart, frameMs);
+      const played = play([...first, ...gap, ...second]);
+      const jumps = played.events.filter((event) => event.movementType === "jump");
+      expect(jumps).toHaveLength(2);
+      expect(jumps[1]?.clientTimestamp).toBe(secondStart + 5 * frameMs);
+      expect(played.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    }
+  });
+
+  it("documents the split rise that 120ms missed and 220ms accepts", () => {
+    const torso = 0.2;
+    const step = 0.0014;
+    const low = 0.53;
+    const mid = low - step;
+    const high = mid - step;
+    const within120 = peakUpwardTravel([mid, high], torso);
+    const within220 = peakUpwardTravel([low, mid, high], torso);
+    expect(within120).toBeCloseTo(step / torso, 5);
+    expect(within120).toBeLessThan(JUMP_RISE_DISPLACEMENT);
+    expect(within220).toBeCloseTo((2 * step) / torso, 5);
+    expect(within220).toBeGreaterThanOrEqual(JUMP_RISE_DISPLACEMENT);
+    expect(step / 0.09 / torso).toBeLessThan(DEFAULT_THRESHOLDS.jumpRise);
+
+    const played = play([
+      pose({ time: 0 }),
+      pose({ time: 40 }),
+      pose({ time: 100, hipDrop: 0.03 }),
+      pose({ time: 190, hipDrop: 0.03, rise: step }),
+      pose({ time: 280, hipDrop: 0.03, rise: step * 2 }),
+      pose({ time: 360 }),
+      pose({ time: 440 }),
+    ]);
+    const jump = played.events.find((event) => event.movementType === "jump");
+    expect(jump?.clientTimestamp).toBe(280);
+    expect(played.events.filter((event) => event.movementType === "jump")).toHaveLength(1);
+    expect(played.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+
+  it("re-arms a lean after a partial return, holds once, ignores both arms, and still squats a held 0.10 drop", () => {
+    expect(torsoLeanReleaseLine(0.16, 0.07)).toBeCloseTo(0.115, 5);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    expect(DEFAULT_THRESHOLDS.torsoLeanNeutral).toBe(0.07);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+
+    const lean = -0.032;
+    const partial = -0.02;
+    const played = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * 33 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (2 + index) * 33, shoulderLean: lean })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (5 + index) * 33, shoulderLean: partial })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (8 + index) * 33, shoulderLean: lean })),
+    ]);
+    expect(played.events.map((event) => event.movementType)).toEqual(["lean_left", "lean_left"]);
+    expect(played.events[0]?.clientTimestamp).toBe(2 * 33);
+    expect(played.events[1]?.clientTimestamp).toBe(8 * 33);
+
+    const held = play(Array.from({ length: 10 }, (_, index) => pose({ time: index * 66, shoulderLean: index >= 2 ? lean : 0 })));
+    expect(held.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+
+    const arms = play(Array.from({ length: 8 }, (_, index) => pose({ time: index * 33, armsOut: index >= 2 })));
+    expect(arms.events).toHaveLength(0);
+
+    const squat = play(Array.from({ length: 8 }, (_, index) => pose({ time: index * 33, hipDrop: index >= 2 && index < 6 ? 0.024 : 0 })));
+    expect(squat.events.map((event) => event.movementType)).toEqual(["squat"]);
+  });
+
+  it("keeps physical left on the left after the selfie mirror", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: true, smoothingAlpha: 1 }), neutral);
+    const events = [];
+    for (let index = 0; index < 6; index += 1) {
+      const update = pushPose(state, pose({ time: index * 33, shoulderLean: index >= 2 ? 0.045 : 0 }));
+      state = update.state;
+      events.push(...update.events);
+    }
+    expect(events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect(events[0]?.clientTimestamp).toBe(2 * 33);
   });
 });

@@ -71,10 +71,9 @@ export interface MovementThresholds {
    */
   torsoLeanNeutral: number;
   /**
-   * The first sample past the lean line does not send a lane change. The next presented
-   * camera frame that is still past it does. The value is real milliseconds, not a frame count.
-   * At 30fps that next frame is about 33ms. At 15fps it is about 66ms. Both are under 70ms
-   * after the lean is already past the line. Zero would lane-change on a one-sample wobble.
+   * Not a wait for the next camera frame. Zero emits on the sample that is already past the line.
+   * The sent phase is the same-timestamp guard: a second push of that timestamp does not emit again.
+   * The old value of 1 waited a full camera frame, because the first sample's elapsed time is 0.
    */
   torsoLeanHoldMs: number;
   squatEnterDrop: number;
@@ -106,7 +105,7 @@ export interface MovementThresholds {
   /**
    * How long an ambiguous dip is watched before it can become a squat.
    * This is only for a short knee bend that could still be a jump.
-   * A rise that clears jumpRise emits a jump on that frame and does not wait out the rest.
+   * A rise that clears jumpRise, or the 0.011 distance gate, emits a jump on that frame and does not wait out the rest.
    * A posture that is still down when the window ends emits one squat.
    * Keep this inside 120–200ms. Raise it if a slow pre-jump bend still ducks.
    * Lower it if a short squat is missed. A settled squat the current tests already
@@ -155,8 +154,9 @@ export interface MovementThresholds {
   /** Blend applied to a quiet stance each frame. Jump, squat, and an arm raise freeze it. */
   neutralDrift: number;
   /**
-   * Same-frame guard. The frame that first crosses the line does not emit.
-   * The next frame that is still past the line does. One noisy frame does not.
+   * Not a wait for the next camera frame. Zero emits on the sample where the arm is already up.
+   * The sent phase ignores a second push at that same timestamp.
+   * The old value of 1 waited a full camera frame, because the first sample's elapsed time is 0.
    */
   armHoldMs: number;
   /**
@@ -179,12 +179,11 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   torsoLeanEnter: 0.16,
   torsoLeanNeutral: 0.07,
   /**
-   * Same-sample guard, in real milliseconds. Zero would lane-change on the
-   * sample that first crosses the line. 1ms is not "one 30fps frame".
-   * The phone feeds one sample per presented camera frame, so the next
-   * sample is ~33ms later at 30fps and ~66ms later at 15fps.
+   * The camera frame that is already past the line sends the lane.
+   * 1 used to wait for the next presented frame (~33ms at 30fps, ~66ms at 15fps)
+   * because that first sample has elapsed 0.
    */
-  torsoLeanHoldMs: 1,
+  torsoLeanHoldMs: 0,
   /**
    * Hip drop that counts as a squat, in standing-torso lengths.
    * The old gate was 0.16, which only a deep race squat cleared.
@@ -214,8 +213,9 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   jumpPrepMs: 50,
   /**
    * Ambiguous dips wait this long. A pre-jump knee bend is inside it.
-   * A rise above jumpRise leaves the window early and emits one jump.
-   * 160 sits inside the 120–200ms band.
+   * A rise above jumpRise, or a hop that already cleared the distance gate,
+   * leaves the window on that camera frame and emits one jump.
+   * 160 sits inside the 120–200ms band. It is not a delay on a confirmed takeoff.
    */
   dipClassifyMs: 160,
   /**
@@ -241,7 +241,8 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   sidewaysElbowEnter: 100,
   sidewaysElbowExit: 85,
   neutralDrift: 0.02,
-  armHoldMs: 1,
+  /** The camera frame where the arm is already up sends the lane. 1 used to wait for the next frame. */
+  armHoldMs: 0,
   /**
    * Same-sample guard, in real milliseconds. The first down sample does not
    * emit. The next presented camera frame that is still down does.
@@ -425,7 +426,7 @@ export interface DetectorState {
   rejectLatched: boolean;
   left: GestureTrack;
   right: GestureTrack;
-  /** One upper-body lean. Hold stays in WAIT_RESET until the shoulders return to the neutral band. */
+  /** One upper-body lean. A hold stays latched until the shoulders release toward center. */
   torso: GestureTrack;
   squat: GestureTrack;
   jump: GestureTrack;

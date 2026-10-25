@@ -2,8 +2,8 @@ import type { Landmark, PoseFrame } from "./movement-types";
 
 /**
  * One blend per camera frame. Alpha near 1 shows a held pose within one or two frames.
- * It is not a multi-frame average. A single spike still has to remain on the next frame
- * before a lane change or a squat is sent.
+ * It is not a multi-frame average. A lane emits on the frame the smoothed pose is already
+ * past the line. A squat still has to remain down on the next frame.
  */
 export function smoothFrame(
   previous: Array<{ x: number; y: number; z?: number } | null>,

@@ -1113,6 +1113,8 @@ export async function startFitRunner(
 
     function poseTiming(event: PoseCommand): "now" | "later" | "never" {
       if (event.movementType === "jump" && jumpDuringRoll(motion, event.movementType)) return "now";
+      // The run clip is motion "run". An accepted jump plays in this call, not after a clip cue.
+      // The 300ms lane slide is visual. stepLane already moved the authoritative lane.
       if (event.movementType === "jump" || event.movementType === "squat") return verticalCommandReady(motion) ? "now" : "later";
       if (event.movementType !== "lean_left" && event.movementType !== "lean_right") return "never";
       const direction = event.movementType === "lean_left" ? -1 : 1;

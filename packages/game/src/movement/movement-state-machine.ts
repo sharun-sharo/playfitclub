@@ -32,8 +32,14 @@ export const MAX_VELOCITY_GAP_MS = 1200;
 /**
  * Upward hip travel, in torso lengths, from the lowest hip in this window.
  * The window uses the frame timestamps, not a fixed 30fps step.
+ *
+ * 120ms missed a real hop whose rise was split. On a 0.2 torso, two upward
+ * steps of 0.0014 image (0.007 torso each) 90ms apart are 0.014 torso from
+ * the low point. At the second step the low point is 180ms old, so a 120ms
+ * window only sees the second 0.007, under the 0.011 gate. Each step's speed
+ * is 0.078, under jumpRise 0.32. 220ms still contains that low point.
  */
-export const JUMP_RISE_WINDOW_MS = 120;
+export const JUMP_RISE_WINDOW_MS = 220;
 
 /**
  * Distance gate for a hop whose speed falls under jumpRise because the camera
@@ -66,6 +72,31 @@ export function upwardTravel(values: Array<number | null>, current: number | nul
     if (value !== null && value > low) low = value;
   }
   return (low - current) / torso;
+}
+
+/**
+ * Largest upward move inside the samples, not only the current frame versus the low.
+ * A noisy shoulder can be back down on the sample where the hips peak. Image y grows downward.
+ */
+export function peakUpwardTravel(values: Array<number | null>, torso: number) {
+  if (!(torso > 0)) return 0;
+  let low: number | null = null;
+  let peak = 0;
+  for (const value of values) {
+    if (value === null || !Number.isFinite(value)) continue;
+    if (low === null) {
+      low = value;
+      continue;
+    }
+    peak = Math.max(peak, (low - value) / torso);
+    if (value > low) low = value;
+  }
+  return peak;
+}
+
+/** Shoulders have come back far enough that the next lean is a new command. Hold stays above this. */
+export function torsoLeanReleaseLine(enter: number, neutral: number) {
+  return (enter + neutral) / 2;
 }
 
 export interface DetectorUpdate {
@@ -523,10 +554,20 @@ function transitionPhase(
     (signals.legsReady ? planted : true);
   const instant = signals.legsReady ? signals.hipVelocity : Math.max(signals.hipVelocity, signals.shoulderVelocity);
   // Speed under jumpRise can still be a hop when the same rise is spread across a longer frame.
-  // Shoulders have to come up with the hips. A hip-only bob, and a 2mm shake, stay under the distance.
+  // The gate uses the peak inside the window, so a noisy shoulder on the latest sample does not
+  // erase a rise that already happened. A hip-only bob, and a 2mm shake, stay under the distance.
+  const torsoScale = neutral?.torso ?? 0.2;
+  const hipPeak = peakUpwardTravel(
+    state.riseSamples.map((sample) => sample.hipY),
+    torsoScale,
+  );
+  const shoulderPeak = peakUpwardTravel(
+    state.riseSamples.map((sample) => sample.shoulderY),
+    torsoScale,
+  );
   const bodyRose =
-    signals.hipRise >= JUMP_RISE_DISPLACEMENT &&
-    signals.shoulderRise >= JUMP_RISE_DISPLACEMENT * 0.45 &&
+    hipPeak >= JUMP_RISE_DISPLACEMENT &&
+    shoulderPeak >= JUMP_RISE_DISPLACEMENT * 0.45 &&
     signals.hipVelocity > 0;
   // -0.02 is a 0.004 image bob, and float error put that bob strictly under the old `< -0.02`.
   // A smoothed hop that only just leaves the line sits near -0.045. Keep the bob out and that hop in.
@@ -562,8 +603,19 @@ function transitionPhase(
   // A planted stand-up has neither foot lift nor an elevated hip, so it stays out of this path.
   const evidencedRise =
     kneeCompressed && kneeExtended && ankleLifted && risingNow && !signals.forwardBend && !plantedAfterDuck;
+  // A confirmed rise during an open dip emits on this camera frame. dipClassifyMs is only for a
+  // dip that is still ambiguous. Standing back up lands near the line and is not this path.
+  const dipArmed = dipOpen || dipping || jumpMotion === "preparing" || prepSince !== null;
+  const clearDistanceTakeoff =
+    bodyRose &&
+    dipArmed &&
+    !signals.forwardBend &&
+    !plantedAfterDuck &&
+    jumpMotion !== "recovery" &&
+    (elevated || signals.hipDrop > 0.02);
   const takeoffFromDip =
     evidencedRise ||
+    clearDistanceTakeoff ||
     ((dipReal || oneFrameHop) &&
       !signals.forwardBend &&
       !plantedAfterDuck &&
@@ -572,9 +624,11 @@ function transitionPhase(
 
   let justLanded = false;
   if (jump.phase === "CONFIRMED" || jump.phase === "SENT" || jump.phase === "WAIT_RESET") {
-    // A few pixels above the calibrated ankles is still the floor. Only a clear flight stays open.
-    const feetClear = signals.hipDrop < -0.08 || signals.ankleRise > 0.1;
-    const landed = !feetClear;
+    // Hips and ankles both have to be up. An ankle flicker with the hips already back used to
+    // stay in WAIT_RESET and swallow the next hop and the next lean.
+    const clearlyAirborne = signals.hipDrop < -0.08 && signals.ankleRise > 0.06;
+    const stillRising = risingNow && signals.hipDrop < -0.02;
+    const landed = !clearlyAirborne && !stillRising;
     if (!landed) {
       jump = { ...jump, phase: jump.phase === "CONFIRMED" ? "SENT" : "WAIT_RESET" };
       jumpMotion = signals.hipVelocity < -0.45 || state.jumpMotion === "landing" ? "landing" : "airborne";
@@ -611,14 +665,13 @@ function transitionPhase(
   // so the next hop can arm during the squat recovery instead of being thrown away.
   const standingOutOfSquat =
     jumpMotion === "recovery" && signals.hipVelocity > 0.35 && signals.hipDrop > thresholds.jumpPrepDrop;
-  // Landing stays disarmed until the body is quiet. A knee bend on the way down is not a new gesture.
-  // The next dip can arm on the frame after that quiet stance, without waiting out recoverMs.
-  const stanceSettled =
-    signals.hipDrop < 0.02 &&
-    signals.hipDrop > -0.03 &&
-    Math.abs(signals.hipVelocity) < 0.2 &&
-    signals.ankleRise < thresholds.jumpAnkleRise;
-  if (jumpMotion === "landing" && stanceSettled && !justLanded) jumpMotion = "grounded";
+  // Landing knees stay disarmed. A brief stand re-arms the next hop even when hip speed is noisy.
+  // |hipVelocity| < 0.2 never cleared on a phone, so the second hop stayed in LANDING.
+  const nearStand =
+    signals.hipDrop < 0.05 &&
+    signals.hipDrop > -0.05 &&
+    signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.06);
+  if (jumpMotion === "landing" && nearStand && !justLanded) jumpMotion = "grounded";
   if (dipping && !countermovement && !squatLatched && jump.phase === "NEUTRAL" && !standingOutOfSquat && jumpMotion !== "landing") {
     // Keep the clock from the frame the dip started. Resetting it on every downward
     // sample made the rise 33ms later, which is after a one-frame hop has already slowed.
@@ -737,7 +790,15 @@ function transitionPhase(
   if (phase === "RECOVERING" && calm) {
     phase = "NEUTRAL";
     if (jumpMotion === "recovery" || jumpMotion === "landing") jumpMotion = "grounded";
-  } else if (recovering && jumpMotion !== "landing" && jumpMotion !== "preparing" && jumpMotion !== "takeoff") {
+  } else if (
+    recovering &&
+    jumpMotion !== "landing" &&
+    jumpMotion !== "preparing" &&
+    jumpMotion !== "takeoff" &&
+    jumpMotion !== "grounded"
+  ) {
+    // A brief stand after landing sets grounded. Putting that back to recovery
+    // made the next small hop wait out recoverMs and then miss the rise frame.
     jumpMotion = "recovery";
   }
 
@@ -885,7 +946,9 @@ function suppressTrack(track: GestureTrack, now: number): GestureTrack {
 }
 
 function cancelCandidate(track: GestureTrack): GestureTrack {
-  if (track.phase === "CANDIDATE" || track.phase === "CONFIRMED" || track.phase === "ARM_RISING" || track.phase === "TRIGGERED") {
+  // A sent arm stays latched across a tracking gap so a hold does not fire again when the camera returns.
+  if (track.phase === "TRIGGERED" || track.phase === "WAIT_FOR_RELEASE") return track;
+  if (track.phase === "CANDIDATE" || track.phase === "CONFIRMED" || track.phase === "ARM_RISING") {
     return { ...freshTrack(), suppress: track.suppress };
   }
   return track;
@@ -915,8 +978,10 @@ function parkTorso(track: GestureTrack, lean: number, neutralBand: number, now: 
 }
 
 /**
- * One deliberate lean sends one lane command. The shoulders must return inside the neutral band
- * before another lean can arm. The frame that first crosses the line does not emit.
+ * One deliberate lean sends one lane command on the camera frame that is already past the line.
+ * A hold stays latched. Coming back to the midpoint of the enter line and the neutral band
+ * re-arms, so a return to 0.10 after 0.16 can lean again. The neutral band alone left that
+ * second lean disarmed. A second push at the same timestamp finds the sent phase and does not emit.
  */
 function advanceTorso(
   track: GestureTrack,
@@ -925,13 +990,16 @@ function advanceTorso(
   now: number,
   emit: (movementType: "lean_left" | "lean_right") => { id: string },
 ): { track: GestureTrack; emitted: boolean } {
-  const inside = Math.abs(lean) <= thresholds.torsoLeanNeutral;
-  const past = Math.abs(lean) >= thresholds.torsoLeanEnter;
+  const magnitude = Math.abs(lean);
+  const past = magnitude >= thresholds.torsoLeanEnter;
+  const releaseLine = torsoLeanReleaseLine(thresholds.torsoLeanEnter, thresholds.torsoLeanNeutral);
   if (track.phase === "TRIGGERED" || track.phase === "WAIT_RESET" || track.phase === "SENT" || track.phase === "CONFIRMED") {
-    return { track: inside ? freshTrack() : { ...track, phase: "WAIT_RESET" }, emitted: false };
+    if (magnitude <= releaseLine) return { track: freshTrack(), emitted: false };
+    return { track: { ...track, phase: "WAIT_RESET" }, emitted: false };
   }
   if (track.suppress || !past) return { track: freshTrack(), emitted: false };
   const since = track.phase === "CANDIDATE" ? track.since : now;
+  if (track.phase === "CANDIDATE" && since === now) return { track, emitted: false };
   if (now - since >= thresholds.torsoLeanHoldMs) {
     const sent = emit(lean > 0 ? "lean_left" : "lean_right");
     return { track: { phase: "TRIGGERED", since: now, eventId: sent.id, suppress: false }, emitted: true };
