@@ -1210,6 +1210,96 @@ describe("motion reliability sequences", () => {
     expect(bobEvents).toHaveLength(0);
   });
 
+  it("emits one moderate squat and ignores a slight hip bob", () => {
+    const previousEnter = 0.16;
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBeLessThan(previousEnter);
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const measure = (hipDrop: number) => {
+      const state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+      return pushPose(state, pose({ time: 33, hipDrop })).signals?.hipDrop ?? 0;
+    };
+    const moderateDrop = measure(0.024);
+    const slightDrop = measure(0.01);
+    expect(moderateDrop).toBeGreaterThan(DEFAULT_THRESHOLDS.squatEnterDrop);
+    expect(moderateDrop).toBeLessThan(previousEnter);
+    expect(slightDrop).toBeGreaterThan(0.03);
+    expect(slightDrop).toBeLessThan(DEFAULT_THRESHOLDS.squatEnterDrop);
+
+    const moderate = feed(8, (index) => pose({ time: index * 33, hipDrop: index >= 2 && index < 6 ? 0.024 : 0 }));
+    expect(moderate.events.filter((event) => event.movementType === "squat")).toHaveLength(1);
+    expect(moderate.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+
+    const stand = feed(12, (index) => pose({ time: index * 33, hipDrop: index >= 2 && index < 7 ? 0.024 : 0 }));
+    expect(stand.events.map((event) => event.movementType)).toEqual(["squat"]);
+
+    const covered = feed(8, (index) =>
+      pose({ time: index * 33, hipDrop: index >= 2 && index < 6 ? 0.024 : 0, coverLegs: true }),
+    );
+    expect(covered.events.filter((event) => event.movementType === "squat")).toHaveLength(1);
+    expect(covered.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+
+    const slight = feed(8, (index) => pose({ time: index * 33, hipDrop: index >= 2 ? 0.01 : 0 }));
+    expect(slight.events.filter((event) => event.movementType === "squat" || event.movementType === "jump")).toHaveLength(0);
+    const oneFrame = feed(8, (index) => pose({ time: index * 33, hipDrop: index === 3 ? 0.024 : 0 }));
+    expect(oneFrame.events).toHaveLength(0);
+    console.log(JSON.stringify({
+      previousSquatEnter: previousEnter,
+      squatEnterDrop: DEFAULT_THRESHOLDS.squatEnterDrop,
+      moderateDrop: Number(moderateDrop.toFixed(3)),
+      slightDrop: Number(slightDrop.toFixed(3)),
+    }));
+  });
+
+  it("emits ten bent-knee hops once each without lowering jumpRise", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    const events = [];
+    let peak = 0;
+    let kneeOnJump = 180;
+    let time = 0;
+    for (let hop = 0; hop < 10; hop += 1) {
+      const rise = 0.018 + (hop % 5) * 0.006;
+      const knee = 0.08 + (hop % 4) * 0.02;
+      for (let index = 0; index < 14; index += 1) {
+        const dipping = index === 3;
+        const rising = index === 4 || index === 5;
+        const update = pushPose(
+          state,
+          pose({
+            time,
+            hipDrop: dipping ? 0.012 : 0,
+            rise: rising ? rise : 0,
+            kneeForward: rising ? knee : 0.01,
+          }),
+        );
+        state = update.state;
+        peak = Math.max(peak, update.signals?.hipVelocity ?? 0, update.signals?.riseSpeed ?? 0);
+        if (update.events.some((event) => event.movementType === "jump") && update.signals) {
+          kneeOnJump = Math.min(kneeOnJump, update.signals.kneeAngle);
+        }
+        events.push(...update.events);
+        time += 33;
+      }
+    }
+    const jumps = events.filter((event) => event.movementType === "jump");
+    expect(jumps).toHaveLength(10);
+    expect(new Set(jumps.map((event) => event.eventId)).size).toBe(10);
+    expect(events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    expect(peak).toBeGreaterThanOrEqual(DEFAULT_THRESHOLDS.jumpRise);
+    expect(kneeOnJump).toBeLessThan(DEFAULT_THRESHOLDS.squatKneeEnter);
+    const bob = feed(8, (index) => pose({ time: index * 33, hipDrop: index === 3 ? 0.08 : 0 }));
+    expect(bob.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+    console.log(JSON.stringify({
+      bentHopPeak: Number(peak.toFixed(2)),
+      kneeOnJump: Number(kneeOnJump.toFixed(1)),
+      jumpRise: DEFAULT_THRESHOLDS.jumpRise,
+    }));
+  });
+
   it("emits ten small hops once each, and a hop just over the measured line, but not running in place", () => {
     expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
     const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);

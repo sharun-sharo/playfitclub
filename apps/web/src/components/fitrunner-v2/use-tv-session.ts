@@ -155,6 +155,8 @@ export function useTvSession(
   const [lives, setLives] = useState(RUN_LIVES);
   const [hits, setHits] = useState(0);
   const [runOver, setRunOver] = useState(false);
+  const [courseSeed, setCourseSeed] = useState<number | null>(null);
+  const [courseCeiling, setCourseCeiling] = useState<"beginner" | "intermediate" | "advanced">("beginner");
 
   const joinUrl = joinCode
     ? `${resolvePublicAppUrl({
@@ -216,11 +218,21 @@ export function useTvSession(
       lives?: number;
       hits?: number;
       runOver?: boolean;
+      courseSeed?: number | null;
+      courseCeiling?: "beginner" | "intermediate" | "advanced";
     }) => {
       if (payload.id) sessionIdRef.current = payload.id;
       if (typeof payload.lives === "number") setLives(payload.lives);
       if (typeof payload.hits === "number") setHits(payload.hits);
       if (typeof payload.runOver === "boolean") setRunOver(payload.runOver);
+      if (typeof payload.courseSeed === "number" && Number.isFinite(payload.courseSeed)) {
+        setCourseSeed(payload.courseSeed >>> 0 || 1);
+      } else if (payload.courseSeed === null) {
+        setCourseSeed(null);
+      }
+      if (payload.courseCeiling === "beginner" || payload.courseCeiling === "intermediate" || payload.courseCeiling === "advanced") {
+        setCourseCeiling(payload.courseCeiling);
+      }
       if (payload.joinCode) {
         setJoinCode(payload.joinCode);
         noteTvDiagnostic({ session: "ready", lastError: "" });
@@ -530,6 +542,8 @@ export function useTvSession(
     lives,
     hits,
     runOver,
+    courseSeed,
+    courseCeiling,
     beginRun,
     restartRun,
     emitRoundReset,

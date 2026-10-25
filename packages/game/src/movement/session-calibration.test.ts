@@ -42,8 +42,8 @@ describe("session motion calibration", () => {
     expect(state.instruction).toBeNull();
     expect(state.squatDrop).toBe(0.36);
     const fitted = calibrationThresholds(state);
-    expect(fitted.squatEnterDrop).toBeGreaterThanOrEqual(0.14);
-    expect(fitted.squatEnterDrop).toBeLessThanOrEqual(0.2);
+    expect(fitted.squatEnterDrop).toBe(0.1);
+    expect(fitted.squatEnterDrop).toBeLessThanOrEqual(DEFAULT_THRESHOLDS.squatEnterDrop);
     expect(fitted.jumpRise).toBeUndefined();
     expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
     expect(DEFAULT_THRESHOLDS.minActionConfidence).toBe(0.6);

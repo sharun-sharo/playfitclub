@@ -155,7 +155,15 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   torsoLeanNeutral: 0.07,
   /** Next 30fps frame. Zero would change lanes on the same sample as a one-frame wobble. */
   torsoLeanHoldMs: 1,
-  squatEnterDrop: 0.16,
+  /**
+   * Hip drop that counts as a squat, in standing-torso lengths.
+   * The old gate was 0.16, which only a deep race squat cleared.
+   * 0.10 is a normal fitness squat held one or two frames at 30 fps.
+   * A slight bow around 0.05, and a one-frame bob, stay under it.
+   * Torso length under 90% of the standing calibration is not an extra gate.
+   * The knee angle is not an extra gate. Hidden knees still use this hip drop.
+   */
+  squatEnterDrop: 0.1,
   squatExitDrop: 0.07,
   squatKneeEnter: 155,
   squatKneeExit: 166,

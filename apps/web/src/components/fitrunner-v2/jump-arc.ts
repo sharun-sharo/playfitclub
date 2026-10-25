@@ -182,6 +182,14 @@ export function jumpCommandClip(): typeof RUNNING_JUMP_CLIP {
 }
 
 /**
+ * Clip the command plays. Running Jump when that GLB loaded.
+ * JumpUp when it did not, so a missing file does not cancel the arc.
+ */
+export function jumpPlaybackClip(runningJumpReady: boolean): "RunningJump" | "JumpUp" {
+  return runningJumpReady ? RUNNING_JUMP_CLIP : "JumpUp";
+}
+
+/**
  * Map the ballistic clock onto Running Jump so the feet leave with takeoff and
  * return with landing. The clip plays forward. It is not reversed on the way down.
  */

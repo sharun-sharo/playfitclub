@@ -13,7 +13,7 @@ export const MOTION_THRESHOLD_FIELDS = [
   { key: "torsoLeanEnter", label: "lean distance", min: 0.08, max: 0.45, step: 0.01 },
   { key: "torsoLeanNeutral", label: "lean reset", min: 0.02, max: 0.2, step: 0.01 },
   { key: "torsoLeanHoldMs", label: "lean confirm", min: 0, max: 120, step: 1 },
-  { key: "squatEnterDrop", label: "squat drop", min: 0.12, max: 0.55, step: 0.01 },
+  { key: "squatEnterDrop", label: "squat drop", min: 0.06, max: 0.55, step: 0.01 },
   { key: "squatKneeEnter", label: "knee °", min: 100, max: 160, step: 1 },
   { key: "jumpRise", label: "jump rise", min: 0.2, max: 1.4, step: 0.01 },
   { key: "jumpAnkleRise", label: "ankle rise", min: 0, max: 0.2, step: 0.005 },

@@ -568,8 +568,11 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       if (!live || live.record.id !== parsed.data.sessionId) {
         return reply(socket, ack, "UNAUTHORIZED", "Only the TV can report a hit.");
       }
-      if (live.livesRun.active && !live.livesRun.over && live.livesRun.lives > 0 && live.livesRun.courseSeed != null) {
-        if (!scheduleContains(live.livesRun.courseSeed, live.livesRun.courseCeiling, parsed.data.obstacleId)) {
+      if (live.livesRun.active && !live.livesRun.over && live.livesRun.lives > 0) {
+        const known =
+          live.livesRun.courseSeed != null &&
+          scheduleContains(live.livesRun.courseSeed, live.livesRun.courseCeiling, parsed.data.obstacleId);
+        if (!known) {
           const body = {
             ok: false,
             accepted: false,
@@ -1079,6 +1082,8 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       hits: live.livesRun.hits,
       runActive: live.livesRun.active,
       runOver: live.livesRun.over,
+      courseSeed: live.livesRun.courseSeed,
+      courseCeiling: live.livesRun.courseCeiling,
       players: [...live.players.values()]
         .sort((a, b) => a.slot - b.slot)
         .map((player) => ({

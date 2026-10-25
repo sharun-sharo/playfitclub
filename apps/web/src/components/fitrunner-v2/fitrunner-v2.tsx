@@ -149,7 +149,14 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           },
           onRunBegin: () => {
             armed.current = false;
-            const pending = beginRunRef.current();
+            const pending = (async () => {
+              for (let attempt = 0; attempt < 4; attempt += 1) {
+                if (cancelled) return;
+                const state = await beginRunRef.current();
+                if (state?.ok) return;
+                await new Promise((resolve) => window.setTimeout(resolve, 350));
+              }
+            })();
             runGate.current = pending.then(() => undefined);
           },
           onHit: (hit) => {
@@ -276,6 +283,12 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
     });
   };
   reportHitRef.current = session.reportHit;
+
+  useEffect(() => {
+    if (!ready || typeof session.courseSeed !== "number") return;
+    const ceiling = session.courseCeiling === "intermediate" || session.courseCeiling === "advanced" ? session.courseCeiling : "beginner";
+    handleRef.current?.applyCourse({ seed: session.courseSeed, ceiling });
+  }, [ready, session.courseSeed, session.courseCeiling]);
 
   useEffect(() => {
     handleRef.current?.setLives(session.lives);

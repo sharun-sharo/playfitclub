@@ -15,6 +15,7 @@ import {
   JUMP_VELOCITY,
   jumpClipTime,
   jumpCommandClip,
+  jumpPlaybackClip,
   OBSTACLE_SPACING_M,
   PEAK_HEIGHT_M,
   PLYO_BOX,
@@ -195,6 +196,19 @@ describe("fitrunner jump arc", () => {
   it("selects Running Jump and plays that clip forward across the airborne window", () => {
     expect(jumpCommandClip()).toBe("RunningJump");
     expect(jumpCommandClip()).toBe(RUNNING_JUMP_CLIP);
+    expect(jumpPlaybackClip(true)).toBe("RunningJump");
+    expect(jumpPlaybackClip(false)).toBe("JumpUp");
+    let flight = beginJumpArc(null);
+    expect(flight?.active).toBe(true);
+    let peak = 0;
+    while (flight?.active) {
+      flight = stepJumpArc(flight, 1 / 60);
+      peak = Math.max(peak, sampleJump(flight.elapsed).height);
+    }
+    expect(peak).toBeGreaterThan(0.8);
+    const fallback = jumpClipTime(AIRBORNE_SECONDS / 2, 0.5, 0.77);
+    expect(fallback.grounded).toBe(false);
+    expect(fallback.time).toBeGreaterThan(0.5);
     expect(AIRBORNE_SECONDS).toBeCloseTo(0.622222, 4);
     expect(RUNNING_JUMP_RETURN_S - RUNNING_JUMP_LEAVE_S).toBeCloseTo(0.562, 3);
 

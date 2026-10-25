@@ -61,12 +61,14 @@ export function noteBodyScale(state: MotionCalibration, torso: number, shoulderW
 }
 
 /**
- * Fits the squat enter depth to a detected squat, inside a fixed band.
- * Jump speed, confidence, and visibility stay on their defaults.
+ * A demonstrated squat must not raise the live gate.
+ * The old band was 0.14–0.20, so a deep calibration squat (0.36 became 0.20)
+ * and the next moderate squat was ignored. The live gate stays at or under
+ * the moderate default. Jump speed, confidence, and visibility stay put.
  */
 export function calibrationThresholds(state: MotionCalibration): Partial<MovementThresholds> {
   if (state.squatDrop === null) return {};
-  return { squatEnterDrop: Math.min(0.2, Math.max(0.14, state.squatDrop * 0.55)) };
+  return { squatEnterDrop: Math.min(0.1, Math.max(0.08, state.squatDrop * 0.55)) };
 }
 
 export function isCalibrationCue(message: string | null | undefined) {

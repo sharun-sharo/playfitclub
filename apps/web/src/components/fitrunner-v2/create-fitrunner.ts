@@ -12,7 +12,8 @@ import {
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
 import { jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
-import { beginJumpArc, jumpCommandClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
+import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
+import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
 import { fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionUserAgent } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -396,7 +397,7 @@ export async function startFitRunner(
       ...rest
     ] = await Promise.all([
       loadRunner(),
-      loadAsset(ASSETS.runningJump),
+      loadAsset(ASSETS.runningJump).catch(() => null),
       loadAsset(ASSETS.bush),
       loadAsset(ASSETS.rock),
       loadAsset(ASSETS.rockSmall),
@@ -439,13 +440,20 @@ export async function startFitRunner(
     }
     const missing = CLIPS.filter((name) => !actions[name]);
     if (missing.length) throw new Error(`X Bot GLB is missing ${missing.join(", ")}.`);
-    const runningJump = jumpGltf.animations.find((clip) => clip.name === RUNNING_JUMP_CLIP);
-    if (!runningJump) {
-      throw new Error(`Expected ${RUNNING_JUMP_CLIP}, found ${jumpGltf.animations.map((clip) => clip.name).join(", ") || "none"}.`);
+    let jumpAction: THREE.AnimationAction = actions.JumpUp;
+    let jumpUsesRunning = false;
+    const runningJump = jumpGltf?.animations.find((clip) => clip.name === RUNNING_JUMP_CLIP) ?? null;
+    if (runningJump) {
+      try {
+        extractRoot(runningJump, true, true);
+        jumpAction = mixer.clipAction(runningJump);
+        jumpAction.enabled = true;
+        jumpUsesRunning = true;
+      } catch {
+        jumpAction = actions.JumpUp;
+        jumpUsesRunning = false;
+      }
     }
-    extractRoot(runningJump, true, true);
-    const jumpAction = mixer.clipAction(runningJump);
-    jumpAction.enabled = true;
 
     let skinnedCount = 0;
     let bodyMesh: THREE.SkinnedMesh | null = null;
@@ -479,7 +487,27 @@ export async function startFitRunner(
     runAction.setLoop(THREE.LoopRepeat, Infinity);
     runAction.timeScale = tuning.runTimeScale;
     runAction.play();
+    let jumpApex = 0;
+    for (let index = 1; index < roots.JumpUp.y.length; index += 1) {
+      if ((roots.JumpUp.y[index] ?? 0) > (roots.JumpUp.y[jumpApex] ?? 0)) jumpApex = index;
+    }
+    const jumpApexTime = roots.JumpUp.times[jumpApex] ?? actions.JumpUp.getClip().duration;
+    let crouchIndex = 0;
+    for (let index = 1; index < roots.JumpUp.y.length; index += 1) {
+      if ((roots.JumpUp.y[index] ?? 0) < (roots.JumpUp.y[crouchIndex] ?? 0)) crouchIndex = index;
+    }
+    let takeoffIndex = crouchIndex;
+    for (let index = crouchIndex + 1; index < roots.JumpUp.y.length; index += 1) {
+      const height = roots.JumpUp.y[index] ?? 0;
+      const previous = roots.JumpUp.y[index - 1] ?? height;
+      if (height >= -0.02 && height > previous) {
+        takeoffIndex = index;
+        break;
+      }
+    }
+    const jumpTakeoffTime = roots.JumpUp.times[takeoffIndex] ?? 0;
     const rollEndTime = endBeforeLoop(roots.ForwardRoll);
+    if (!jumpUsesRunning) actions.JumpUp.getClip().duration = jumpApexTime;
     actions.ForwardRoll.getClip().duration = rollEndTime;
     mixer.update(0);
 
@@ -648,16 +676,11 @@ export async function startFitRunner(
     let courseHorizonM = 0;
     /** Meters already run. Obstacle placement skips anything the body has passed. */
     let runDistance = 0;
+    /** Countdown hides the meshes. A seed that arrives then must not pop them on early. */
+    let obstaclesConcealed = holdCourse;
 
     function obstaclesForSpawn(spawn: number) {
-      if (!courseObstacles.length) return [];
-      const worldZ = tuning.tileSize * 2 - spawn * tuning.tileSize;
-      const half = tuning.tileSize / 2;
-      return courseObstacles.filter((item) => {
-        if (item.distanceM < runDistance - 0.5) return false;
-        const centerZ = -item.distanceM - item.depthM / 2;
-        return centerZ >= worldZ - half && centerZ < worldZ + half;
-      });
+      return obstaclesForTile(courseObstacles, spawn, runDistance, tuning.tileSize);
     }
 
     function makeSegment(spawn: number): Segment {
@@ -750,11 +773,14 @@ export async function startFitRunner(
     }
 
     function applyCourse(plan: { seed: number; ceiling: CourseLevel }) {
-      coursePlan = { seed: plan.seed >>> 0 || 1, ceiling: plan.ceiling };
+      const seed = plan.seed >>> 0 || 1;
+      if (coursePlan && coursePlan.seed === seed && coursePlan.ceiling === plan.ceiling) return;
+      coursePlan = { seed, ceiling: plan.ceiling };
       courseHorizonM = 0;
       courseObstacles = [];
       ensureCourse(runDistance);
       for (const segment of segments) refill(segment, segment.spawn);
+      if (obstaclesConcealed) concealCourse();
     }
 
     let lane = 0;
@@ -952,10 +978,10 @@ export async function startFitRunner(
       action.timeScale = 1;
       action.paused = true;
       fadeTo(action, 0.04);
-      action.time = RUNNING_JUMP_LEAVE_S;
+      action.time = jumpUsesRunning ? RUNNING_JUMP_LEAVE_S : jumpTakeoffTime;
       action.paused = true;
       motion = "jump";
-      activeClip = jumpCommandClip();
+      activeClip = jumpPlaybackClip(jumpUsesRunning);
       motionEndsAt = Number.POSITIVE_INFINITY;
       noteAction("jump", source, 0, playerLane(), confidence, eventId);
       return true;
@@ -970,7 +996,7 @@ export async function startFitRunner(
         const sample = sampleJump(stepped.elapsed);
         const action = jumpAction;
         if (!stepped.active || !sample.airborne) {
-          action.time = RUNNING_JUMP_RETURN_S;
+          action.time = jumpUsesRunning ? RUNNING_JUMP_RETURN_S : jumpTakeoffTime;
           action.paused = true;
           groundLock = 0.07;
           footTarget = 0;
@@ -988,12 +1014,14 @@ export async function startFitRunner(
           }
           return;
         }
-        const clip = runningJumpClipTime(stepped.elapsed);
+        const clipTime = jumpUsesRunning
+          ? runningJumpClipTime(stepped.elapsed).time
+          : jumpClipTime(stepped.elapsed, jumpTakeoffTime, jumpApexTime).time;
         action.timeScale = 0;
         action.paused = true;
-        action.time = clip.time;
+        action.time = clipTime;
         motion = sample.phase === "rise" ? "jump" : "fall";
-        activeClip = jumpCommandClip();
+        activeClip = jumpPlaybackClip(jumpUsesRunning);
         footTarget = sample.height;
         return;
       }
@@ -1545,6 +1573,7 @@ export async function startFitRunner(
     }
 
     function concealCourse() {
+      obstaclesConcealed = true;
       for (const segment of segments) {
         for (const placed of segment.placed) placed.object.visible = false;
         for (const token of segment.tokens) token.mesh.visible = false;
@@ -1552,6 +1581,7 @@ export async function startFitRunner(
     }
 
     function revealCourse() {
+      obstaclesConcealed = false;
       for (const segment of segments) {
         for (const placed of segment.placed) placed.object.visible = true;
         for (const token of segment.tokens) token.mesh.visible = token.active;
@@ -1824,6 +1854,7 @@ export async function startFitRunner(
     publish(tuning.forwardSpeed);
     tropical.update(runner.position, camera, 0);
     canvas.dataset.hold = "0";
+    applyCourse({ seed: PROVISIONAL_COURSE_SEED, ceiling: "beginner" });
     if (holdCourse) {
       concealCourse();
       canvas.dataset.course = "hold";

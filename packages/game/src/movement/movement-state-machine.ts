@@ -380,7 +380,9 @@ function transitionPhase(
     signals.hipDrop > thresholds.jumpPrepDrop &&
     (signals.legsReady ? planted : true);
   const instant = signals.legsReady ? signals.hipVelocity : Math.max(signals.hipVelocity, signals.shoulderVelocity);
-  const elevated = signals.hipDrop < -0.02 || signals.ankleRise > thresholds.jumpAnkleRise;
+  // -0.02 is a 0.004 image bob, and float error put that bob strictly under the old `< -0.02`.
+  // A smoothed hop that only just leaves the line sits near -0.045. Keep the bob out and that hop in.
+  const elevated = signals.hipDrop < -0.03 || signals.ankleRise > thresholds.jumpAnkleRise;
   const risingNow = instant > thresholds.jumpRise;
   const dipAge = state.prepSince !== null ? now - state.prepSince : -1;
   const dipReal = dipAge >= thresholds.jumpPrepMs;
@@ -389,9 +391,16 @@ function transitionPhase(
   // out the 50ms and the following quiet frame does not jump.
   const oneFrameHop = dipAge >= 30 && dipAge < thresholds.jumpPrepMs && risingNow && elevated;
   // A return to the same standing height is not a hop. Leaving the line, or still rising after a real dip, is.
+  // Standing up from a duck that already sat still keeps the feet planted. A hop lifts the ankles
+  // (about 0.024 torso on the dip-then-rise sample) or clears the standing line. Do not turn that
+  // planted return into a jump.
+  // Back near standing, feet down. A speed frame that is still in the dip is the hop, not the stand-up.
+  const plantedAfterDuck =
+    squatCalm && signals.ankleRise < 0.015 && signals.hipDrop < thresholds.jumpPrepDrop && signals.hipDrop > -0.03;
   const takeoffFromDip =
     (dipReal || oneFrameHop) &&
     !signals.forwardBend &&
+    !plantedAfterDuck &&
     (risingNow || (signals.riseSpeed > thresholds.jumpRise && elevated)) &&
     (signals.legsReady || elevated);
 
@@ -457,7 +466,16 @@ function transitionPhase(
     if (!squatLatched) {
       const since = squat.phase === "CANDIDATE" ? squat.since : now;
       const held = squat.phase === "CANDIDATE" && now - since >= thresholds.squatHoldMs;
-      if (held && squatStill && squatCalm) {
+      // A hop crouch can sit still at squat depth for a few frames and then leave the floor.
+      // Confirming the duck at the second still frame cleared the dip, so the rise never jumped.
+      // Keep the candidate while that dip is under 150ms. The rise still in that window is the hop.
+      // A squat that stays down past the window, or stands back up with planted feet, still ducks.
+      const dipAgeNow = prepSince !== null ? now - prepSince : Number.POSITIVE_INFINITY;
+      // Only a shallow crouch waits. A clear squat (0.22 torso and deeper) still ducks on the next frame.
+      // 0.15 is the still hop-crouch that must stay a jump. 0.40 and 1.1 are the squats that must emit by 66ms.
+      const shallowCrouch = signals.hipDrop < 0.22;
+      const jumpStillLoading = jumpMotion === "preparing" && dipAgeNow < 150 && shallowCrouch;
+      if (held && squatStill && squatCalm && !jumpStillLoading) {
         const sent = emit("squat", signals.confidence);
         squat = { phase: "CONFIRMED", since: now, eventId: sent.id, suppress: false };
         phase = "SQUATTING";
@@ -479,8 +497,22 @@ function transitionPhase(
       phase = "SQUATTING";
     }
   } else if (squat.phase === "CANDIDATE") {
-    squat = freshTrack();
-    squatCalm = false;
+    // The hop rose before the 150ms duck window. A planted return is the squat the window was holding.
+    const held = now - squat.since >= thresholds.squatHoldMs;
+    const plantedReturn =
+      squatCalm && signals.ankleRise < 0.015 && signals.hipDrop < thresholds.squatEnterDrop && !signals.forwardBend;
+    if (held && plantedReturn && !takeoffFromDip) {
+      const sent = emit("squat", signals.confidence);
+      squat = { phase: "CONFIRMED", since: now, eventId: sent.id, suppress: false };
+      phase = "SQUATTING";
+      prepSince = null;
+      dipOpen = false;
+      squatCalm = false;
+      jumpMotion = "grounded";
+    } else {
+      squat = freshTrack();
+      squatCalm = false;
+    }
   } else {
     squatCalm = false;
   }
@@ -511,12 +543,14 @@ function transitionPhase(
     jumpMotion = "recovery";
   }
 
+  // A hop that is already in the air often missed the dip window, and the knees are still bent.
+  // Straight knees (kneeAngle > squatKneeEnter) rejected every one of those, so jumpRise
+  // was never reached even when the hip speed was many times 0.32. Elevation is the rise
+  // leaving the standing line. Standing up from a squat is still in recovery, with the hips low.
   const flight =
-    signals.legsReady &&
-    signals.kneeAngle > thresholds.squatKneeEnter &&
     signals.hipDrop < thresholds.squatExitDrop &&
-    signals.ankleRise > thresholds.jumpAnkleRise &&
-    signals.riseSpeed > thresholds.jumpRise;
+    elevated &&
+    (signals.riseSpeed > thresholds.jumpRise || instant > thresholds.jumpRise);
   const jumping =
     !holdingSquat &&
     !justLanded &&

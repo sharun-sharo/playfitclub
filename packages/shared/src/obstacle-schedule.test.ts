@@ -13,6 +13,7 @@ import {
   courseDebugSnapshot,
   courseLevelAt,
   latencyAllowanceS,
+  distanceAt,
   scheduleContains,
   scheduleCourse,
   speedAt,
@@ -197,6 +198,24 @@ describe("fitrunner obstacle schedule", () => {
     expect(debug.latencyAllowanceS).toBeGreaterThan(0);
     expect(debug.recoveryAllowanceS).toBeCloseTo(AIRBORNE_S + STAND_RECOVERY_S, 5);
     expect(JSON.stringify(debug)).not.toMatch(/token|secret|password|session/i);
+  });
+
+  it("keeps a valid obstacle ahead for 60 seconds and those ids on the server schedule", () => {
+    expect(distanceAt(60)).toBeGreaterThan(400);
+    const course = scheduleCourse({ seed: 11, ceiling: "beginner", untilTimeS: 75 });
+    expect(course.valid, course.reasons.join(",")).toBe(true);
+    const short = scheduleCourse({ seed: 11, ceiling: "beginner" });
+    expect(short.obstacles.at(-1)?.distanceM ?? 0).toBeLessThan(distanceAt(60));
+    for (let second = 0; second <= 60; second += 5) {
+      const distance = distanceAt(second);
+      const ahead = course.obstacles.filter((item) => item.distanceM > distance + 1 && item.distanceM < distance + 50);
+      expect(ahead.length, `t=${second} d=${distance.toFixed(0)}`).toBeGreaterThan(0);
+      for (const item of ahead) {
+        expect(item.prepS).toBeGreaterThanOrEqual(PREP_S[item.level][item.action]);
+        expect(item.windowOpenS).toBeLessThan(item.contactS);
+        expect(scheduleContains(11, "beginner", item.id)).toBe(true);
+      }
+    }
   });
 });
 
