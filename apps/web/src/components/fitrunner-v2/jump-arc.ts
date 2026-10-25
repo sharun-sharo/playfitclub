@@ -166,6 +166,37 @@ export function jumpClipTime(elapsed: number, takeoffTime: number, apexTime: num
   return { time: takeoffTime + span * clamped, grounded: false };
 }
 
+/** Clip a jump command plays. Loaded from /assets/fitrunner/running-jump.glb. */
+export const RUNNING_JUMP_CLIP = "RunningJump";
+
+/**
+ * Feet in game/Running Jump.fbx, before root translation was removed.
+ * The plant foot clears 3 cm at 0.036 s. The lead foot is back within 3 cm at 0.598 s.
+ * That 0.562 s span is played forward across the 0.622 s ballistic window.
+ */
+export const RUNNING_JUMP_LEAVE_S = 0.036;
+export const RUNNING_JUMP_RETURN_S = 0.598;
+
+export function jumpCommandClip() {
+  return RUNNING_JUMP_CLIP;
+}
+
+/**
+ * Map the ballistic clock onto Running Jump so the feet leave with takeoff and
+ * return with landing. The clip plays forward. It is not reversed on the way down.
+ */
+export function runningJumpClipTime(
+  elapsed: number,
+  leaveTime = RUNNING_JUMP_LEAVE_S,
+  returnTime = RUNNING_JUMP_RETURN_S,
+) {
+  const sample = sampleJump(elapsed);
+  if (!sample.airborne) return { time: returnTime, grounded: true };
+  const span = Math.max(0, returnTime - leaveTime);
+  const along = Math.min(1, Math.max(0, sample.elapsed / AIRBORNE_SECONDS));
+  return { time: leaveTime + span * along, grounded: false };
+}
+
 export function bodyHitsObstacle(input: {
   footHeight: number;
   bodyMinZ: number;

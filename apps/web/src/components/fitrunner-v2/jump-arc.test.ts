@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { fitRunnerTuning as tuning } from "./tuning";
 import {
@@ -11,12 +14,17 @@ import {
   JUMP_GRAVITY,
   JUMP_VELOCITY,
   jumpClipTime,
+  jumpCommandClip,
   OBSTACLE_SPACING_M,
   PEAK_HEIGHT_M,
   PLYO_BOX,
   PLAYER_COLLISION_DEPTH_M,
   PREVIOUS_JUMP,
   requiredTravel,
+  RUNNING_JUMP_CLIP,
+  RUNNING_JUMP_LEAVE_S,
+  RUNNING_JUMP_RETURN_S,
+  runningJumpClipTime,
   sampleJump,
   stepJumpArc,
   sweepClearance,
@@ -181,6 +189,47 @@ describe("fitrunner jump arc", () => {
       expect(clip.grounded).toBe(false);
       expect(clip.time).toBeGreaterThanOrEqual(takeoff);
       expect(clip.time).toBeLessThanOrEqual(apex + 1e-6);
+    }
+  });
+
+  it("selects Running Jump and plays that clip forward across the airborne window", () => {
+    expect(jumpCommandClip()).toBe("RunningJump");
+    expect(jumpCommandClip()).toBe(RUNNING_JUMP_CLIP);
+    expect(AIRBORNE_SECONDS).toBeCloseTo(0.622222, 4);
+    expect(RUNNING_JUMP_RETURN_S - RUNNING_JUMP_LEAVE_S).toBeCloseTo(0.562, 3);
+
+    const start = runningJumpClipTime(0);
+    const mid = runningJumpClipTime(AIRBORNE_SECONDS / 2);
+    const late = runningJumpClipTime(AIRBORNE_SECONDS * 0.75);
+    const grounded = runningJumpClipTime(AIRBORNE_SECONDS);
+    expect(start.grounded).toBe(false);
+    expect(start.time).toBeCloseTo(RUNNING_JUMP_LEAVE_S, 5);
+    expect(mid.time).toBeGreaterThan(start.time);
+    expect(late.time).toBeGreaterThan(mid.time);
+    expect(late.time).toBeLessThan(RUNNING_JUMP_RETURN_S);
+    expect(grounded.grounded).toBe(true);
+    expect(grounded.time).toBeCloseTo(RUNNING_JUMP_RETURN_S, 5);
+
+    const arc = beginJumpArc({ elapsed: 0.2, active: true });
+    expect(arc).toBeNull();
+
+    const glbPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../public/assets/fitrunner/running-jump.glb");
+    const buf = fs.readFileSync(glbPath);
+    const jsonLength = buf.readUInt32LE(12);
+    const json = JSON.parse(buf.subarray(20, 20 + jsonLength).toString("utf8")) as {
+      nodes: { name?: string }[];
+      animations: { name: string; channels: { sampler: number; target: { node: number; path: string } }[]; samplers: { output: number }[] };
+      accessors: { min?: number[]; max?: number[] }[];
+    };
+    const animation = json.animations.find((item) => item.name === jumpCommandClip());
+    expect(animation?.name).toBe("RunningJump");
+    const hips = json.nodes.findIndex((node) => node.name === "mixamorigHips");
+    const channel = animation?.channels.find((item) => item.target.node === hips && item.target.path === "translation");
+    const output = json.accessors[animation?.samplers[channel?.sampler ?? -1]?.output ?? -1];
+    expect(output?.min).toBeDefined();
+    expect(output?.max).toBeDefined();
+    for (let channelIndex = 0; channelIndex < 3; channelIndex += 1) {
+      expect((output?.max?.[channelIndex] ?? 0) - (output?.min?.[channelIndex] ?? 0)).toBeLessThan(0.001);
     }
   });
 });

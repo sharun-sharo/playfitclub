@@ -12,7 +12,7 @@ import {
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
 import { jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
-import { beginJumpArc, jumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
+import { beginJumpArc, jumpCommandClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionUserAgent } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -30,6 +30,7 @@ import {
 const ASSETS = {
   xbot: "/assets/fitrunner/xbot.glb",
   pulse: "/assets/fitrunner/pulse-robot.glb",
+  runningJump: "/assets/fitrunner/running-jump.glb",
   roads: ["/assets/fitrunner/kenney/road/roadTile_162.gltf"],
   palms: [
     "/assets/fitrunner/kenney/nature/tree_palm.glb",
@@ -57,6 +58,7 @@ const ASSETS = {
 
 const CLIPS = ["Run", "JumpUp", "ForwardRoll", "LongJump", "StandUp", "WipeSweat"] as const;
 type ClipName = (typeof CLIPS)[number];
+type ActiveClip = ClipName | typeof RUNNING_JUMP_CLIP;
 type Motion = "run" | "jump" | "fall" | "roll" | "celebrate" | "stand" | "longJump";
 
 export type FitRunnerHud = {
@@ -212,8 +214,8 @@ function endBeforeLoop(curve: RootCurve): number {
   return curve.times[last] ?? 0;
 }
 
-/** Keep skeletal pose motion. Move large horizontal travel, and JumpUp's vertical arc, onto the parent. */
-function extractRoot(clip: THREE.AnimationClip, liftVertical: boolean): RootCurve {
+/** Keep skeletal pose motion. Move large horizontal travel, and a jump's vertical root, onto the parent. */
+function extractRoot(clip: THREE.AnimationClip, liftVertical: boolean, pinRoot = false): RootCurve {
   const track = clip.tracks.find((item) => item.name === "mixamorigHips.position");
   if (!track) throw new Error(`${clip.name} has no hips position track.`);
   const times = track.times;
@@ -228,7 +230,7 @@ function extractRoot(clip: THREE.AnimationClip, liftVertical: boolean): RootCurv
     minX = Math.min(minX, x);
     maxX = Math.max(maxX, x);
   }
-  const stripLateral = maxX - minX > 0.5;
+  const stripLateral = pinRoot || maxX - minX > 0.5;
   const curve: RootCurve = {
     times: Float32Array.from(times),
     y: new Float32Array(times.length),
@@ -242,7 +244,7 @@ function extractRoot(clip: THREE.AnimationClip, liftVertical: boolean): RootCurv
     curve.z[index] = z - originZ;
     values[index * 3 + 2] = originZ;
     if (stripLateral) values[index * 3] = originX;
-    if (liftVertical) values[index * 3 + 1] = originY;
+    if (liftVertical || pinRoot) values[index * 3 + 1] = originY;
   }
   return curve;
 }
@@ -374,6 +376,7 @@ export async function startFitRunner(
   try {
     const [
       xbot,
+      jumpGltf,
       bushGltf,
       rockGltf,
       rockSmallGltf,
@@ -393,6 +396,7 @@ export async function startFitRunner(
       ...rest
     ] = await Promise.all([
       loadRunner(),
+      loadAsset(ASSETS.runningJump),
       loadAsset(ASSETS.bush),
       loadAsset(ASSETS.rock),
       loadAsset(ASSETS.rockSmall),
@@ -435,6 +439,13 @@ export async function startFitRunner(
     }
     const missing = CLIPS.filter((name) => !actions[name]);
     if (missing.length) throw new Error(`X Bot GLB is missing ${missing.join(", ")}.`);
+    const runningJump = jumpGltf.animations.find((clip) => clip.name === RUNNING_JUMP_CLIP);
+    if (!runningJump) {
+      throw new Error(`Expected ${RUNNING_JUMP_CLIP}, found ${jumpGltf.animations.map((clip) => clip.name).join(", ") || "none"}.`);
+    }
+    extractRoot(runningJump, true, true);
+    const jumpAction = mixer.clipAction(runningJump);
+    jumpAction.enabled = true;
 
     let skinnedCount = 0;
     let bodyMesh: THREE.SkinnedMesh | null = null;
@@ -468,28 +479,7 @@ export async function startFitRunner(
     runAction.setLoop(THREE.LoopRepeat, Infinity);
     runAction.timeScale = tuning.runTimeScale;
     runAction.play();
-    let jumpApex = 0;
-    for (let index = 1; index < roots.JumpUp.y.length; index += 1) {
-      if ((roots.JumpUp.y[index] ?? 0) > (roots.JumpUp.y[jumpApex] ?? 0)) jumpApex = index;
-    }
-    const jumpApexTime = roots.JumpUp.times[jumpApex] ?? actions.JumpUp.getClip().duration;
-    // JumpUp spends ~0.5s crouching before the hips cross standing height. Start there.
-    let crouchIndex = 0;
-    for (let index = 1; index < roots.JumpUp.y.length; index += 1) {
-      if ((roots.JumpUp.y[index] ?? 0) < (roots.JumpUp.y[crouchIndex] ?? 0)) crouchIndex = index;
-    }
-    let takeoffIndex = crouchIndex;
-    for (let index = crouchIndex + 1; index < roots.JumpUp.y.length; index += 1) {
-      const height = roots.JumpUp.y[index] ?? 0;
-      const previous = roots.JumpUp.y[index - 1] ?? height;
-      if (height >= -0.02 && height > previous) {
-        takeoffIndex = index;
-        break;
-      }
-    }
-    const jumpTakeoffTime = roots.JumpUp.times[takeoffIndex] ?? 0;
     const rollEndTime = endBeforeLoop(roots.ForwardRoll);
-    actions.JumpUp.getClip().duration = jumpApexTime;
     actions.ForwardRoll.getClip().duration = rollEndTime;
     mixer.update(0);
 
@@ -773,7 +763,7 @@ export async function startFitRunner(
     let laneT = 1;
     let visualLane = 0;
     let motion: Motion = "run";
-    let activeClip: ClipName = "Run";
+    let activeClip: ActiveClip = "Run";
     let current: THREE.AnimationAction = runAction;
     let motionEndsAt = 0;
     let elapsed = 0;
@@ -956,31 +946,31 @@ export async function startFitRunner(
       jumpArc = next;
       groundLock = 0;
       footTarget = 0;
-      const action = actions.JumpUp;
+      const action = jumpAction;
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
       action.timeScale = 1;
       action.paused = true;
       fadeTo(action, 0.04);
-      action.time = jumpTakeoffTime;
+      action.time = RUNNING_JUMP_LEAVE_S;
       action.paused = true;
       motion = "jump";
-      activeClip = "JumpUp";
+      activeClip = jumpCommandClip();
       motionEndsAt = Number.POSITIVE_INFINITY;
       noteAction("jump", source, 0, playerLane(), confidence, eventId);
       return true;
     }
 
-    /** One arc owns the airborne collision height. The JumpUp clip is scrubbed to that same clock. */
+    /** One arc owns the airborne collision height. Running Jump is scrubbed to that same clock. */
     function updateVertical(dt: number) {
       const arc = jumpArc;
       if (arc && arc.active) {
         const stepped = stepJumpArc(arc, dt);
         jumpArc = stepped;
         const sample = sampleJump(stepped.elapsed);
-        const action = actions.JumpUp;
+        const action = jumpAction;
         if (!stepped.active || !sample.airborne) {
-          action.time = jumpTakeoffTime;
+          action.time = RUNNING_JUMP_RETURN_S;
           action.paused = true;
           groundLock = 0.07;
           footTarget = 0;
@@ -998,12 +988,12 @@ export async function startFitRunner(
           }
           return;
         }
-        const clip = jumpClipTime(stepped.elapsed, jumpTakeoffTime, jumpApexTime);
+        const clip = runningJumpClipTime(stepped.elapsed);
         action.timeScale = 0;
         action.paused = true;
         action.time = clip.time;
         motion = sample.phase === "rise" ? "jump" : "fall";
-        activeClip = "JumpUp";
+        activeClip = jumpCommandClip();
         footTarget = sample.height;
         return;
       }
@@ -1261,7 +1251,7 @@ export async function startFitRunner(
       canvas.dataset.quality = tuning.quality;
       canvas.dataset.ahead = nearestAhead;
       canvas.dataset.module = coastModule(Math.max(0, Math.round(-runner.position.z / tuning.tileSize)));
-      canvas.dataset.jumpTime = `${actions.JumpUp.time.toFixed(2)}/${actions.JumpUp.getClip().duration.toFixed(2)}/${runner.position.y.toFixed(2)}`;
+      canvas.dataset.jumpTime = `${jumpAction.time.toFixed(2)}/${jumpAction.getClip().duration.toFixed(2)}/${runner.position.y.toFixed(2)}`;
       canvas.dataset.animTime = current.time.toFixed(3);
       canvas.dataset.hit = invuln > 0 ? "1" : "0";
       canvas.dataset.lives = String(shownLives);
