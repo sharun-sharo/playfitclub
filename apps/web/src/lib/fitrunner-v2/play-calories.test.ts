@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PlayScoreCard } from "../../components/fitrunner-v2/play-score-card";
 import { CALORIE_CONFIG } from "./calories";
-import { CALORIE_NEEDS_NOTE, playCalories } from "./play-calories";
+import { CALORIE_NEEDS_NOTE, cameraActiveStep, playCalories } from "./play-calories";
 
 describe("play calories", () => {
   it("is unavailable when weight is missing", () => {
@@ -29,6 +29,23 @@ describe("play calories", () => {
     expect(view.kcal).toBe(43);
     expect(view.text).toBe("43 kcal");
     expect(view.note).toBeNull();
+  });
+
+  it("changes kcal as camera-active minutes increase", () => {
+    const minuteFraction = 110 / 60;
+    const earlyRaw = (CALORIE_CONFIG.met * 3.5 * 70) / 200 * minuteFraction;
+    const earlyMs = cameraActiveStep({ deltaMs: 110_000, keyboardOnly: false, courseLive: true });
+    const early = playCalories({ weightKg: 70, cameraActiveMs: earlyMs, keyboardOnly: false, distanceM: 828 });
+    const later = playCalories({ weightKg: 70, cameraActiveMs: 10 * 60_000, keyboardOnly: false, distanceM: 828 });
+    expect(earlyRaw).toBeCloseTo(7.8604167, 5);
+    expect(early.kcal).toBe(Math.round(earlyRaw));
+    expect(early.kcal).toBe(8);
+    expect(early.text).toBe("8 kcal");
+    expect(early.note).toBeNull();
+    expect(later.kcal).toBe(43);
+    expect(later.kcal).toBeGreaterThan(early.kcal ?? 0);
+    expect(cameraActiveStep({ deltaMs: 110_000, keyboardOnly: true, courseLive: true })).toBe(0);
+    expect(cameraActiveStep({ deltaMs: 110_000, keyboardOnly: false, courseLive: false })).toBe(0);
   });
 
   it("does not change kcal when virtual distance changes", () => {

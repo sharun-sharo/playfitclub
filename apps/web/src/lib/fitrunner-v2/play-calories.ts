@@ -21,6 +21,16 @@ export type PlayCalorieView = {
 const unavailable: PlayCalorieView = { kcal: null, text: "—", note: CALORIE_NEEDS_NOTE };
 
 /**
+ * Time to add to the live calorie clock.
+ * Only a phone-camera run whose course clock is moving counts. Keyboard play adds nothing.
+ */
+export function cameraActiveStep(input: { deltaMs: number; keyboardOnly: boolean; courseLive: boolean }): number {
+  if (input.keyboardOnly || !input.courseLive) return 0;
+  if (!Number.isFinite(input.deltaMs) || input.deltaMs <= 0) return 0;
+  return input.deltaMs;
+}
+
+/**
  * Live score-card calories.
  * kcal = MET × 3.5 × kg / 200 × activeMinutes, with MET 3.5.
  * Active minutes are camera time only. Keyboard play, a missing weight, game speed,

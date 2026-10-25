@@ -9,7 +9,8 @@ import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import { PlayScoreCard } from "@/components/fitrunner-v2/play-score-card";
 import { MissionPanel, MissionToast, playGradeBlip, ResultsScreen, type RunResult } from "@/components/fitrunner-v2/rewards-ui";
 import { remainingDemoSeconds, spendActiveDemo } from "@/lib/fitrunner-v2/demo-budget";
-import { playCalories } from "@/lib/fitrunner-v2/play-calories";
+import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
+import { cameraActiveStep, playCalories } from "@/lib/fitrunner-v2/play-calories";
 import { createOnce } from "@/lib/fitrunner-v2/run-save";
 import { fitRunnerTuning as tuning, type GraphicsQuality, type LaneEasing } from "@/components/fitrunner-v2/tuning";
 import { FitRunnerTutorial } from "@/components/fitrunner-v2/tutorial-overlay";
@@ -338,8 +339,8 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
       .then((profile) => {
         if (cancel) return;
         difficultyRef.current = typeof profile?.difficulty === "string" ? profile.difficulty : null;
-        const weight = profile?.weightKg;
-        setWeightKg(typeof weight === "number" && Number.isFinite(weight) ? weight : null);
+        const parsed = parseWeightKg(profile?.weightKg);
+        setWeightKg(parsed === undefined ? null : parsed);
       });
     return () => {
       cancel = true;
@@ -347,21 +348,25 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }, [playing, runId]);
 
   useEffect(() => {
-    if (!runOpen || paused || demoOver || !cameraControl || session.phase !== "running") return;
+    if (!runOpen || !cameraControl) return;
     let last = performance.now();
     const timer = window.setInterval(() => {
       const now = performance.now();
-      cameraActiveRef.current += now - last;
+      const canvas = canvasRef.current;
+      const courseLive =
+        !paused &&
+        !demoOver &&
+        canvas?.dataset.course === "live" &&
+        canvas.dataset.paused !== "1" &&
+        canvas.dataset.demoOver !== "1";
+      const delta = cameraActiveStep({ deltaMs: now - last, keyboardOnly: false, courseLive });
       last = now;
+      if (delta <= 0) return;
+      cameraActiveRef.current += delta;
       publishCaloriesRef.current(cameraActiveRef.current);
-    }, 1000);
-    return () => {
-      const now = performance.now();
-      cameraActiveRef.current += Math.max(0, now - last);
-      publishCaloriesRef.current(cameraActiveRef.current);
-      window.clearInterval(timer);
-    };
-  }, [runOpen, paused, demoOver, cameraControl, session.phase]);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [runOpen, paused, demoOver, cameraControl]);
 
   useEffect(() => {
     if (playing) session.markRaceLive();
