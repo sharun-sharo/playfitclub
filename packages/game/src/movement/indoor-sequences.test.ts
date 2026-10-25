@@ -256,8 +256,8 @@ describe("indoor frame sequences", () => {
         let peakRise = 0;
         for (let index = 0; index < (kind === "spaced" ? 48 : 28); index += 1) {
           const cycle = kind === "spaced" ? index % 24 : index;
-          const dipping = kind === "quick" ? index === 4 || index === 5 || index === 14 || index === 15 : kind === "highLanding" ? index === 4 || index === 5 || index === 20 || index === 21 : cycle === 6 || cycle === 7;
-          const rising = kind === "quick" ? index === 6 || index === 7 || index === 16 || index === 17 : kind === "highLanding" ? index === 6 || index === 7 || index === 23 || index === 24 : cycle === 8 || cycle === 9;
+          const dipping = kind === "quick" ? index === 4 || index === 14 : kind === "highLanding" ? index === 4 || index === 20 : cycle === 6;
+          const rising = kind === "quick" ? index === 5 || index === 6 || index === 15 || index === 16 : kind === "highLanding" ? index === 5 || index === 6 || index === 21 || index === 22 : cycle === 7 || cycle === 8;
           const air = kind === "quick" ? index >= 8 && index <= 10 : kind === "highLanding" ? index >= 8 && index <= 11 : cycle >= 10 && cycle <= 14;
           const restingRise = kind === "highLanding" && !rising && !air ? 0.012 : 0;
           const update = pushPose(

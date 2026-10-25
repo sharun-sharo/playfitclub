@@ -442,8 +442,8 @@ describe("phone camera gestures", () => {
   it("treats a brief hip drop and rapid rise as one jump", () => {
     expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
     const { events } = feed(12, (index) => {
-      const dip = index === 3 || index === 4;
-      const hop = index === 5;
+      const dip = index === 3;
+      const hop = index === 4 || index === 5;
       return pose({ time: index * 33, hipDrop: dip ? 0.08 : 0, rise: hop ? 0.08 : 0 });
     });
     expect(events.filter((event) => event.movementType === "jump")).toHaveLength(1);
@@ -760,8 +760,8 @@ describe("motion reliability sequences", () => {
 
   it("counts one normal jump and does not count the landing", () => {
     const { events } = feed(14, (index) => {
-      const dipping = index === 3 || index === 4;
-      const rising = index >= 5 && index <= 7;
+      const dipping = index === 3;
+      const rising = index >= 4 && index <= 7;
       const landing = index >= 8;
       return pose({
         time: index * 40,
@@ -1030,8 +1030,8 @@ describe("motion reliability sequences", () => {
 
   it("recognizes two covered-leg jumps from a dip then a hip rise, and a second after landing", () => {
     const { events } = feed(18, (index) => {
-      const dip = (index >= 2 && index <= 4) || (index >= 9 && index <= 11);
-      const rise = index === 5 || index === 12;
+      const dip = index === 2 || index === 9;
+      const rise = index === 3 || index === 4 || index === 10 || index === 11;
       return pose({ time: index * 33, hipDrop: dip ? 0.12 : 0, rise: rise ? 0.08 : 0, coverLegs: true });
     });
     expect(events.map((event) => event.movementType)).toEqual(["jump", "jump"]);
@@ -1110,6 +1110,8 @@ describe("motion reliability sequences", () => {
       squatEvents.push(...update.events);
     }
     const squatDelayMs = delayFor(squatEvents, "squat", squatAt);
+    expect(squatDelayMs).toBeLessThanOrEqual(frameMs * 2);
+    expect(squatDelayMs).toBeLessThan(70);
     expect(squatEvents.filter((event) => event.movementType === "jump")).toHaveLength(0);
 
     let jump = setNeutral(createDetector({ mirror: false }), neutral);
@@ -1117,11 +1119,15 @@ describe("motion reliability sequences", () => {
     const riseAt = 6 * frameMs;
     for (let index = 0; index < 12; index += 1) {
       const time = index * frameMs;
-      const update = pushPose(jump, pose({ time, hipDrop: index === 4 || index === 5 ? 0.03 : 0, rise: time === riseAt ? 0.08 : 0 }));
+      const dipping = index === 5;
+      const rising = index === 6 || index === 7;
+      const update = pushPose(jump, pose({ time, hipDrop: dipping ? 0.08 : 0, rise: rising ? 0.08 : 0 }));
       jump = update.state;
       jumpEvents.push(...update.events);
     }
     const jumpDelayMs = delayFor(jumpEvents, "jump", riseAt);
+    expect(jumpDelayMs).toBeLessThanOrEqual(frameMs);
+    expect(jumpDelayMs).toBeLessThan(70);
     expect(jumpEvents.filter((event) => event.movementType === "squat")).toHaveLength(0);
     console.log(JSON.stringify({
       frameMs,
@@ -1135,7 +1141,7 @@ describe("motion reliability sequences", () => {
     }));
   });
 
-  it("does not fire a one-frame arm spike or a two-frame hip bob", () => {
+  it("does not fire a one-frame arm spike or a one-frame hip bob", () => {
     const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
     if (!neutral) throw new Error("Failed to build a neutral pose");
     let arm = setNeutral(createDetector({ mirror: false }), neutral);
@@ -1150,11 +1156,120 @@ describe("motion reliability sequences", () => {
     let bob = setNeutral(createDetector({ mirror: false }), neutral);
     const bobEvents = [];
     for (let index = 0; index < 8; index += 1) {
-      const down = index === 3 || index === 4;
+      const down = index === 3;
       const update = pushPose(bob, pose({ time: index * 33, hipDrop: down ? 0.22 : 0, bow: down ? 0.25 : 0 }));
       bob = update.state;
       bobEvents.push(...update.events);
     }
     expect(bobEvents.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+
+  it("emits ten squats in a row, including one with hidden knees, and ignores a one-frame bob", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const depths = [0.05, 0.07, 0.09, 0.11, 0.13, 0.15, 0.18, 0.2, 0.22, 0.16];
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    const events = [];
+    let time = 0;
+    const step = (frame: ReturnType<typeof pose>) => {
+      const update = pushPose(state, frame);
+      state = update.state;
+      events.push(...update.events);
+      time += 33;
+    };
+    for (let squat = 0; squat < depths.length; squat += 1) {
+      const depth = depths[squat]!;
+      const covered = squat === 9;
+      for (let index = 0; index < 3; index += 1) step(pose({ time, coverLegs: covered }));
+      step(pose({ time, hipDrop: depth, coverLegs: covered }));
+      step(pose({ time, hipDrop: depth, coverLegs: covered, hide: covered ? [25, 26, 27, 28] : [] }));
+      for (let index = 0; index < 8; index += 1) step(pose({ time, coverLegs: covered }));
+    }
+    expect(events.filter((event) => event.movementType === "squat")).toHaveLength(10);
+    expect(events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+
+    let bob = setNeutral(createDetector({ mirror: false }), neutral);
+    const bobEvents = [];
+    for (let index = 0; index < 6; index += 1) {
+      const update = pushPose(bob, pose({ time: 10000 + index * 33, hipDrop: index === 2 ? 0.2 : 0 }));
+      bob = update.state;
+      bobEvents.push(...update.events);
+    }
+    expect(bobEvents).toHaveLength(0);
+  });
+
+  it("emits ten small hops once each, and a hop just over the measured line, but not running in place", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    const events = [];
+    let peak = 0;
+    let time = 0;
+    for (let hop = 0; hop < 10; hop += 1) {
+      for (let index = 0; index < 16; index += 1) {
+        const dip = index === 3;
+        const rise = index === 4 || index === 5;
+        const update = pushPose(state, pose({ time, hipDrop: dip ? 0.06 : 0, rise: rise ? 0.05 : 0 }));
+        state = update.state;
+        peak = Math.max(peak, update.signals?.hipVelocity ?? 0, update.signals?.riseSpeed ?? 0);
+        events.push(...update.events);
+        time += 33;
+      }
+    }
+    expect(events.filter((event) => event.movementType === "jump")).toHaveLength(10);
+    expect(events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    expect(peak).toBeGreaterThanOrEqual(DEFAULT_THRESHOLDS.jumpRise);
+
+    // A 2.2mm image rise in 33ms on a 0.2 torso is raw speed 0.34. Smoothing at 0.92 would report 0.31.
+    const frameSec = 0.033;
+    const torso = 0.2;
+    const rawDelta = 0.002244;
+    const rawSpeed = rawDelta / frameSec / torso;
+    const smoothedOnly = rawSpeed * DEFAULT_THRESHOLDS.smoothingAlpha;
+    expect(rawSpeed).toBeGreaterThan(DEFAULT_THRESHOLDS.jumpRise);
+    expect(smoothedOnly).toBeLessThan(DEFAULT_THRESHOLDS.jumpRise);
+    let edge = setNeutral(createDetector({ mirror: false }), neutral);
+    const edgeEvents = [];
+    let edgePeak = 0;
+    for (let index = 0; index < 10; index += 1) {
+      const dip = index === 3 || index === 4;
+      const update = pushPose(
+        edge,
+        pose({ time: 20000 + index * 33, hipDrop: dip || index === 5 ? 0.03 : 0, rise: index === 5 ? rawDelta : 0 }),
+      );
+      edge = update.state;
+      edgePeak = Math.max(edgePeak, update.signals?.hipVelocity ?? 0, update.signals?.riseSpeed ?? 0);
+      edgeEvents.push(...update.events);
+    }
+    expect(edgeEvents.filter((event) => event.movementType === "jump")).toHaveLength(1);
+    expect(edgePeak).toBeGreaterThanOrEqual(DEFAULT_THRESHOLDS.jumpRise);
+    console.log(JSON.stringify({
+      tenHopPeak: Number(peak.toFixed(2)),
+      edgeRawSpeed: Number(rawSpeed.toFixed(3)),
+      edgeSmoothedOnly: Number(smoothedOnly.toFixed(3)),
+      edgeMeasuredPeak: Number(edgePeak.toFixed(3)),
+      jumpRise: DEFAULT_THRESHOLDS.jumpRise,
+    }));
+
+    const running = feed(16, (index) => pose({ time: index * 33, hipDrop: index % 2 === 0 ? 0 : 0.04 }));
+    expect(running.events.filter((event) => event.movementType === "jump" || event.movementType === "squat")).toHaveLength(0);
+  });
+
+  it("does not turn a one-frame hip twitch into a jump while the dip confirm is on", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const twitch = (jumpPrepMs: number) => {
+      let state = setNeutral(createDetector({ mirror: false, jumpPrepMs }), neutral);
+      const found = [];
+      for (let index = 0; index < 8; index += 1) {
+        const update = pushPose(state, pose({ time: index * 33, hipDrop: index === 3 ? 0.08 : 0 }));
+        state = update.state;
+        found.push(...update.events);
+      }
+      return found;
+    };
+    expect(twitch(0).filter((event) => event.movementType === "jump")).toHaveLength(1);
+    expect(twitch(DEFAULT_THRESHOLDS.jumpPrepMs).filter((event) => event.movementType === "jump")).toHaveLength(0);
   });
 });

@@ -50,6 +50,7 @@ export function createDetector(overrides: Partial<MovementThresholds> = {}): Det
     neutral: null,
     phase: "NEUTRAL",
     lastHipY: null,
+    lastRawHipY: null,
     lastShoulderY: null,
     lastAnkleY: null,
     lastTimestamp: null,
@@ -112,6 +113,7 @@ export function resetMovementReady(state: DetectorState): DetectorState {
     lostSince: null,
     riseWindow: [],
     lastHipY: null,
+    lastRawHipY: null,
     lastShoulderY: null,
     lastAnkleY: null,
     lastTimestamp: null,
@@ -145,6 +147,7 @@ export function settleGestures(state: DetectorState): DetectorState {
     lostSince: null,
     riseWindow: [],
     lastHipY: null,
+    lastRawHipY: null,
     lastShoulderY: null,
     lastAnkleY: null,
     lastTimestamp: null,
@@ -162,27 +165,31 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   const smoothed = smoothFrame(state.smoother, mirrored, state.thresholds.smoothingAlpha);
   const framing = assessFraming(smoothed.landmarks, state.thresholds.minVisibility);
   const dt = state.lastTimestamp !== null ? Math.max(0, mirrored.timestampMs - state.lastTimestamp) : 0;
-  let riseSpeed = 0;
   let shoulderSpeed = 0;
   let ankleSpeed = 0;
+  let rawRise = 0;
   const minVisibility = state.thresholds.minVisibility;
   const hip = midY(smoothed.landmarks, 23, 24, minVisibility);
+  const rawHip = midY(mirrored.landmarks, 23, 24, minVisibility);
   const shoulder = midY(smoothed.landmarks, 11, 12, minVisibility);
   const ankle = midY(smoothed.landmarks, 27, 28, minVisibility);
   const seconds = dt / 1000;
   const torso = state.neutral?.torso ?? 0.2;
   if (seconds > 0 && seconds < 0.5) {
-    if (hip !== null && state.lastHipY !== null) riseSpeed = (state.lastHipY - hip) / seconds / torso;
+    if (rawHip !== null && state.lastRawHipY !== null) rawRise = (state.lastRawHipY - rawHip) / seconds / torso;
     if (shoulder !== null && state.lastShoulderY !== null) shoulderSpeed = (state.lastShoulderY - shoulder) / seconds / torso;
     if (ankle !== null && state.lastAnkleY !== null) ankleSpeed = (state.lastAnkleY - ankle) / seconds / torso;
   }
 
-  const riseWindow = [...state.riseWindow, riseSpeed].slice(-3);
-  const peakRise = Math.max(riseSpeed, ...riseWindow);
+  // Jump speed is the raw hip. The smoothed hip keeps rising after the body has already stopped, which turned a one-frame twitch into a hop.
+  const hipSpeed = rawRise;
+  const riseWindow = [...state.riseWindow, rawRise].slice(-3);
+  const peakRise = Math.max(rawRise, ...riseWindow);
   const base: DetectorState = {
     ...state,
     smoother: smoothed.smoother,
     lastHipY: hip ?? state.lastHipY,
+    lastRawHipY: rawHip ?? state.lastRawHipY,
     lastShoulderY: shoulder ?? state.lastShoulderY,
     lastAnkleY: ankle ?? state.lastAnkleY,
     lastTimestamp: mirrored.timestampMs,
@@ -200,7 +207,8 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   }
 
   const signals = classifyPose(smoothed.landmarks, state.neutral, state.thresholds, peakRise);
-  signals.hipVelocity = riseSpeed;
+  signals.hipVelocity = hipSpeed;
+  signals.riseSpeed = Math.max(signals.riseSpeed, peakRise);
   signals.shoulderVelocity = shoulderSpeed;
   signals.ankleVelocity = ankleSpeed;
   if (!signals.ok || signals.confidence < state.thresholds.minActionConfidence) {
@@ -213,6 +221,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
         ...base,
         lostSince,
         lastHipY: expired ? null : base.lastHipY,
+        lastRawHipY: expired ? null : base.lastRawHipY,
         lastShoulderY: expired ? null : base.lastShoulderY,
         lastAnkleY: expired ? null : base.lastAnkleY,
         riseWindow: expired ? [] : base.riseWindow,
@@ -238,6 +247,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
       state: {
         ...base,
         lastHipY: null,
+        lastRawHipY: null,
         lastShoulderY: null,
         lastAnkleY: null,
         riseWindow: [],
@@ -337,26 +347,26 @@ function transitionPhase(
   const dipping =
     !signals.forwardBend &&
     signals.hipDrop > thresholds.jumpPrepDrop &&
-    (signals.legsReady ? planted && signals.kneeFlex >= thresholds.jumpPrepKnee : true);
-  const armedPrep = state.prepSince !== null && now - state.prepSince >= thresholds.jumpPrepMs;
-  const upward = signals.legsReady ? signals.hipVelocity : Math.max(signals.hipVelocity, signals.shoulderVelocity);
-  const offGround = signals.hipDrop < -0.05 || signals.ankleRise > thresholds.jumpAnkleRise;
+    (signals.legsReady ? planted : true);
+  const instant = signals.legsReady ? signals.hipVelocity : Math.max(signals.hipVelocity, signals.shoulderVelocity);
+  const elevated = signals.hipDrop < -0.02 || signals.ankleRise > thresholds.jumpAnkleRise;
+  const risingNow = instant > thresholds.jumpRise;
+  const dipReal = state.prepSince !== null && now - state.prepSince >= thresholds.jumpPrepMs;
+  // A return to the same standing height is not a hop. Leaving the line, or still rising after a real dip, is.
   const takeoffFromDip =
-    armedPrep &&
+    dipReal &&
     !signals.forwardBend &&
-    upward > thresholds.jumpRise &&
-    (signals.legsReady || offGround);
+    (risingNow || (signals.riseSpeed > thresholds.jumpRise && elevated)) &&
+    (signals.legsReady || elevated);
 
   let justLanded = false;
   if (jump.phase === "CONFIRMED" || jump.phase === "SENT" || jump.phase === "WAIT_RESET") {
     // A few pixels above the calibrated ankles is still the floor. Only a clear flight stays open.
-    const feetClear = signals.ankleRise > 0.12 || signals.hipDrop < -0.1;
-    const descending = signals.hipVelocity < -0.45 || signals.ankleVelocity < -0.45;
-    const quiet = Math.abs(signals.hipVelocity) < 2.4 && Math.abs(signals.ankleVelocity) < 2.4;
-    const landed = !feetClear && (quiet || signals.hipVelocity < 0.8);
+    const feetClear = signals.hipDrop < -0.08 || signals.ankleRise > 0.1;
+    const landed = !feetClear;
     if (!landed) {
       jump = { ...jump, phase: jump.phase === "CONFIRMED" ? "SENT" : "WAIT_RESET" };
-      jumpMotion = feetClear ? (descending || state.jumpMotion === "landing" ? "landing" : "airborne") : "takeoff";
+      jumpMotion = signals.hipVelocity < -0.45 || state.jumpMotion === "landing" ? "landing" : "airborne";
       phase = "JUMPING";
       if (leftUp) left = suppressTrack(left, now);
       if (rightUp) right = suppressTrack(right, now);
@@ -371,19 +381,11 @@ function transitionPhase(
   }
 
   const squatLatched = squat.phase === "CONFIRMED" || squat.phase === "SENT" || squat.phase === "WAIT_RESET";
-  const squatOpen = squat.phase === "CANDIDATE" || squatLatched;
-  // Visible legs still need a knee bend, planted ankles, and shin flexion.
-  // Covered legs use a hip drop plus a clear torso shorten. No knee angle is invented.
-  const coveredShape = !signals.legsReady && signals.torsoFold && !signals.forwardBend;
-  const visibleShape = signals.legsReady && !signals.forwardBend && planted && signals.ankleFlex >= thresholds.squatAnkleFlex;
-  const squatShape = coveredShape || visibleShape;
-  const kneeInBand = signals.legsReady
-    ? signals.kneeAngle < (squatOpen ? thresholds.squatKneeExit : thresholds.squatKneeEnter)
-    : true;
-  const inSquatBand =
-    squatShape &&
-    kneeInBand &&
-    (squatOpen ? signals.hipDrop > thresholds.squatExitDrop : signals.hipDrop > thresholds.squatEnterDrop);
+  // Hips down are the squat. A missing knee must not cancel it.
+  // The confirm frame still has to be a real drop. The lower exit line is only for a squat already sent,
+  // so the smoothing tail of a one-frame bob cannot duck.
+  const hipNeeded = squatLatched ? thresholds.squatExitDrop : thresholds.squatEnterDrop;
+  const inSquatBand = !signals.forwardBend && signals.hipDrop > hipNeeded;
   if (signals.forwardBend) reject("forward_bend");
 
   // A short dip, then hips rising faster than jumpRise, is one jump. It is not a squat.
@@ -393,6 +395,11 @@ function transitionPhase(
   if (dipping && !countermovement && !squatLatched && jump.phase === "NEUTRAL" && !standingOutOfSquat) {
     if (prepSince === null) prepSince = now;
     if (jumpMotion !== "landing") jumpMotion = "preparing";
+  }
+  // A new downward stroke restarts the dip clock. Running in place cannot add up to 50ms.
+  if (signals.hipVelocity < -0.4 && !takeoffFromDip) {
+    prepSince = dipping ? now : null;
+    if (!dipping && jumpMotion === "preparing") jumpMotion = "grounded";
   }
   if (standingOutOfSquat) prepSince = null;
 
@@ -465,7 +472,9 @@ function transitionPhase(
   const prepHeld = prepSince !== null && now - prepSince >= thresholds.jumpPrepMs;
   const settled =
     signals.hipDrop < 0.02 && Math.abs(signals.hipVelocity) < 0.2 && signals.ankleRise < thresholds.jumpAnkleRise;
-  if (!dipping && !jumping && jump.phase === "NEUTRAL" && !recovering && phase !== "RECOVERING" && (!prepHeld || settled || signals.hipVelocity < -0.4)) {
+  // Keep the dip while the rise is already fast, so a 33ms hop is not thrown away before the dip is 50ms old.
+  const risingHot = instant > thresholds.jumpRise;
+  if (!dipping && !jumping && jump.phase === "NEUTRAL" && !recovering && phase !== "RECOVERING" && !risingHot && (!prepHeld || settled)) {
     prepSince = null;
     if (jumpMotion === "preparing") jumpMotion = "grounded";
   }
@@ -564,17 +573,8 @@ function delayCandidate(track: GestureTrack, dt: number): GestureTrack {
 function poseIsQuiet(signals: PoseSignals, thresholds: MovementThresholds, neutral: NeutralPose) {
   const leftUp = armRaised(signals.leftArm, neutral.leftWristLateral, false, thresholds);
   const rightUp = armRaised(signals.rightArm, neutral.rightWristLateral, false, thresholds);
-  const squatting = signals.legsReady
-    ? !signals.forwardBend &&
-      signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.03) &&
-      signals.ankleFlex >= thresholds.squatAnkleFlex &&
-      signals.hipDrop > thresholds.squatEnterDrop &&
-      signals.kneeAngle < thresholds.squatKneeEnter
-    : signals.torsoFold && !signals.forwardBend && signals.hipDrop > thresholds.squatEnterDrop;
-  const preparing =
-    !signals.forwardBend &&
-    signals.hipDrop > thresholds.jumpPrepDrop &&
-    (signals.legsReady ? signals.kneeFlex >= thresholds.jumpPrepKnee : true);
+  const squatting = !signals.forwardBend && signals.hipDrop > thresholds.squatEnterDrop;
+  const preparing = !signals.forwardBend && signals.hipDrop > thresholds.jumpPrepDrop;
   const jumping = signals.legsReady
     ? (signals.ankleRise > thresholds.jumpAnkleRise || signals.hipDrop < -0.05) &&
       (signals.riseSpeed > thresholds.jumpRise || signals.hipVelocity > thresholds.jumpRise)
@@ -627,7 +627,7 @@ function overheadRaised(arm: ArmPose, engaged: boolean) {
 }
 
 function midY(
-  landmarks: Array<{ y: number; visibility?: number } | null>,
+  landmarks: Array<{ y: number; visibility?: number } | null | undefined>,
   leftIndex: number,
   rightIndex: number,
   minVisibility: number,

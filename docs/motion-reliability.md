@@ -174,34 +174,34 @@ What blocked a covered-leg squat or jump:
 
 Covered knees and ankles no longer drop the frame when the shoulders and hips stay visible. A missing landmark still does not invent a command. A shoulder or a hip under 0.45 still drops the frame.
 
-A covered squat is a hip drop of more than 0.16 torso and a torso shorter than 90% of the standing calibration, still down on the frame 66 ms later. It does not need a knee angle or planted ankles. A bow that shortens the torso and does not drop the hips does not duck. Visible knees still use the knee-angle, shin, and planted-ankle path.
+A covered squat is a hip drop of more than 0.16 torso, still down on the next camera frame. It does not need a knee angle, planted ankles, or a shorter torso. A one-frame bob does not duck. A bow that does not drop the hips does not duck. Visible knees are not required once the hips have dropped.
 
-A covered jump is the same dip, then the hips or the shoulders rising faster than 0.32 torso-lengths per second on image y. `jumpRise` was not lowered. No saree was filmed, so there is no measured hop whose hip rise stays under 0.32. Standing up from a squat does not jump. Landing does not add a jump. A second jump after the body is grounded emits again. One physical jump is one game jump.
+A covered jump is a dip, then the hips or the shoulders rising faster than 0.32 torso-lengths per second on image y. `jumpRise` was not lowered. Standing up from a squat does not jump. Landing does not add a jump. A second jump after the body is grounded emits again. One physical jump is one game jump.
 
 Lane changes are unchanged: halfway from waist to chest, or a sideways point. Holding the arm does not repeat. Both arms send nothing.
 
-The synthetic sequences use the same landmark layout as the estimator. Covered knees and ankles are either omitted or set to visibility 0.2. Hips drop and the torso shortens for the squat, still down 66 ms later: one squat, and standing up emits no jump. A dip then a hip rise above 0.32 emits one jump, and a second jump after landing emits again. Visible-leg squat and jump still emit. Running in place with hidden legs emits neither. A slight bow with no hip drop emits nothing. Right, then left, still emit with the legs hidden.
+The synthetic sequences use the same landmark layout as the estimator. Covered knees and ankles are either omitted or set to visibility 0.2. Hips drop and stay down on the next frame: one squat, and standing up emits no jump. A dip then a hip rise above 0.32 emits one jump, and a second jump after landing emits again. Visible-leg squat and jump still emit. Running in place with hidden legs emits neither. A slight bow with no hip drop emits nothing. Right, then left, still emit with the legs hidden.
 
 ## How fast a clear gesture is sent
 
 No phone was used. The numbers are synthetic 30fps landmark frames inside the unit test. They are not a phone round trip, and they are not the TV frame rate.
 
-What used to wait, after the pose had already crossed the line:
+The table compares the last shipped detector with this one. The earlier 200ms squat hold and 100ms arm hold were already gone. What still missed, after the pose had already crossed the line:
 
 | Step | Old | New |
 | --- | --- | --- |
 | Landmark blend | Alpha 0.78. A raise just past the sideways line needed a second frame before the hold even started. | Alpha 0.92. One frame takes 92% of the step. Two frames take about 99%. |
 | Lane change | 100ms arm hold. The same just-past raise was emitted 165ms after the pose stepped. A raise that was already past the line still waited about 132ms (the frame at or after 100ms). | The crossing frame does not emit. The next frame that is still past the line does. Measured delay 33ms. |
-| Squat | 200ms hold. At 33ms frames that is the frame 231ms after the hips cross. | 66ms. The third 30fps frame, measured 66ms. A one-frame or two-frame bob does not duck. |
-| Jump | The dip had to last 50ms before a rise could count. Recovery after a landing could also hold the next flight. `jumpRise` was 0.32. | `jumpRise` is still 0.32. Once the dip has lasted 50ms, the frame that crosses 0.32 emits on that frame. Measured delay after that rise frame: 0ms. |
+| Squat | 66ms. The third 30fps frame. A squat that was only down for two samples was dropped. A knee or ankle flicker under 0.45 cleared the candidate when the covered path also required a shorter torso. | 33ms. The next frame that is still past the 0.16 hip line emits. Measured 33ms. A one-frame bob does not duck. Hidden knees do not cancel it. |
+| Jump | A dip that lasted one camera frame (33ms) was thrown away, because the rise arrived before the 50ms dip confirm and the prep was cleared. A dip that happened to last two frames emitted. That is the sometimes. Smoothing could also hide a small rise: a 2.244mm image step in 33ms on a 0.2 torso is raw speed 0.340, and the 0.92 blend of that same step is 0.313, under 0.32. | `jumpRise` is still 0.32. Jump speed is the raw hip, plus the peak of the last three raw samples. The same 2.244mm step measures 0.340 and emits. A normal small hop in the same test peaked at 16.67. Once the dip is real, the frame that crosses 0.32 emits on that frame (measured 0ms). A one-frame dip that is still a hop on the next frame emits then (33ms). |
 | Phone labels | UI updates skipped for 180ms when the text had not changed. | Same 180ms skip, and it is still labels only. `pushPose` and the movement socket run on every camera frame. The socket emit is not behind the label update. |
 | Stale command | 400ms, then the TV drops it and does not retry. | Unchanged. Commands are not resent. Duplicate event ids are still rejected. |
 
-The 50ms dip remains on purpose. A shorter one treats a single noisy hip drop, then the return to standing, as a jump. It is not an extra wait after the rise has crossed 0.32.
+The 50ms dip remains on purpose. With it removed, a one-frame hip twitch becomes a jump: the return to standing is faster than 0.32, and visible legs do not have to leave the ground. The twitch does not jump while the confirm is on, because the next quiet frame is no longer rising. It is not an extra wait after a real rise has crossed 0.32.
 
-On this synthetic clock, a clear gesture is the next frame or two after it is already visible: 33ms for a lane change, 66ms for a squat, and the same frame as the jump rise. A player should feel the move land on the next moments, not after a pause. That feeling was not timed on a phone.
+On this synthetic clock, a clear gesture is the next camera frame after it is already visible: 33ms for a lane change, 33ms for a squat, and 0ms after a rise whose dip is already real. All of those are under 70ms. A player should feel the move land on the next frame, not after a pause. That feeling was not timed on a phone. No phone was used.
 
-`vitest` on the movement, indoor-sequence, phone-command, and framing files: 108 passed, 0 failed (movement 70, indoor 9, phone-command 10, framing 19). No phone was attached.
+`vitest` on the movement, indoor-sequence, phone-command, and framing files: 111 passed, 0 failed (movement 73, indoor 9, phone-command 10, framing 19). Ten squats at different depths, including one with hidden knees, each emit once. Ten small hops each emit once. Running in place emits nothing. No phone was attached.
 
 `vitest` on the movement, indoor-sequence, phone-command, and framing files: 106 passed, 0 failed (movement 68, indoor 9, phone-command 10, framing 19). Session calibration, which this pass also touched, was 4 passed. No phone was attached. No saree was filmed. This does not mean a phone will pass.
 
@@ -217,7 +217,7 @@ Run this on a phone against the TV, with the player in a saree. A green unit tes
 
 - One pose only. A second returned pose pauses the controller. It is not identified or followed.
 - Jump height is a monocular image estimate. The camera cannot prove both feet left the floor.
-- No phone was used here, so recognition rate and end-to-end latency are unknown. The 33ms, 66ms, and 0ms figures above are only the synthetic detector. A phone round trip and the TV frame rate are not included.
+- No phone was used here, so recognition rate and end-to-end latency are unknown. The 33ms and 0ms figures above are only the synthetic detector. A phone round trip and the TV frame rate are not included.
 - A lane command at the outer lane does not move the runner farther.
 - A jump or duck that arrives while the clip is still playing waits at most 400ms, then it is dropped and not retried.
 - Event-id memory lives in the realtime process. A server restart forgets it.

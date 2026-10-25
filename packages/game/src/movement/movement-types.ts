@@ -79,7 +79,7 @@ export interface MovementThresholds {
   jumpPrepDrop: number;
   /** Knee flexion from the session baseline, in degrees, required before that dip can become a jump. */
   jumpPrepKnee: number;
-  /** How long a dip must already have lasted. The rise frame itself does not add another wait. */
+  /** How long a dip must already have lasted. A 1-frame twitch jumps if this is 0. The rise frame does not add another wait once the dip is real. */
   jumpPrepMs: number;
   /** Shin angle from vertical, in degrees, required for a planted squat. */
   squatAnkleFlex: number;
@@ -109,13 +109,13 @@ export interface MovementThresholds {
   /** Blend applied to a quiet stance each frame. Jump, squat, and an arm raise freeze it. */
   neutralDrift: number;
   /**
-   * Same-frame guard for a lane change. The frame that first crosses the line does not emit.
+   * Same-frame guard. The frame that first crosses the line does not emit.
    * The next frame that is still past the line does. One noisy frame does not.
    */
   armHoldMs: number;
   /**
-   * How long the hips must stay down before one duck is sent.
-   * Two camera frames can be a bob. The third frame at 30fps is the confirm.
+   * Same-frame guard for a squat. The first down frame does not emit.
+   * The next frame that is still down does. A one-frame bob does not.
    */
   squatHoldMs: number;
   /** Quiet stance required after a squat or landing before another gesture can arm. */
@@ -165,8 +165,8 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   sidewaysElbowExit: 85,
   neutralDrift: 0.02,
   armHoldMs: 1,
-  /** Third 30fps frame. A one-frame hold would duck on a two-sample bob. */
-  squatHoldMs: 66,
+  /** Next 30fps frame. Zero would duck on the same sample as a one-frame bob. */
+  squatHoldMs: 1,
   recoverMs: 180,
   cooldownMs: 240,
   /** One frame takes 92% of a step. Two frames take about 99%. A one-frame spike still needs the next frame. */
@@ -284,6 +284,8 @@ export interface DetectorState {
   neutral: NeutralPose | null;
   phase: BodyPhase;
   lastHipY: number | null;
+  /** Unsmoothed hip image-y. Jump speed uses this so the blend cannot hide a small hop. */
+  lastRawHipY: number | null;
   lastShoulderY: number | null;
   lastAnkleY: number | null;
   lastTimestamp: number | null;
