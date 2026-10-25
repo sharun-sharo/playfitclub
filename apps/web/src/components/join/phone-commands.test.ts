@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHandsFree, type HandsFreeSample } from "../../lib/vision/hands-free";
-import { armDiagnosticLabel, canSendMovement, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDiagnosticsEnabled, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
+import { armDiagnosticLabel, canSendMovement, framingStatusCue, gameplaySendAllowed, leanOverlayText, liveGestureName, motionDiagnosticsEnabled, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
 
 const live = {
   controllerOn: true,
@@ -30,6 +30,21 @@ describe("phone command gate", () => {
   it("hides motion diagnostics in production", () => {
     expect(motionDiagnosticsEnabled("production")).toBe(false);
     expect(motionDiagnosticsEnabled("development")).toBe(true);
+    const line = leanOverlayText({
+      neutral: 0.012,
+      lean: 0.21,
+      confidence: 0.86,
+      phase: "TRIGGERED",
+      command: "lean_left",
+      lane: "left",
+    });
+    expect(line).toContain("neutral 0.012");
+    expect(line).toContain("left 0.210");
+    expect(line).toContain("confidence 86%");
+    expect(line).toContain("triggered");
+    expect(line).toContain("sent lean_left");
+    expect(line).toContain("lane left");
+    expect(line).not.toContain("MOVE LEFT");
   });
 
   it("names the arm phases and the live gesture without covering them in a status line", () => {

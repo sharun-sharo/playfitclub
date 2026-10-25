@@ -65,6 +65,10 @@ export const poseDiagnosticsSchema = z.object({
   squatPhase: z.string().max(32).optional(),
   jumpPhase: z.string().max(32).optional(),
   lastGesture: z.string().max(40).nullable().optional(),
+  torsoNeutral: z.number().finite().optional(),
+  torsoLean: z.number().finite().optional(),
+  leanDirection: z.enum(["left", "right", "neutral"]).optional(),
+  leanPhase: z.string().max(32).optional(),
 });
 
 export const movementResultSchema = z.object({

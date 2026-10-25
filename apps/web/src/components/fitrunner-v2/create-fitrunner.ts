@@ -11,7 +11,7 @@ import {
 } from "@/components/fitrunner-v2/course";
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
-import { jumpDuringRoll, laneSlideFraction, releaseStuckClip, replayClip, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
+import { jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionUserAgent } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
@@ -510,6 +510,68 @@ export async function startFitRunner(
     runner.add(visual);
     scene.add(runner);
 
+    const rollAxis = new THREE.Vector3();
+    const rollQuat = new THREE.Quaternion();
+    const rollInv = new THREE.Matrix4();
+    const sideBones = {
+      spine: model.getObjectByName("mixamorigSpine2") ?? null,
+      leftUp: model.getObjectByName("mixamorigLeftUpLeg") ?? null,
+      rightUp: model.getObjectByName("mixamorigRightUpLeg") ?? null,
+      leftFoot: model.getObjectByName("mixamorigLeftFoot") ?? null,
+      rightFoot: model.getObjectByName("mixamorigRightFoot") ?? null,
+    };
+
+    function addWorldRoll(bone: THREE.Object3D | null, radians: number) {
+      if (!bone || Math.abs(radians) < 1e-4) return;
+      const parent = bone.parent;
+      if (!parent) return;
+      parent.updateWorldMatrix(true, false);
+      rollInv.copy(parent.matrixWorld).invert();
+      rollAxis.set(0, 0, 1).transformDirection(rollInv);
+      if (rollAxis.lengthSq() < 1e-8) return;
+      rollAxis.normalize();
+      rollQuat.setFromAxisAngle(rollAxis, radians);
+      bone.quaternion.premultiply(rollQuat);
+    }
+
+    function visualStepSeconds() {
+      return Math.min(0.35, Math.max(0.25, tuning.sideStepDuration));
+    }
+
+    function advanceVisualLane(dt: number) {
+      if (laneT >= 1) return;
+      const duration = visualStepSeconds();
+      laneT = Math.min(1, laneT + dt / duration);
+      const shaped = tuning.laneEasing === "cubic" ? shapeLane(laneT) : sideStepTravel(laneT);
+      visualLane = laneFrom + (laneTo - laneFrom) * shaped;
+    }
+
+    function leanScale() {
+      return tuning.leanRadians / 0.2;
+    }
+
+    function sideLeanTarget() {
+      if (laneT >= 0.999) return 0;
+      const dir = Math.sign(laneTo - laneFrom);
+      if (dir === 0) return 0;
+      return sideStepPose(laneT, dir < 0 ? -1 : 1).torso * 0.55 * leanScale();
+    }
+
+    /** Foot push only on the run clip. A jump or roll keeps its own leg motion. */
+    function applySideStep() {
+      if (laneT >= 0.999) return;
+      const dir = Math.sign(laneTo - laneFrom);
+      if (dir === 0) return;
+      const pose = sideStepPose(laneT, dir < 0 ? -1 : 1);
+      const scale = leanScale();
+      addWorldRoll(sideBones.spine, pose.torso * scale);
+      if (activeClip !== "Run") return;
+      addWorldRoll(sideBones.leftUp, pose.leftHip * scale);
+      addWorldRoll(sideBones.rightUp, pose.rightHip * scale);
+      addWorldRoll(sideBones.leftFoot, pose.leftFoot * scale);
+      addWorldRoll(sideBones.rightFoot, pose.rightFoot * scale);
+    }
+
     const tropical = createTropical(
       scene,
       {
@@ -836,7 +898,7 @@ export async function startFitRunner(
     }
 
     function playerLane() {
-      return Math.max(-1, Math.min(1, Math.round(visualLane)));
+      return Math.max(-1, Math.min(1, lane));
     }
 
     function threatFor(kind: ObstacleKind, lane: number) {
@@ -1362,7 +1424,7 @@ export async function startFitRunner(
           const zLo = Math.min(prevZ, runner.position.z) - reachZ;
           const zHi = Math.max(prevZ, runner.position.z) + reachZ;
           if (tokenZ < zLo || tokenZ > zHi) return;
-          if (Math.abs(token.mesh.position.x - runner.position.x) > tokenRadius + 0.26) return;
+          if (Math.abs(token.mesh.position.x - lane * tuning.laneSpacing) > tokenRadius + 0.26) return;
           if (token.baseY > 1.28 && runner.position.y < 0.34) return;
           token.active = false;
           token.collecting = 0.28;
@@ -1383,7 +1445,11 @@ export async function startFitRunner(
       nearestAhead = "none";
       let aheadDistance = Number.POSITIVE_INFINITY;
       const body = bodyBox();
-      if (!body.isEmpty() && Math.abs(laneStepX) > 1e-4) {
+      const hitShift = laneHitShift(lane, visualLane, tuning.laneSpacing);
+      if (!body.isEmpty() && Math.abs(hitShift) > 1e-3) {
+        body.min.x += hitShift;
+        body.max.x += hitShift;
+      } else if (!body.isEmpty() && Math.abs(laneStepX) > 1e-4) {
         const previous = body.clone();
         previous.min.x -= laneStepX;
         previous.max.x -= laneStepX;
@@ -1510,16 +1576,8 @@ export async function startFitRunner(
         }
       }
       if (courseMode === "preview") {
-        const previousVisual = visualLane;
-        if (laneT < 1) {
-          const duration = Math.max(0.05, tuning.laneChangeDuration);
-          laneT = Math.min(1, laneT + dt / duration);
-          visualLane = laneFrom + (laneTo - laneFrom) * shapeLane(laneT);
-        }
-        const laneRate = dt > 1e-5 ? (visualLane - previousVisual) / dt : 0;
-        const reference = 1.5 / Math.max(0.08, tuning.laneChangeDuration);
-        const leanTarget = THREE.MathUtils.clamp((laneRate / reference) * tuning.leanRadians, -tuning.leanRadians, tuning.leanRadians);
-        visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, leanTarget, tuning.leanDamp, dt);
+        advanceVisualLane(dt);
+        visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, sideLeanTarget(), tuning.leanDamp, dt);
         runner.position.x = visualLane * tuning.laneSpacing;
         updateVertical(dt);
         const desired = new THREE.Vector3(runner.position.x, tuning.camera.height, runner.position.z + tuning.camera.distance);
@@ -1529,6 +1587,7 @@ export async function startFitRunner(
         blob.position.set(runner.position.x, 0.02, runner.position.z);
       }
       mixer.update(dt);
+      applySideStep();
       commitBodyHeight();
       canvas.dataset.course = courseMode;
       canvas.dataset.clip = activeClip;
@@ -1663,16 +1722,8 @@ export async function startFitRunner(
         playRun();
       }
 
-      const previousVisual = visualLane;
-      if (laneT < 1) {
-        const duration = Math.max(0.05, tuning.laneChangeDuration);
-        laneT = Math.min(1, laneT + dt / duration);
-        visualLane = laneFrom + (laneTo - laneFrom) * shapeLane(laneT);
-      }
-      const laneRate = dt > 1e-5 ? (visualLane - previousVisual) / dt : 0;
-      const reference = 1.5 / Math.max(0.08, tuning.laneChangeDuration);
-      const leanTarget = THREE.MathUtils.clamp((laneRate / reference) * tuning.leanRadians, -tuning.leanRadians, tuning.leanRadians);
-      visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, leanTarget, tuning.leanDamp, dt);
+      advanceVisualLane(dt);
+      visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, sideLeanTarget(), tuning.leanDamp, dt);
       const previousX = runner.position.x;
       runner.position.x = visualLane * tuning.laneSpacing;
       laneStepX = runner.position.x - previousX;
@@ -1703,6 +1754,7 @@ export async function startFitRunner(
         frameStep = step;
       }
       mixer.update(dt);
+      applySideStep();
       commitBodyHeight();
       flushPoseBuffer();
       runDistance = distance;

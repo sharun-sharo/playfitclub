@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groundCourseBody, jumpDuringRoll, laneSlideFraction, releaseStuckClip, replayClip, verticalCommandReady } from "./course-body";
+import { groundCourseBody, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, replayClip, SIDE_STEP_S, sideStepPose, sideStepTravel, verticalCommandReady } from "./course-body";
 
 describe("course body after pause and play again", () => {
   it("drops an airborne jump and a waiting squat instead of playing them on resume", () => {
@@ -31,5 +31,39 @@ describe("course body after pause and play again", () => {
     expect(jumpDuringRoll("roll", "squat")).toBe(false);
     expect(jumpDuringRoll("jump", "jump")).toBe(false);
     expect(verticalCommandReady("run")).toBe(true);
+  });
+
+  it("plays a procedural side-step because the runner clips have no strafe", () => {
+    expect(SIDE_STEP_S).toBeGreaterThanOrEqual(0.25);
+    expect(SIDE_STEP_S).toBeLessThanOrEqual(0.35);
+    expect(sideStepTravel(0)).toBe(0);
+    expect(sideStepTravel(1)).toBe(1);
+    expect(sideStepTravel(0.16)).toBeGreaterThan(0.25);
+
+    const start = sideStepPose(0, 1);
+    const end = sideStepPose(1, -1);
+    expect(start.torso).toBeCloseTo(0, 5);
+    expect(start.leftHip).toBeCloseTo(0, 5);
+    expect(start.rightFoot).toBeCloseTo(0, 5);
+    expect(end.travel).toBe(1);
+    expect(end.torso).toBeCloseTo(0, 5);
+    expect(end.leftHip).toBeCloseTo(0, 5);
+    expect(end.rightHip).toBeCloseTo(0, 5);
+    expect(end.leftFoot).toBeCloseTo(0, 5);
+    expect(end.rightFoot).toBeCloseTo(0, 5);
+
+    const left = sideStepPose(0.28, -1);
+    const right = sideStepPose(0.28, 1);
+    expect(left.torso).toBeLessThan(-0.05);
+    expect(right.torso).toBeGreaterThan(0.05);
+    expect(left.rightHip).toBeGreaterThan(0.15);
+    expect(right.leftHip).toBeLessThan(-0.15);
+    expect(left.torso).toBeCloseTo(-right.torso, 5);
+
+    expect(laneHitShift(1, 0, 3)).toBe(3);
+    expect(laneHitShift(-1, 0, 3)).toBe(-3);
+    expect(laneHitShift(1, 1, 3)).toBe(0);
+    const arrived = sideStepTravel(1);
+    expect(laneHitShift(1, arrived, 3)).toBe(0);
   });
 });

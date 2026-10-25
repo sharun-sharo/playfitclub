@@ -47,6 +47,27 @@ export function motionDiagnosticsEnabled(nodeEnv: string | undefined = process.e
   return nodeEnv !== "production";
 }
 
+/**
+ * Development readout for a body lean. Not a player-facing move banner.
+ * Lane commands stay lean_left and lean_right.
+ */
+export function leanOverlayText(input: {
+  neutral: number | null | undefined;
+  lean: number | null | undefined;
+  confidence: number | null | undefined;
+  phase: string | null | undefined;
+  command: string | null | undefined;
+  lane: string | null | undefined;
+}) {
+  const lean = typeof input.lean === "number" && Number.isFinite(input.lean) ? input.lean : 0;
+  const direction = Math.abs(lean) <= 0.07 ? "neutral" : lean > 0 ? "left" : "right";
+  const phase = input.phase || "idle";
+  const armed = phase === "CANDIDATE" || phase === "ARM_RISING" ? "armed" : phase === "TRIGGERED" || phase === "WAIT_RESET" || phase === "CONFIRMED" ? "triggered" : "idle";
+  const confidence = typeof input.confidence === "number" && Number.isFinite(input.confidence) ? Math.round(input.confidence * 100) : 0;
+  const neutral = typeof input.neutral === "number" && Number.isFinite(input.neutral) ? input.neutral.toFixed(3) : "—";
+  return `neutral ${neutral} · ${direction} ${Math.abs(lean).toFixed(3)} · confidence ${confidence}% · ${armed} · sent ${input.command || "—"} · lane ${input.lane || "—"}`;
+}
+
 /** Dev readout for one arm. Production does not show this. */
 export function armDiagnosticLabel(side: "left" | "right", phase: string | null | undefined) {
   if (phase === "ARM_RISING") return side === "left" ? "LEFT READY" : "RIGHT READY";

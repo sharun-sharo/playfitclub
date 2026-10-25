@@ -8,10 +8,15 @@ export const fitRunnerTuning = {
   tileSize: 3,
   laneSpacing: 3,
   /**
-   * Seconds to travel one lane. Collision uses this position. The box size does not change.
-   * 0.10s and an ease-out start on the command frame. 0.25s smoothstep stayed put at the start.
+   * Schedule budget for a lane change. The obstacle spacing still uses this 0.10s.
+   * The visible athletic step is sideStepDuration.
    */
   laneChangeDuration: 0.1,
+  /**
+   * Visible side-step on the run clip, in seconds. The accepted lane is used for hits immediately.
+   * The mesh is in that lane at the end. Keep this between 0.25 and 0.35.
+   */
+  sideStepDuration: 0.3,
   laneEasing: "smoothstep" as LaneEasing,
   /** Peak parent bank while sliding, in radians. Upright again when the slide stops. */
   leanRadians: 0.2,

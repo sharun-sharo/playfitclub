@@ -89,6 +89,7 @@ export function neutralFromLandmarks(landmarks: Array<Landmark | null | undefine
   const shoulder = midpoint(leftShoulder, rightShoulder);
   const hip = midpoint(leftHip, rightHip);
   const torso = Math.max(0.05, Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y));
+  const shoulderHip = (shoulder.x - hip.x) / torso;
   const shoulderWidth = Math.max(0.04, Math.hypot(rightShoulder.x - leftShoulder.x, rightShoulder.y - leftShoulder.y));
   const wrists = wristLaterals(landmarks, shoulderWidth);
   const legsMeasured = Boolean(leftKnee && rightKnee && leftAnkle && rightAnkle);
@@ -109,6 +110,7 @@ export function neutralFromLandmarks(landmarks: Array<Landmark | null | undefine
     shinLength: legsMeasured && leftKnee && rightKnee && leftAnkle && rightAnkle ? (distance(leftKnee, leftAnkle) + distance(rightKnee, rightAnkle)) / 2 : 0,
     leftWristLateral: wrists.left,
     rightWristLateral: wrists.right,
+    shoulderHip,
     legsMeasured,
   };
 }
@@ -128,6 +130,7 @@ export function driftNeutral(neutral: NeutralPose, sample: NeutralPose, alpha: n
     shinLength: sample.legsMeasured === false ? neutral.shinLength : blend(neutral.shinLength, sample.shinLength),
     leftWristLateral: blend(neutral.leftWristLateral, sample.leftWristLateral),
     rightWristLateral: blend(neutral.rightWristLateral, sample.rightWristLateral),
+    shoulderHip: blend(neutral.shoulderHip ?? 0, sample.shoulderHip ?? 0),
   };
 }
 
@@ -167,6 +170,7 @@ export function calibrateNeutral(
       shinLength: average(legSource.map((item) => item.shinLength)),
       leftWristLateral: average(neutrals.map((item) => item.leftWristLateral)),
       rightWristLateral: average(neutrals.map((item) => item.rightWristLateral)),
+      shoulderHip: average(neutrals.map((item) => item.shoulderHip ?? 0)),
       legsMeasured: withLegs.length > 0,
     },
   };

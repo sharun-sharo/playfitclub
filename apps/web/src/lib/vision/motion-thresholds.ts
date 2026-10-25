@@ -10,6 +10,9 @@ export const MOTION_THRESHOLD_FIELDS = [
   { key: "sidewaysReachEnter", label: "side reach", min: 0.7, max: 1.8, step: 0.01 },
   { key: "sidewaysElbowEnter", label: "side elbow", min: 85, max: 160, step: 1 },
   { key: "armHoldMs", label: "hold ms", min: 0, max: 400, step: 1 },
+  { key: "torsoLeanEnter", label: "lean distance", min: 0.08, max: 0.45, step: 0.01 },
+  { key: "torsoLeanNeutral", label: "lean reset", min: 0.02, max: 0.2, step: 0.01 },
+  { key: "torsoLeanHoldMs", label: "lean confirm", min: 0, max: 120, step: 1 },
   { key: "squatEnterDrop", label: "squat drop", min: 0.12, max: 0.55, step: 0.01 },
   { key: "squatKneeEnter", label: "knee °", min: 100, max: 160, step: 1 },
   { key: "jumpRise", label: "jump rise", min: 0.2, max: 1.4, step: 0.01 },
@@ -63,6 +66,9 @@ export function sanitizeThresholds(value: unknown): Partial<MovementThresholds> 
   }
   if (next.halfwayOutEnter !== undefined && next.halfwayOutExit !== undefined && next.halfwayOutExit >= next.halfwayOutEnter) {
     next.halfwayOutExit = Math.max(0.08, next.halfwayOutEnter - 0.08);
+  }
+  if (next.torsoLeanEnter !== undefined && next.torsoLeanNeutral !== undefined && next.torsoLeanNeutral >= next.torsoLeanEnter) {
+    next.torsoLeanNeutral = Math.max(0.02, next.torsoLeanEnter - 0.04);
   }
   return next;
 }

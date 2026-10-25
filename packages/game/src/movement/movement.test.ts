@@ -45,6 +45,11 @@ function pose(options: {
   runningArms?: boolean;
   /** Knees and ankles stay in the frame but under the visibility floor. */
   coverLegs?: boolean;
+  /**
+   * Shoulder-center shift in image x. Hips stay put.
+   * Positive is image right. With the selfie mirror off, that is the player's right.
+   */
+  shoulderLean?: number;
   visibility?: number;
   hide?: number[];
   time: number;
@@ -137,6 +142,12 @@ function pose(options: {
     set(15, cx - 0.09, shoulderY + lift);
     set(14, cx + 0.1, shoulderY + (0.16 - lift) * 0.55);
     set(16, cx + 0.09, shoulderY + (0.16 - lift));
+  }
+  if (options.shoulderLean) {
+    for (const index of [11, 12]) {
+      const point = points[index];
+      if (point) points[index] = { ...point, x: point.x + options.shoulderLean };
+    }
   }
   for (const index of options.hide ?? []) points[index] = null as unknown as Landmark;
   if (options.coverLegs) {
@@ -1472,5 +1483,157 @@ describe("motion reliability sequences", () => {
       heldEvents.push(...update.events);
     }
     expect(heldEvents.map((event) => event.movementType)).toEqual(["lean_left"]);
+  });
+});
+
+describe("body lean lane control", () => {
+  const clear = 0.045;
+
+  it("sends one lane per lean and requires a return to upright before the next", () => {
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBeGreaterThan(DEFAULT_THRESHOLDS.torsoLeanNeutral);
+    expect(DEFAULT_THRESHOLDS.torsoLeanHoldMs).toBeGreaterThan(0);
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+
+    const left = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0 }));
+    expect(left.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect((left.events[0]?.clientTimestamp ?? 0) - 2 * 33).toBe(33);
+    expect((left.events[0]?.clientTimestamp ?? 0) - 2 * 33).toBeLessThan(70);
+
+    const right = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? clear : 0 }));
+    expect(right.events.map((event) => event.movementType)).toEqual(["lean_right"]);
+
+    const held = feed(14, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0 }));
+    expect(held.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+
+    const reset = feed(16, (index) => {
+      const shift = index < 2 ? 0 : index < 6 ? -clear : index < 10 ? 0 : clear;
+      return pose({ time: index * 33, shoulderLean: shift });
+    });
+    expect(reset.events.map((event) => event.movementType)).toEqual(["lean_left", "lean_right"]);
+
+    const chained = feed(12, (index) => {
+      const shift = index < 2 ? 0 : index < 6 ? -clear : clear;
+      return pose({ time: index * 33, shoulderLean: shift });
+    });
+    expect(chained.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+
+    const wobble = feed(8, (index) => pose({ time: index * 33, shoulderLean: index === 3 ? -clear : 0 }));
+    expect(wobble.events).toHaveLength(0);
+
+    const sway = feed(24, (index) =>
+      pose({
+        time: index * 33,
+        hipDrop: index % 2 === 0 ? 0 : 0.04,
+        shoulderLean: index % 2 === 0 ? -0.012 : 0.01,
+        runningArms: true,
+      }),
+    );
+    expect(sway.events.filter((event) => event.movementType === "lean_left" || event.movementType === "lean_right")).toHaveLength(0);
+  });
+
+  it("measures the lean from the calibrated shoulders and keeps the arm raise as a single fallback", () => {
+    const standing = pose({ time: 0, shoulderLean: 0.02 });
+    const neutral = neutralFromLandmarks(standing.landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    expect(neutral.shoulderHip).toBeGreaterThan(0.08);
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+    const same = pushPose(state, pose({ time: 40, shoulderLean: 0.02 }));
+    expect(same.events).toHaveLength(0);
+    expect(Math.abs(same.signals?.torsoLean ?? 1)).toBeLessThan(0.02);
+    state = same.state;
+    const events = [];
+    for (let index = 0; index < 4; index += 1) {
+      const update = pushPose(state, pose({ time: 80 + index * 33, shoulderLean: 0.065 }));
+      state = update.state;
+      events.push(...update.events);
+    }
+    expect(events.map((event) => event.movementType)).toEqual(["lean_right"]);
+
+    const both = feed(8, (index) =>
+      pose({ time: index * 33, leftArm: index >= 2, shoulderLean: index >= 2 ? -clear : 0 }),
+    );
+    expect(both.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect(new Set(both.events.map((event) => event.eventId)).size).toBe(1);
+
+    const arm = feed(8, (index) => pose({ time: index * 33, rightArm: index >= 2 }));
+    expect(arm.events.map((event) => event.movementType)).toEqual(["lean_right"]);
+  });
+
+  it("does not lane-change on a lean during a jump or a squat, and does after the body is upright", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const play = (script: Array<Omit<Parameters<typeof pose>[0], "time">>) => {
+      let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+      const events = [];
+      let time = 0;
+      for (const extra of script) {
+        const update = pushPose(state, pose({ ...extra, time }));
+        state = update.state;
+        events.push(...update.events);
+        time += 33;
+      }
+      return events.map((event) => event.movementType);
+    };
+    const repeat = (count: number, extra: Omit<Parameters<typeof pose>[0], "time">) => Array.from({ length: count }, () => extra);
+
+    expect(
+      play([
+        ...repeat(3, {}),
+        { hipDrop: 0.08, shoulderLean: -clear },
+        { rise: 0.1, shoulderLean: -clear },
+        { rise: 0.1, shoulderLean: -clear },
+        ...repeat(4, { shoulderLean: -clear }),
+        ...repeat(4, {}),
+        ...repeat(4, { shoulderLean: -clear }),
+      ]),
+    ).toEqual(["jump", "lean_left"]);
+
+    expect(
+      play([
+        ...repeat(2, {}),
+        ...repeat(5, { hipDrop: 0.22, shoulderLean: clear }),
+        ...repeat(5, {}),
+        ...repeat(4, { shoulderLean: clear }),
+      ]),
+    ).toEqual(["squat", "lean_right"]);
+  });
+
+  it("keeps physical left after the selfie mirror and ignores a dropped shoulder frame", () => {
+    const mirroredLeft = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? clear : 0 }), true);
+    expect(mirroredLeft.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    const mirroredRight = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0 }), true);
+    expect(mirroredRight.events.map((event) => event.movementType)).toEqual(["lean_right"]);
+
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+    const events = [];
+    for (let index = 0; index < 8; index += 1) {
+      const leaning = index >= 2;
+      const update = pushPose(
+        state,
+        pose({
+          time: index * 33,
+          shoulderLean: leaning ? -clear : 0,
+          hide: index === 3 ? [11, 12] : [],
+        }),
+      );
+      state = update.state;
+      events.push(...update.events);
+    }
+    expect(events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect(events[0]?.clientTimestamp).toBe(4 * 33);
+
+    const hole = feed(8, (index) =>
+      pose({
+        time: index * 33,
+        shoulderLean: index === 3 ? -clear : 0,
+        hide: index === 3 ? [23, 24] : [],
+      }),
+    );
+    expect(hole.events).toHaveLength(0);
+
+    const dim = feed(8, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0, visibility: 0.5 }));
+    expect(dim.events).toHaveLength(0);
   });
 });

@@ -53,8 +53,29 @@ export interface MovementThresholds {
   minVisibility: number;
   /** Average joint confidence required before a gesture is emitted. */
   minActionConfidence: number;
+  /** Kept for stored tuning. Lane changes use torsoLeanEnter, not this. */
   leanEnter: number;
+  /** Kept for stored tuning. The neutral reset for a body lean is torsoLeanNeutral. */
   leanExit: number;
+  /**
+   * How far the shoulder center must pass the hip center, in torso lengths, before one lane change.
+   * Measured from this player's standing calibration, after the selfie mirror.
+   * Raising it means the player must lean farther. Lower it if a clear lean is ignored.
+   * Running in place should stay under this line.
+   */
+  torsoLeanEnter: number;
+  /**
+   * How close to upright the shoulders must return, in torso lengths, before another lean can count.
+   * Raising this band lets a small leftover lean count as upright, so the next lean can arm sooner.
+   * Lowering it means the player must stand straighter. A held lean stays outside this band and does not repeat.
+   */
+  torsoLeanNeutral: number;
+  /**
+   * The first frame past the lean line does not send a lane change. The next frame that is still past it does.
+   * At 30fps that is about 33ms once the lean is clearly past the line, which is under 70ms.
+   * Raising this waits longer and ignores a short wobble. Zero would lane-change on a one-frame wobble.
+   */
+  torsoLeanHoldMs: number;
   squatEnterDrop: number;
   squatExitDrop: number;
   squatKneeEnter: number;
@@ -130,6 +151,10 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   minActionConfidence: 0.6,
   leanEnter: 0.5,
   leanExit: 0.22,
+  torsoLeanEnter: 0.16,
+  torsoLeanNeutral: 0.07,
+  /** Next 30fps frame. Zero would change lanes on the same sample as a one-frame wobble. */
+  torsoLeanHoldMs: 1,
   squatEnterDrop: 0.16,
   squatExitDrop: 0.07,
   squatKneeEnter: 155,
@@ -194,6 +219,11 @@ export interface NeutralPose {
   /** Hanging wrist, outward from its shoulder, in shoulder widths. The raise is measured from here. */
   leftWristLateral: number;
   rightWristLateral: number;
+  /**
+   * Standing shoulder-center x minus hip-center x, divided by torso length.
+   * A lane lean is the change from this player's own stance, not from the middle of the image.
+   */
+  shoulderHip: number;
 }
 
 export type BodyPhase =
@@ -246,8 +276,13 @@ export interface PoseSignals {
   ok: boolean;
   reason?: "missing" | "low_confidence";
   confidence: number;
-  /** Positive means the torso center moved to the player's left. Lane commands do not use this. */
+  /** Positive means the whole torso center moved to the player's left. Lane commands do not use this. */
   lean: number;
+  /**
+   * Shoulder center relative to the hip center, in torso lengths, minus the standing calibration.
+   * Positive is the player's left after the selfie mirror. This is the body-lean lane signal.
+   */
+  torsoLean: number;
   hipDrop: number;
   kneeAngle: number;
   /** Peak hip rise over a short window. This is a hip-rise estimate, not proof both feet left the ground. */
@@ -296,6 +331,8 @@ export interface DetectorState {
   rejectLatched: boolean;
   left: GestureTrack;
   right: GestureTrack;
+  /** One upper-body lean. Hold stays in WAIT_RESET until the shoulders return to the neutral band. */
+  torso: GestureTrack;
   squat: GestureTrack;
   jump: GestureTrack;
   jumpMotion: JumpMotion;

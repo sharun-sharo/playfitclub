@@ -26,6 +26,67 @@ export function laneSlideFraction(t: number): number {
 }
 
 /**
+ * X Bot and the pulse robot ship Run, JumpUp, ForwardRoll, LongJump, StandUp, and WipeSweat.
+ * None of those is a strafe or a side-step, so the lane change plays this pose on top of Run.
+ * Seconds. The mesh is in the accepted lane at the end. Collision uses that lane from the command.
+ */
+export const SIDE_STEP_S = 0.3;
+
+/** Ease-out travel. 0 at the command, 1 when the mesh has arrived. */
+export function sideStepTravel(t: number): number {
+  return laneSlideFraction(t);
+}
+
+export interface SideStepPose {
+  travel: number;
+  /** Radians. Positive leans toward +X, which is lane right. */
+  torso: number;
+  /** World-Z radians added to each hip and foot. Positive swings that foot toward +X. */
+  leftHip: number;
+  rightHip: number;
+  leftFoot: number;
+  rightFoot: number;
+}
+
+function stepWindow(t: number) {
+  return Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+}
+
+function stepBump(t: number, center: number, width: number) {
+  const x = (t - center) / width;
+  return Math.exp(-x * x);
+}
+
+/**
+ * Athletic side-step on the run clip. t is 0 at the command and 1 at SIDE_STEP_S.
+ * The pose is back in the run at both ends. direction -1 steps toward lane left.
+ */
+export function sideStepPose(t: number, direction: -1 | 1): SideStepPose {
+  const clamped = Math.min(1, Math.max(0, t));
+  const window = stepWindow(clamped);
+  const push = window * stepBump(clamped, 0.22, 0.2);
+  const reach = window * stepBump(clamped, 0.62, 0.22);
+  const dir = direction;
+  return {
+    travel: sideStepTravel(clamped),
+    torso: dir * 0.26 * window * stepBump(clamped, 0.36, 0.28),
+    leftHip: dir > 0 ? -0.55 * push : -0.42 * reach,
+    rightHip: dir > 0 ? 0.42 * reach : 0.55 * push,
+    leftFoot: dir > 0 ? -0.35 * push : 0.22 * reach,
+    rightFoot: dir > 0 ? 0.22 * reach : 0.35 * push,
+  };
+}
+
+/**
+ * Moves the hit volume onto the accepted lane while the mesh is still stepping.
+ * The same amount is added to both sides, so the box is not shrunk.
+ * Zero once the mesh has arrived.
+ */
+export function laneHitShift(acceptedLane: number, visualLane: number, spacing: number) {
+  return (acceptedLane - visualLane) * spacing;
+}
+
+/**
  * Play Again, the start of a pause, and resume all return here.
  * An arc or a roll that was in progress is dropped, not finished into a second jump or duck.
  */

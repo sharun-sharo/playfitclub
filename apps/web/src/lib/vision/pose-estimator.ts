@@ -74,6 +74,12 @@ export interface PoseDiagnostics {
   gestureAtMs: number | null;
   eventId: string | null;
   joints: string | null;
+  /** Standing shoulder-to-hip offset, in torso lengths. */
+  torsoNeutral?: number;
+  /** Current lean from that stance. Positive is the player's left. */
+  torsoLean?: number;
+  leanDirection?: "left" | "right" | "neutral";
+  leanPhase?: string;
 }
 
 export interface PoseRates {
@@ -638,7 +644,16 @@ function diagnosticsFrom(
     gestureAtMs: update.state.lastGesture?.at ?? null,
     eventId: update.state.lastGesture?.eventId ?? null,
     joints: formatBodyJoints(landmarks),
+    torsoNeutral: update.state.neutral?.shoulderHip ?? 0,
+    torsoLean: signals?.torsoLean ?? 0,
+    leanDirection: leanDirectionFrom(signals?.torsoLean ?? 0),
+    leanPhase: update.state.torso.phase,
   };
+}
+
+function leanDirectionFrom(lean: number): "left" | "right" | "neutral" {
+  if (Math.abs(lean) <= 0.07) return "neutral";
+  return lean > 0 ? "left" : "right";
 }
 
 function bodyOrientation(landmarks: Array<{ x: number; y: number }> | undefined) {

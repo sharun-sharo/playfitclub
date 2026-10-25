@@ -61,6 +61,7 @@ export function createDetector(overrides: Partial<MovementThresholds> = {}): Det
     rejectLatched: false,
     left: freshTrack(),
     right: freshTrack(),
+    torso: freshTrack(),
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
@@ -80,6 +81,7 @@ export function setNeutral(state: DetectorState, neutral: NeutralPose): Detector
     phase: "NEUTRAL",
     left: freshTrack(),
     right: freshTrack(),
+    torso: freshTrack(),
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
@@ -107,6 +109,7 @@ export function resetMovementReady(state: DetectorState): DetectorState {
     phase: "NEUTRAL",
     left: freshTrack(),
     right: freshTrack(),
+    torso: freshTrack(),
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
@@ -143,6 +146,7 @@ export function settleGestures(state: DetectorState): DetectorState {
     phase: "NEUTRAL",
     left: freshTrack(),
     right: freshTrack(),
+    torso: freshTrack(),
     squat: freshTrack(),
     jump: freshTrack(),
     jumpMotion: "grounded",
@@ -224,6 +228,12 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
     const lostSince = state.lostSince ?? mirrored.timestampMs;
     const expired = mirrored.timestampMs - lostSince > TRACK_GRACE_MS;
     const keep = (track: GestureTrack) => (expired ? cancelCandidate(track) : delayCandidate(track, dt));
+    const keepTorso = (track: GestureTrack) => {
+      if (!expired) return delayCandidate(track, dt);
+      if (track.phase === "CANDIDATE") return freshTrack();
+      if (track.phase === "TRIGGERED") return { ...track, phase: "WAIT_RESET" as const };
+      return track;
+    };
     return {
       state: {
         ...base,
@@ -238,6 +248,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
         squatCalm: expired ? false : state.squatCalm,
         left: keep(state.left),
         right: keep(state.right),
+        torso: keepTorso(state.torso),
         squat: keep(state.squat),
         jump: keep(state.jump),
         lastReject: state.lastReject?.reason === reason ? state.lastReject : { reason, at: mirrored.timestampMs },
@@ -265,6 +276,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
         phase: "NEUTRAL",
         left: freshTrack(),
         right: freshTrack(),
+        torso: freshTrack(),
         squat: freshTrack(),
         jump: freshTrack(),
         jumpMotion: "grounded",
@@ -308,6 +320,7 @@ function transitionPhase(
   let phase: BodyPhase = state.phase;
   let left = state.left;
   let right = state.right;
+  let torso = state.torso;
   let squat = state.squat;
   let jump = state.jump;
   let recoverUntil = state.recoverUntil;
@@ -343,6 +356,7 @@ function transitionPhase(
       sequence,
       left,
       right,
+      torso,
       squat,
       jump,
       jumpMotion,
@@ -392,6 +406,7 @@ function transitionPhase(
       phase = "JUMPING";
       if (leftUp) left = suppressTrack(left, now);
       if (rightUp) right = suppressTrack(right, now);
+      torso = parkTorso(torso, signals.torsoLean, thresholds.torsoLeanNeutral, now);
       return pack();
     }
     jump = freshTrack();
@@ -536,21 +551,43 @@ function transitionPhase(
     phase = "JUMPING";
     if (leftUp) left = suppressTrack(left, now);
     if (rightUp) right = suppressTrack(right, now);
+    torso = parkTorso(torso, signals.torsoLean, thresholds.torsoLeanNeutral, now);
     return pack();
   }
 
+  const leanBlocked =
+    holdingSquat ||
+    phase === "SQUATTING" ||
+    phase === "JUMPING" ||
+    jump.phase !== "NEUTRAL" ||
+    jumpMotion === "preparing" ||
+    jumpMotion === "takeoff" ||
+    jumpMotion === "airborne";
+  const torsoStep = leanBlocked
+    ? { track: parkTorso(torso, signals.torsoLean, thresholds.torsoLeanNeutral, now), emitted: false }
+    : advanceTorso(torso, signals.torsoLean, thresholds, now, (movementType) => emit(movementType, signals.confidence));
+  torso = torsoStep.track;
+  const torsoOwnsLane = torsoStep.emitted || torso.phase === "TRIGGERED" || torso.phase === "WAIT_RESET";
+
   const leftSent = sentPhase(left);
   const rightSent = sentPhase(right);
-  if (leftUp && rightUp && !leftSent && !rightSent) {
+  if (torsoOwnsLane) {
+    if (leftUp) left = holdArm(left, now);
+    if (rightUp) right = holdArm(right, now);
+  } else if (leftUp && rightUp && !leftSent && !rightSent) {
     reject("both_arms");
     left = { phase: "NEUTRAL", since: now, eventId: null, suppress: true };
     right = { phase: "NEUTRAL", since: now, eventId: null, suppress: true };
     if (!recovering && phase !== "RECOVERING") phase = "NEUTRAL";
     return pack();
+  } else {
+    const beforeLane = events.length;
+    left = advanceArm(left, leftUp && !(rightUp && !leftSent), thresholds.armHoldMs, now, () => emit("lean_left", signals.confidence));
+    right = advanceArm(right, rightUp && !(leftUp && !rightSent), thresholds.armHoldMs, now, () => emit("lean_right", signals.confidence));
+    if (events.length > beforeLane && Math.abs(signals.torsoLean) > thresholds.torsoLeanNeutral) {
+      torso = { phase: "WAIT_RESET", since: now, eventId: torso.eventId, suppress: false };
+    }
   }
-
-  left = advanceArm(left, leftUp && !(rightUp && !leftSent), thresholds.armHoldMs, now, () => emit("lean_left", signals.confidence));
-  right = advanceArm(right, rightUp && !(leftUp && !rightSent), thresholds.armHoldMs, now, () => emit("lean_right", signals.confidence));
   if (!leftUp && !rightUp) rejectLatched = false;
 
   const squatStillHeld = squat.phase === "CONFIRMED" || squat.phase === "SENT" || squat.phase === "WAIT_RESET";
@@ -624,17 +661,54 @@ function poseIsQuiet(signals: PoseSignals, thresholds: MovementThresholds, neutr
   const rightUp = armRaised(signals.rightArm, neutral.rightWristLateral, false, thresholds);
   const squatting = !signals.forwardBend && signals.hipDrop > thresholds.squatEnterDrop;
   const preparing = !signals.forwardBend && signals.hipDrop > thresholds.jumpPrepDrop;
+  const leaning = Math.abs(signals.torsoLean) > thresholds.torsoLeanNeutral;
   const jumping = signals.legsReady
     ? (signals.ankleRise > thresholds.jumpAnkleRise || signals.hipDrop < -0.05) &&
       (signals.riseSpeed > thresholds.jumpRise || signals.hipVelocity > thresholds.jumpRise)
     : signals.hipVelocity > thresholds.jumpRise || signals.shoulderVelocity > thresholds.jumpRise;
-  return !leftUp && !rightUp && !squatting && !preparing && !jumping;
+  return !leftUp && !rightUp && !squatting && !preparing && !jumping && !leaning;
+}
+
+function parkTorso(track: GestureTrack, lean: number, neutralBand: number, now: number): GestureTrack {
+  if (Math.abs(lean) <= neutralBand) return track.phase === "NEUTRAL" ? track : freshTrack();
+  return { phase: "WAIT_RESET", since: track.since || now, eventId: track.eventId, suppress: false };
+}
+
+/**
+ * One deliberate lean sends one lane command. The shoulders must return inside the neutral band
+ * before another lean can arm. The frame that first crosses the line does not emit.
+ */
+function advanceTorso(
+  track: GestureTrack,
+  lean: number,
+  thresholds: MovementThresholds,
+  now: number,
+  emit: (movementType: "lean_left" | "lean_right") => { id: string },
+): { track: GestureTrack; emitted: boolean } {
+  const inside = Math.abs(lean) <= thresholds.torsoLeanNeutral;
+  const past = Math.abs(lean) >= thresholds.torsoLeanEnter;
+  if (track.phase === "TRIGGERED" || track.phase === "WAIT_RESET" || track.phase === "SENT" || track.phase === "CONFIRMED") {
+    return { track: inside ? freshTrack() : { ...track, phase: "WAIT_RESET" }, emitted: false };
+  }
+  if (track.suppress || !past) return { track: freshTrack(), emitted: false };
+  const since = track.phase === "CANDIDATE" ? track.since : now;
+  if (now - since >= thresholds.torsoLeanHoldMs) {
+    const sent = emit(lean > 0 ? "lean_left" : "lean_right");
+    return { track: { phase: "TRIGGERED", since: now, eventId: sent.id, suppress: false }, emitted: true };
+  }
+  return { track: { phase: "CANDIDATE", since, eventId: null, suppress: false }, emitted: false };
+}
+
+function holdArm(track: GestureTrack, now: number): GestureTrack {
+  if (track.phase === "WAIT_FOR_RELEASE") return track;
+  return { phase: "WAIT_FOR_RELEASE", since: now, eventId: track.eventId, suppress: false };
 }
 
 function stanceIsQuiet(state: DetectorState, signals: PoseSignals) {
   const neutral = state.neutral;
   if (!neutral || state.awaitRelease || state.phase !== "NEUTRAL" || state.jumpMotion !== "grounded") return false;
-  if (state.left.phase !== "NEUTRAL" || state.right.phase !== "NEUTRAL") return false;
+  if (state.left.phase !== "NEUTRAL" || state.right.phase !== "NEUTRAL" || state.torso.phase !== "NEUTRAL") return false;
+  if (Math.abs(signals.torsoLean) > state.thresholds.torsoLeanNeutral) return false;
   if (state.squat.phase !== "NEUTRAL" || state.jump.phase !== "NEUTRAL") return false;
   if (signals.hipDrop > 0.02 || signals.hipDrop < -0.02 || Math.abs(signals.hipVelocity) > 0.12 || signals.ankleRise > 0.02) return false;
   return poseIsQuiet(signals, state.thresholds, neutral);

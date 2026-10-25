@@ -15,6 +15,7 @@ import { fitRunnerTuning as tuning, type GraphicsQuality, type LaneEasing } from
 import { FitRunnerTutorial } from "@/components/fitrunner-v2/tutorial-overlay";
 import { useTvSession, type LivesAck } from "@/components/fitrunner-v2/use-tv-session";
 import { useWorkoutSync } from "@/components/fitrunner-v2/use-workout-sync";
+import { leanOverlayText } from "@/components/join/phone-commands";
 import { framingStatusLine, LOST_YOU } from "@/lib/vision/framing";
 import "./tv-shell.css";
 import { STEP_BACK_INTO_FRAME } from "@/lib/vision/hands-free";
@@ -53,7 +54,7 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [quality, setQuality] = useState<GraphicsQuality>(tuning.quality);
-  const [laneDuration, setLaneDuration] = useState(tuning.laneChangeDuration);
+  const [laneDuration, setLaneDuration] = useState(tuning.sideStepDuration);
   const [laneEasing, setLaneEasing] = useState<LaneEasing>(tuning.laneEasing);
   const [leanDegrees, setLeanDegrees] = useState(Math.round((tuning.leanRadians * 180) / Math.PI));
   const [laneCooldown, setLaneCooldown] = useState(tuning.laneInputCooldown);
@@ -458,6 +459,23 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
       />
       <LivesHearts hidden={!playing} lives={session.lives} />
       {scheduleDebug ? (
+        <p
+          data-lean-debug=""
+          className="pointer-events-none absolute left-4 top-16 z-10 max-w-md text-left text-[11px] leading-relaxed text-[#d5deea]"
+        >
+          <span className="inline-block rounded-xl bg-[#10141ccc] px-3 py-2">
+            {leanOverlayText({
+              neutral: phoneDiag?.torsoNeutral,
+              lean: phoneDiag?.torsoLean,
+              confidence: phoneDiag?.confidence,
+              phase: phoneDiag?.leanPhase,
+              command: poseReport?.movementType ?? phoneDiag?.lastGesture,
+              lane: poseReport?.lane ?? liveMotion.lane,
+            })}
+          </span>
+        </p>
+      ) : null}
+      {scheduleDebug ? (
         <pre
           ref={courseDebugRef}
           data-course-debug=""
@@ -580,14 +598,14 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
             <span className="text-[#9aa8bd]">duration</span>
             <input
               type="range"
-              min={0.12}
-              max={0.45}
+              min={0.25}
+              max={0.35}
               step={0.01}
               value={laneDuration}
               aria-label="Lane duration"
               onChange={(event) => {
                 const value = Number(event.target.value);
-                tuning.laneChangeDuration = value;
+                tuning.sideStepDuration = value;
                 setLaneDuration(value);
               }}
             />

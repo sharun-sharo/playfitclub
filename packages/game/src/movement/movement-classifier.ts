@@ -12,7 +12,8 @@ import {
 /**
  * Classifies a single smoothed pose against a calibrated neutral stance.
  * MediaPipe Pose tracks body landmarks. It does not classify clothing.
- * Lane direction uses MediaPipe's anatomical left and right arms, not raw screen x.
+ * Lane direction uses a shoulder lean past the hips, with an arm raise as the fallback.
+ * MediaPipe's anatomical left stays the player's left after the selfie mirror flips x.
  * Jump speed is a hip-rise estimate. A fixed monocular camera cannot measure
  * real-world height or prove that both feet left the ground.
  */
@@ -66,6 +67,10 @@ export function classifyPose(
   const centerX = (shoulder.x + hip.x) / 2;
   const shoulderTilt = (leftShoulder.y - rightShoulder.y) / neutral.shoulderWidth;
   const lean = (neutral.centerX - centerX) / neutral.shoulderWidth + shoulderTilt * 0.45;
+  // Standing torso is the scale. A missing shoulder or hip already returned above, so this is a real pair.
+  const shoulderHip = (shoulder.x - hip.x) / Math.max(0.05, neutral.torso);
+  // mirrorFrame already flipped shoulder and wrist x. Physical left is the positive direction.
+  const torsoLean = (neutral.shoulderHip ?? 0) - shoulderHip;
   const hipDrop = (hip.y - neutral.hipY) / neutral.torso;
   const leftHip3 = vec3(landmarks[POSE.leftHip]);
   const rightHip3 = vec3(landmarks[POSE.rightHip]);
@@ -114,6 +119,7 @@ export function classifyPose(
     ok: true,
     confidence: counted > 0 ? visibility / counted : 0,
     lean,
+    torsoLean,
     hipDrop,
     kneeAngle,
     riseSpeed,
@@ -302,6 +308,7 @@ export function wristLaterals(
     shinLength: 1,
     leftWristLateral: 0,
     rightWristLateral: 0,
+    shoulderHip: 0,
   };
   return {
     left: measureArm(landmarks[POSE.leftElbow], landmarks[POSE.leftWrist], leftShoulder, rightShoulder, neutral, 0).lateral,
@@ -314,6 +321,7 @@ function emptySignals(): PoseSignals {
     ok: false,
     confidence: 0,
     lean: 0,
+    torsoLean: 0,
     hipDrop: 0,
     kneeAngle: 180,
     riseSpeed: 0,
