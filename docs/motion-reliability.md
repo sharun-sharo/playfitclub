@@ -34,7 +34,7 @@ The send path was checked and not changed. The phone emits `movementType` `"jump
 
 What a squat still requires: hips down more than 0.16 torso, a real knee bend (image shortening or depth), shin flexion of at least 8°, planted ankles, and a 200 ms hold.
 
-Still unverified, because no phone was attached: the z values MediaPipe actually returns for this player, whether `worldLandmarks` is missing on that device, and whether knee or ankle visibility falls under 0.45 during the squat. A joint under that floor still drops the frame. A missing landmark still does not invent a command.
+Still unverified on that pass, because no phone was attached: the z values MediaPipe actually returns for this player, and whether `worldLandmarks` is missing on that device. A later pass stops knees and ankles under 0.45 from dropping the frame. A shoulder or a hip under that floor still does. A missing landmark still does not invent a command.
 
 ## Follow-up: squat, second jump, second lane change
 
@@ -148,30 +148,76 @@ Smoothing alpha stays 0.78. On a 33ms synthetic frame, an arm just past the side
 
 The same squat, two-jump, and re-raise sequences were run with the body in the left third, the center, and the right third. The event counts matched.
 
-`vitest` on the movement, indoor-sequence, session-calibration, phone-command, and framing files: 104 passed, 0 failed. No phone was attached. This does not mean the phone will pass.
+`vitest` on the movement, indoor-sequence, session-calibration, phone-command, and framing files: 105 passed, 0 failed. No phone was attached. This does not mean the phone will pass.
 
 ## Play Again and pause
 
-The first run can detect squat and jump. After game over, Play Again does not reload the phone, and pause does not reload it either. A fresh page load creates a new detector, which is why the first run worked. Two pieces of state were still the previous run's:
+The first run can detect squat and jump. After game over, Play Again does not reload the phone. A fresh page load creates a new detector, which is why the first run worked.
 
-- The phone movement machine. After a jump, `jump.phase` stays `CONFIRMED`, `SENT`, or `WAIT_RESET` and `jumpMotion` stays airborne until the feet are back on the floor. The machine returns before it will arm another squat or jump. A lane change is ignored for that same stretch. A latched squat and an armed dip stay set too. Play Again and pause used to leave all of that in place.
-- The TV body. `motion` stays `jump`, `fall`, or `roll`, and the jump arc stays active. Pause stops the course clock before that arc can finish, so the body never returns to the run clip. Jump and squat are accepted only while the clip is the run. A lane change does not check the clip, so left and right still move. A jump or squat that was waiting in the buffer could play when the clip returned to the run.
+The previous reset did not run on the Play Again click. The button only cleared the game-over card, built another course, and emitted `run:again`. The phone clear waited for a phase change, and the course clear waited for a later `beginCourse`. Game over leaves the server phase at `running`, so that phase change is easy to miss. While the phone is still in play, the pose already on screen can latch `jump.phase` back to `SENT` or `WAIT_RESET` and `jumpMotion` to airborne. On the TV, a jump or fall whose arc is no longer active stays that clip forever. Jump and squat play only in the run clip. Left and right do not check the clip, so they keep working.
 
-Play Again, the start of a pause, and the return to running now reset the phone to standing ready: grounded, squat not latched, jump not armed, neutral free to drift. The calibrated stance and the event sequence stay. Hip history is cleared, so the pose already in frame is not a new jump. Pause and resume also put the course body on the ground in the run clip and drop a waiting jump or squat. Play Again already builds a new course, and that course starts from the same grounded run. `jumpRise` is still 0.32. A pause snapshot is sent immediately, so a movement in the same moment cannot hide the pause. This pass: movement 62, indoor sequences 9, course body 1, realtime sessions 13, all passed. No phone was used.
+The Game Over button now applies the run clip (arc dropped, buffer empty, body grounded) and emits `round:reset` before `run:again`. The phone listener calls `readyForRound`, which calls `resetPhoneForRound`: grounded, squat not latched, jump not armed, neutral free to drift. The pose already in frame is not replayed as a jump, and it does not block the next real squat or jump. The same clear runs when the countdown reaches running, and on pause. A dead jump or fall is put back on the run clip on the next course frame, so a new jump starts the arc and a new squat starts the roll. `jumpRise` is still 0.32. Same phone, same session, no new QR. No phone was used for this pass. That Play Again check is still unverified on a phone.
+
+## Covered legs
+
+No detector branch looks for a saree, or for any garment. The phone uses MediaPipe Pose. It tracks body landmarks: shoulders, hips, knees, ankles, and wrists. It does not classify clothing.
+
+A saree covers the legs. Knees, shins, and ankles are often missing, or they land on the fabric below the 0.45 visibility floor. Squat and jump required those joints, which is why they could fail while left and right still worked. The arms and shoulders stay visible.
+
+What blocked a covered-leg squat or jump:
+
+- Knees and ankles under 0.45 were averaged into the 0.6 action confidence, so they could drop the whole frame.
+- A squat required both knees and both ankles, a knee angle under the enter gate, shin flexion of at least 8°, and planted ankles.
+- Jump prep required those same visible legs, at least 12° of knee flexion, and planted ankles. Takeoff and the flight path required the legs as well. The flight path also required the ankles to rise.
+- Before a command was sent, a squat was blocked with no knees and a jump was blocked with no ankles. Missing feet also took framing out of "good", which pauses play.
+- The first standing calibration refused a pose that had no knees or ankles, so play never got a neutral stance.
+
+Covered knees and ankles no longer drop the frame when the shoulders and hips stay visible. A missing landmark still does not invent a command. A shoulder or a hip under 0.45 still drops the frame.
+
+A covered squat is a hip drop of more than 0.16 torso and a torso shorter than 90% of the standing calibration, still down on the frame 66 ms later. It does not need a knee angle or planted ankles. A bow that shortens the torso and does not drop the hips does not duck. Visible knees still use the knee-angle, shin, and planted-ankle path.
+
+A covered jump is the same dip, then the hips or the shoulders rising faster than 0.32 torso-lengths per second on image y. `jumpRise` was not lowered. No saree was filmed, so there is no measured hop whose hip rise stays under 0.32. Standing up from a squat does not jump. Landing does not add a jump. A second jump after the body is grounded emits again. One physical jump is one game jump.
+
+Lane changes are unchanged: halfway from waist to chest, or a sideways point. Holding the arm does not repeat. Both arms send nothing.
+
+The synthetic sequences use the same landmark layout as the estimator. Covered knees and ankles are either omitted or set to visibility 0.2. Hips drop and the torso shortens for the squat, still down 66 ms later: one squat, and standing up emits no jump. A dip then a hip rise above 0.32 emits one jump, and a second jump after landing emits again. Visible-leg squat and jump still emit. Running in place with hidden legs emits neither. A slight bow with no hip drop emits nothing. Right, then left, still emit with the legs hidden.
+
+## How fast a clear gesture is sent
+
+No phone was used. The numbers are synthetic 30fps landmark frames inside the unit test. They are not a phone round trip, and they are not the TV frame rate.
+
+What used to wait, after the pose had already crossed the line:
+
+| Step | Old | New |
+| --- | --- | --- |
+| Landmark blend | Alpha 0.78. A raise just past the sideways line needed a second frame before the hold even started. | Alpha 0.92. One frame takes 92% of the step. Two frames take about 99%. |
+| Lane change | 100ms arm hold. The same just-past raise was emitted 165ms after the pose stepped. A raise that was already past the line still waited about 132ms (the frame at or after 100ms). | The crossing frame does not emit. The next frame that is still past the line does. Measured delay 33ms. |
+| Squat | 200ms hold. At 33ms frames that is the frame 231ms after the hips cross. | 66ms. The third 30fps frame, measured 66ms. A one-frame or two-frame bob does not duck. |
+| Jump | The dip had to last 50ms before a rise could count. Recovery after a landing could also hold the next flight. `jumpRise` was 0.32. | `jumpRise` is still 0.32. Once the dip has lasted 50ms, the frame that crosses 0.32 emits on that frame. Measured delay after that rise frame: 0ms. |
+| Phone labels | UI updates skipped for 180ms when the text had not changed. | Same 180ms skip, and it is still labels only. `pushPose` and the movement socket run on every camera frame. The socket emit is not behind the label update. |
+| Stale command | 400ms, then the TV drops it and does not retry. | Unchanged. Commands are not resent. Duplicate event ids are still rejected. |
+
+The 50ms dip remains on purpose. A shorter one treats a single noisy hip drop, then the return to standing, as a jump. It is not an extra wait after the rise has crossed 0.32.
+
+On this synthetic clock, a clear gesture is the next frame or two after it is already visible: 33ms for a lane change, 66ms for a squat, and the same frame as the jump rise. A player should feel the move land on the next moments, not after a pause. That feeling was not timed on a phone.
+
+`vitest` on the movement, indoor-sequence, phone-command, and framing files: 108 passed, 0 failed (movement 70, indoor 9, phone-command 10, framing 19). No phone was attached.
+
+`vitest` on the movement, indoor-sequence, phone-command, and framing files: 106 passed, 0 failed (movement 68, indoor 9, phone-command 10, framing 19). Session calibration, which this pass also touched, was 4 passed. No phone was attached. No saree was filmed. This does not mean a phone will pass.
 
 ## Phone checklist
 
-Run this on a phone against the TV. A green unit test is not a pass. No phone was used to write this list, and nothing here claims the phone will pass.
+Run this on a phone against the TV, with the player in a saree. A green unit test is not a pass. No phone was used to write this list, and no saree was filmed. Nothing here claims the phone will pass.
 
-- First run: squat, jump, left, right work.
-- Game over, Play Again, do not reload the phone: squat and jump work again.
-- Pause, wait, resume: squat and jump work again.
+- Squat once in the saree. Runner ducks once. Standing up does not jump.
+- Two jumps. Both jump.
+- Right, then left. Both lanes change.
 
 ## Remaining limits
 
 - One pose only. A second returned pose pauses the controller. It is not identified or followed.
 - Jump height is a monocular image estimate. The camera cannot prove both feet left the floor.
-- No phone was used here, so recognition rate and end-to-end latency are unknown. The 165ms figure above is only the synthetic smoother.
+- No phone was used here, so recognition rate and end-to-end latency are unknown. The 33ms, 66ms, and 0ms figures above are only the synthetic detector. A phone round trip and the TV frame rate are not included.
 - A lane command at the outer lane does not move the runner farther.
 - A jump or duck that arrives while the clip is still playing waits at most 400ms, then it is dropped and not retried.
 - Event-id memory lives in the realtime process. A server restart forgets it.

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { whatsappUrl } from "@/lib/whatsapp";
 import type { FitRunnerHandle, PoseCommand, PoseReport } from "@/components/fitrunner-v2/create-fitrunner";
 import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
+import { playAgain as startPlayAgain } from "@/components/fitrunner-v2/play-again";
 import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import { PlayScoreCard } from "@/components/fitrunner-v2/play-score-card";
 import { MissionPanel, MissionToast, playGradeBlip, ResultsScreen, type RunResult } from "@/components/fitrunner-v2/rewards-ui";
@@ -403,22 +404,29 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }, []);
 
   function playAgain() {
-    const left = remainingDemoSeconds(demoLimitRef.current, demoSpentRef.current);
-    setGameOver(null);
-    setGameSaved(null);
-    setResults(null);
-    if (left === 0) {
-      setDemoOver(true);
-      return;
-    }
-    endedByLivesRef.current = false;
-    armed.current = false;
-    hitsRef.current = 0;
-    setDemoOver(false);
-    setHoldStart(true);
-    setPlaying(false);
-    setRunId((value) => value + 1);
-    void session.restartRun();
+    startPlayAgain({
+      demoSecondsLeft: remainingDemoSeconds(demoLimitRef.current, demoSpentRef.current),
+      applyCourse: (clip) => {
+        handleRef.current?.prepareReplay(clip);
+      },
+      emitPhoneReset: () => session.emitRoundReset(),
+      restartRun: () => {
+        endedByLivesRef.current = false;
+        armed.current = false;
+        hitsRef.current = 0;
+        setDemoOver(false);
+        setHoldStart(true);
+        setPlaying(false);
+        setRunId((value) => value + 1);
+        void session.restartRun();
+      },
+      clearRound: () => {
+        setGameOver(null);
+        setGameSaved(null);
+        setResults(null);
+      },
+      showDemoOver: () => setDemoOver(true),
+    });
   }
 
   return (

@@ -9,7 +9,7 @@ export const MOTION_THRESHOLD_FIELDS = [
   { key: "halfwayElbowMin", label: "chest elbow", min: 55, max: 140, step: 1 },
   { key: "sidewaysReachEnter", label: "side reach", min: 0.7, max: 1.8, step: 0.01 },
   { key: "sidewaysElbowEnter", label: "side elbow", min: 85, max: 160, step: 1 },
-  { key: "armHoldMs", label: "hold ms", min: 40, max: 400, step: 10 },
+  { key: "armHoldMs", label: "hold ms", min: 0, max: 400, step: 1 },
   { key: "squatEnterDrop", label: "squat drop", min: 0.12, max: 0.55, step: 0.01 },
   { key: "squatKneeEnter", label: "knee °", min: 100, max: 160, step: 1 },
   { key: "jumpRise", label: "jump rise", min: 0.2, max: 1.4, step: 0.01 },

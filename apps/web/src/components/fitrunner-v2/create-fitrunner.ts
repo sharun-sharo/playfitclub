@@ -11,7 +11,7 @@ import {
 } from "@/components/fitrunner-v2/course";
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
-import { groundCourseBody, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
+import { releaseStuckClip, replayClip, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -124,6 +124,7 @@ export type FitRunnerHandle = {
   previewCourse: () => void;
   resetNeutral: () => void;
   beginCourse: () => void;
+  prepareReplay: (clip?: ReturnType<typeof replayClip>) => void;
   commitHit: (obstacleId: string) => void;
   commitPending: () => void;
   dropHit: (obstacleId: string) => void;
@@ -1012,6 +1013,7 @@ export async function startFitRunner(
       rememberPose(event.eventId);
       if (event.sequenceNumber !== undefined) lastPoseSequence = event.sequenceNumber;
       if (courseMode !== "live") return reportPose(event, courseMode === "preview", courseMode === "preview" ? null : "not_ready");
+      if (event.movementType === "jump" || event.movementType === "squat") unstickClip();
       const timing = poseTiming(event);
       if (timing === "later") {
         if (poseBuffer && poseBuffer.value.eventId !== event.eventId) reportPose(poseBuffer.value, false, "replaced");
@@ -1447,7 +1449,6 @@ export async function startFitRunner(
 
     /** Drops a jump arc or a roll. The body is grounded and running. A waiting jump or squat is not played. */
     function groundRunner() {
-      const grounded = groundCourseBody();
       clearJumpArc();
       if (poseBuffer) {
         const held = poseBuffer.value;
@@ -1457,7 +1458,22 @@ export async function startFitRunner(
       runner.position.y = 0;
       rollCursor = 0;
       motionEndsAt = 0;
-      if (motion !== grounded.motion) playRun();
+      if (!verticalCommandReady(motion)) playRun();
+    }
+
+    /** Play Again applies this clip. A stale canvas hold must not freeze the next arc. */
+    function prepareReplay(clip: ReturnType<typeof replayClip> = replayClip()) {
+      groundRunner();
+      paused = false;
+      livesHold = false;
+      canvas.dataset.hold = "0";
+      if (motion !== clip.motion) playRun();
+    }
+
+    function unstickClip() {
+      if (releaseStuckClip({ motion, jumpActive: Boolean(jumpArc?.active), elapsed: actionNow(), motionEndsAt }) === "ground") {
+        groundRunner();
+      }
     }
 
     function holdIdle() {
@@ -1491,7 +1507,9 @@ export async function startFitRunner(
     }
 
     function beginCourse() {
-      if (finished || courseMode === "live") return;
+      if (finished) return;
+      prepareReplay();
+      if (courseMode === "live") return;
       resetNeutral();
       revealCourse();
       courseMode = "live";
@@ -1528,12 +1546,14 @@ export async function startFitRunner(
         renderer.render(scene, camera);
         return;
       }
-      if (paused || canvas.dataset.hold === "1" || livesHold) {
+      if (paused || livesHold) {
+        unstickClip();
         clock.getDelta();
         if (livesHold && flash > 0) paintFlash();
         renderer.render(scene, camera);
         return;
       }
+      unstickClip();
       const dt = Math.min(0.05, clock.getDelta());
       elapsed += dt;
       if (demoLimit !== null && elapsed >= demoLimit) {
@@ -1662,6 +1682,7 @@ export async function startFitRunner(
     resize();
     publish(tuning.forwardSpeed);
     tropical.update(runner.position, camera, 0);
+    canvas.dataset.hold = "0";
     if (holdCourse) {
       concealCourse();
       canvas.dataset.course = "hold";
@@ -1679,6 +1700,7 @@ export async function startFitRunner(
       previewCourse,
       resetNeutral,
       beginCourse,
+      prepareReplay,
       commitHit,
       commitPending,
       dropHit,

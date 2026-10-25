@@ -16,6 +16,7 @@ export const CLIENT_EVENTS = {
   movementResult: "movement:result",
   runBegin: "run:begin",
   runAgain: "run:again",
+  roundReset: "round:reset",
   obstacleHit: "obstacle:hit",
   sessionClose: "session:close",
 } as const;
@@ -30,4 +31,5 @@ export const SERVER_EVENTS = {
   gameSnapshot: "game:snapshot",
   gameScore: "game:score",
   gameEnded: "game:ended",
+  roundReset: "round:reset",
 } as const;

@@ -416,6 +416,10 @@ export function PhoneSession({ code }: { code: string }) {
       }
       syncHandsRef.current();
     });
+    socket.on(SERVER_EVENTS.roundReset, () => {
+      if (generation !== socketGen.current) return;
+      estimatorRef.current?.readyForRound();
+    });
     socket.on(SERVER_EVENTS.sessionError, (payload: { code?: string; message?: string; serverTimeMs?: number }) => {
       if (generation !== socketGen.current) return;
       const code = payload?.code ?? "";
@@ -675,6 +679,7 @@ export function PhoneSession({ code }: { code: string }) {
           publishDiagnostics(state.confidence, state.diagnostics, state.calibrated, state.actionsEnabled, state.calibrationCue || hands.cue || state.guidance);
         },
         onMovement: (draft) => {
+          emitMovement(draft);
           const label = gestureLabel(draft.movementType);
           setLastMove(label);
           setTrace((current) => ({
@@ -685,7 +690,6 @@ export function PhoneSession({ code }: { code: string }) {
             poseAtMs: draft.clientTimestamp,
             gestureAtMs: draft.clientTimestamp,
           }));
-          emitMovement(draft);
         },
         onCameraLost: (message) => {
           bodyActionsRef.current = false;
@@ -729,7 +733,6 @@ export function PhoneSession({ code }: { code: string }) {
     const sentAt = Date.now();
     sentAtRef.current.set(eventId, sentAt);
     noteEvent(`movement ${label}`);
-    setTrace((currentTrace) => ({ ...currentTrace, lastSent: label, sentPhoneMs: sentAt, commandId: eventId }));
     socketRef.current?.emit(
       CLIENT_EVENTS.movement,
       {
@@ -750,6 +753,7 @@ export function PhoneSession({ code }: { code: string }) {
         }));
       },
     );
+    setTrace((currentTrace) => ({ ...currentTrace, lastSent: label, sentPhoneMs: sentAt, commandId: eventId }));
   }
 
   function commitReady(isReady: boolean, confidence: number) {

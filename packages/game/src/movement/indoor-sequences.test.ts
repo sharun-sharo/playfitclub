@@ -119,7 +119,7 @@ function liveFrame(
 }
 
 function startLive(cx: number, depth: { kneeForwardM: number; kneeZSign?: -1 | 1 } | null = null) {
-  let state = createDetector({ mirror: false, smoothingAlpha: 0.78, cooldownMs: DEFAULT_THRESHOLDS.cooldownMs });
+  let state = createDetector({ mirror: false, smoothingAlpha: DEFAULT_THRESHOLDS.smoothingAlpha, cooldownMs: DEFAULT_THRESHOLDS.cooldownMs });
   const neutral = neutralFromLandmarks(liveFrame({ time: 0, cx }, depth).landmarks);
   if (!neutral) throw new Error("neutral");
   state = setNeutral(state, neutral);
@@ -146,7 +146,7 @@ function start(cx = 0.5, smoothingAlpha = DEFAULT_THRESHOLDS.smoothingAlpha) {
 }
 
 function startPhone(cx = 0.5) {
-  let state = createDetector({ mirror: false, smoothingAlpha: 0.78, cooldownMs: DEFAULT_THRESHOLDS.cooldownMs });
+  let state = createDetector({ mirror: false, smoothingAlpha: DEFAULT_THRESHOLDS.smoothingAlpha, cooldownMs: DEFAULT_THRESHOLDS.cooldownMs });
   const neutral = neutralFromLandmarks(phoneFrame({ time: 0, cx }).landmarks);
   if (!neutral) throw new Error("neutral");
   state = setNeutral(state, neutral);
@@ -256,7 +256,7 @@ describe("indoor frame sequences", () => {
         let peakRise = 0;
         for (let index = 0; index < (kind === "spaced" ? 48 : 28); index += 1) {
           const cycle = kind === "spaced" ? index % 24 : index;
-          const dipping = kind === "quick" ? (index >= 2 && index <= 5) || (index >= 12 && index <= 15) : kind === "highLanding" ? (index >= 2 && index <= 5) || (index >= 18 && index <= 22) : (cycle >= 3 && cycle <= 7);
+          const dipping = kind === "quick" ? index === 4 || index === 5 || index === 14 || index === 15 : kind === "highLanding" ? index === 4 || index === 5 || index === 20 || index === 21 : cycle === 6 || cycle === 7;
           const rising = kind === "quick" ? index === 6 || index === 7 || index === 16 || index === 17 : kind === "highLanding" ? index === 6 || index === 7 || index === 23 || index === 24 : cycle === 8 || cycle === 9;
           const air = kind === "quick" ? index >= 8 && index <= 10 : kind === "highLanding" ? index >= 8 && index <= 11 : cycle >= 10 && cycle <= 14;
           const restingRise = kind === "highLanding" && !rising && !air ? 0.012 : 0;
@@ -296,7 +296,7 @@ describe("indoor frame sequences", () => {
   it("fires the next lane change once the hand is down at the hip, without a long lock", () => {
     const measured: Record<string, unknown>[] = [];
     for (const cx of [0.28, 0.5, 0.72]) {
-      let state = start(cx, 0.78);
+      let state = start(cx);
       const events: MovementDraft[] = [];
       let releasedAt: number | null = null;
       let sawFirst = false;
@@ -326,7 +326,7 @@ describe("indoor frame sequences", () => {
 
   it("changes back to the left as soon as the right hand is down and the left hand is out", () => {
     for (const cx of [0.28, 0.5, 0.72]) {
-      let state = start(cx, 0.78);
+      let state = start(cx);
       const events: MovementDraft[] = [];
       for (let index = 0; index < 34; index += 1) {
         const rightUp = index >= 2 && index <= 10;
@@ -469,13 +469,13 @@ describe("indoor frame sequences", () => {
 
   it("does not repeat a held raise and does not fire when both arms are out", () => {
     const held = run(
-      start(0.5, 0.78),
+      start(0.5),
       Array.from({ length: 18 }, (_, index) => body({ time: index * FRAME_MS, rightRaise: index >= 2 ? 1 : 0 })),
     );
     expect(held.events.filter((event) => event.movementType === "lean_right")).toHaveLength(1);
 
     const both = run(
-      start(0.5, 0.78),
+      start(0.5),
       Array.from({ length: 12 }, (_, index) => body({ time: index * FRAME_MS, rightRaise: index >= 2 ? 1 : 0, leftRaise: index >= 2 ? 1 : 0 })),
     );
     expect(both.events).toHaveLength(0);

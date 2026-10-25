@@ -79,7 +79,7 @@ export interface MovementThresholds {
   jumpPrepDrop: number;
   /** Knee flexion from the session baseline, in degrees, required before that dip can become a jump. */
   jumpPrepKnee: number;
-  /** How long the dip must last before a fast rise counts as takeoff. */
+  /** How long a dip must already have lasted. The rise frame itself does not add another wait. */
   jumpPrepMs: number;
   /** Shin angle from vertical, in degrees, required for a planted squat. */
   squatAnkleFlex: number;
@@ -108,11 +108,14 @@ export interface MovementThresholds {
   sidewaysElbowExit: number;
   /** Blend applied to a quiet stance each frame. Jump, squat, and an arm raise freeze it. */
   neutralDrift: number;
-  /** How long the arm must stay out before one lane command is sent. */
+  /**
+   * Same-frame guard for a lane change. The frame that first crosses the line does not emit.
+   * The next frame that is still past the line does. One noisy frame does not.
+   */
   armHoldMs: number;
   /**
-   * How long the hips must stay in the squat band before one duck is sent.
-   * A shorter dip is the countermovement before a jump, not a squat.
+   * How long the hips must stay down before one duck is sent.
+   * Two camera frames can be a bob. The third frame at 30fps is the confirm.
    */
   squatHoldMs: number;
   /** Quiet stance required after a squat or landing before another gesture can arm. */
@@ -161,12 +164,13 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   sidewaysElbowEnter: 100,
   sidewaysElbowExit: 85,
   neutralDrift: 0.02,
-  armHoldMs: 100,
-  /** Inside 180–220ms: long enough to skip a jump dip, short enough for a real duck. */
-  squatHoldMs: 200,
+  armHoldMs: 1,
+  /** Third 30fps frame. A one-frame hold would duck on a two-sample bob. */
+  squatHoldMs: 66,
   recoverMs: 180,
   cooldownMs: 240,
-  smoothingAlpha: 0.78,
+  /** One frame takes 92% of a step. Two frames take about 99%. A one-frame spike still needs the next frame. */
+  smoothingAlpha: 0.92,
   mirror: true,
 };
 
@@ -182,6 +186,11 @@ export interface NeutralPose {
   thighLength: number;
   /** Image length of the shin while standing. */
   shinLength: number;
+  /**
+   * False when the standing sample had no knees or ankles above the visibility floor.
+   * Drift must not replace a measured leg with that empty sample.
+   */
+  legsMeasured?: boolean;
   /** Hanging wrist, outward from its shoulder, in shoulder widths. The raise is measured from here. */
   leftWristLateral: number;
   rightWristLateral: number;
@@ -259,10 +268,14 @@ export interface PoseSignals {
   armsOut: number;
   leftArm: ArmPose;
   rightArm: ArmPose;
-  /** Knees and ankles are visible enough to judge a squat or a hop. */
+  /** Knees and ankles are visible enough to judge a squat or a hop from the legs. */
   legsReady: boolean;
-  /** Shoulders dropped toward the hips while the knees stayed nearly straight. */
+  /** Shoulders dropped toward the hips while the knees stayed nearly straight, or the torso folded with little hip drop. */
   forwardBend: boolean;
+  /** Image torso is clearly shorter than the standing calibration. A small bow stays false. */
+  torsoFold: boolean;
+  /** Shoulder image-y speed in torso-lengths per second. Up is positive. */
+  shoulderVelocity: number;
 }
 
 export interface DetectorState {
@@ -271,6 +284,7 @@ export interface DetectorState {
   neutral: NeutralPose | null;
   phase: BodyPhase;
   lastHipY: number | null;
+  lastShoulderY: number | null;
   lastAnkleY: number | null;
   lastTimestamp: number | null;
   sequence: number;

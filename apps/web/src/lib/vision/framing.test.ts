@@ -140,9 +140,7 @@ describe("framing classifier", () => {
       points[28] = { x: 0.54, y: 0.84, visibility: 0 };
     });
     const hidden = settle(missing, "setup", true);
-    expect(hidden.code).toBe("keep_feet");
-    expect(hidden.instruction).toBe("KEEP YOUR FEET VISIBLE");
-    expect(hidden.instruction).not.toMatch(/TILT/i);
+    expect(hidden.code).toBe("good");
   });
 
   it("does not treat a foot predicted outside the image as visible", () => {
@@ -241,9 +239,20 @@ describe("framing classifier", () => {
     const noKnees = pose((points) => {
       points[25] = { ...points[25], visibility: 0 };
       points[26] = { ...points[26], visibility: 0 };
+      points[27] = { ...points[27], visibility: 0 };
+      points[28] = { ...points[28], visibility: 0 };
     });
-    expect(gestureBlocks(noKnees).note).toContain("SQUAT NEEDS HIPS AND KNEES");
+    expect(gestureBlocks(noKnees).squat).toBe(false);
     expect(gestureBlocks(noKnees).jump).toBe(false);
+    expect(gestureBlocks(noKnees).note).toBeNull();
+
+    const noHips = pose((points) => {
+      points[23] = { ...points[23], visibility: 0 };
+      points[24] = { ...points[24], visibility: 0 };
+    });
+    expect(gestureBlocks(noHips).squat).toBe(true);
+    expect(gestureBlocks(noHips).jump).toBe(true);
+    expect(gestureBlocks(noHips).note).toContain("HIPS");
   });
 
   it("pauses a lost body only after the sustained interval, then waits for several good frames", () => {
@@ -319,8 +328,8 @@ describe("framing classifier", () => {
     view = monitor.push({ landmarks: pose(), mirrored: true, now: 7 * 33, profile: "setup" });
     expect(view.calibrate).toBe(true);
     const hiddenFeet = pose((points) => {
-      points[27] = { x: 0.46, y: 0.84, visibility: 0 };
-      points[28] = { x: 0.54, y: 0.84, visibility: 0 };
+      points[27] = { x: 0.46, y: 1.2, visibility: 0.95 };
+      points[28] = { x: 0.54, y: 1.2, visibility: 0.95 };
     });
     view = monitor.push({ landmarks: hiddenFeet, mirrored: true, now: 8 * 33, profile: "setup" });
     expect(view.calibrate).toBe(false);
@@ -364,11 +373,18 @@ describe("hands-free positioning", () => {
     expect(view.sendReady).toBeNull();
   });
 
-  it("does not ready when the feet or the head are missing, or the body is clipped", () => {
+  it("does not ready when the head is missing or the body is clipped", () => {
     const feet = pose((points) => {
       points[27] = { x: 0.46, y: 0.84, visibility: 0 };
       points[28] = { x: 0.54, y: 0.84, visibility: 0 };
     });
+    const covered = classifyFraming(feet, { mirrored: true, profile: "setup" });
+    expect(handsFreeCue(covered.code, covered.confidence)).toBe("Player detected");
+    const coveredView = createHandsFree();
+    coveredView.push(lobbySample(covered.code, Math.max(covered.confidence, 0.9), 0));
+    const coveredReady = coveredView.push(lobbySample(covered.code, Math.max(covered.confidence, 0.9), 2000));
+    expect(coveredReady.phase).toBe("READY");
+
     const head = pose((points) => {
       points[0] = { x: 0.5, y: 0.12, visibility: 0 };
     });
@@ -378,7 +394,6 @@ describe("hands-free positioning", () => {
       points[28] = { x: 0.54, y: 0.99, visibility: 0.95 };
     });
     const cases = [
-      { landmarks: feet, cue: "Keep Your Feet Visible" },
       { landmarks: head, cue: "Adjust Phone Angle" },
       { landmarks: close, cue: "Move Back" },
     ];

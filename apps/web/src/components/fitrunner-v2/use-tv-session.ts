@@ -424,6 +424,10 @@ export function useTvSession(
     });
   }, []);
 
+  const emitRoundReset = useCallback(() => {
+    socketRef.current?.emit(CLIENT_EVENTS.roundReset, { v: PROTOCOL_VERSION });
+  }, []);
+
   const restartRun = useCallback(() => {
     const socket = socketRef.current;
     if (!socket?.connected) return Promise.resolve(null);
@@ -508,6 +512,7 @@ export function useTvSession(
     runOver,
     beginRun,
     restartRun,
+    emitRoundReset,
     reportHit,
     leaveSession,
   };

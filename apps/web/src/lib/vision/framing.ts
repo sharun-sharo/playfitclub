@@ -197,7 +197,8 @@ function resolveConfig(overrides?: Partial<FramingConfig>, minVisibility?: numbe
 
 /**
  * One primary instruction for a single frame.
- * GOOD means the head, shoulders, hips, knees, and ankles are inside the image.
+ * GOOD means the head, shoulders, and hips are inside the image.
+ * Knees and ankles under the visibility floor do not reject the frame.
  * Where the body stands in the frame does not matter. Apparent size does not matter
  * while those joints stay inside. Setup and play share that rule.
  */
@@ -243,10 +244,16 @@ function classifyRaw(
 
   if (headClipped && feetVisible && !feetAtEdge && feetHaveRoom) return { code: "tilt_up", confidence };
   if (feetAtEdge && headVisible && !headClipped && headHasRoom) return { code: "tilt_down", confidence };
-  if (!feetVisible) return { code: "keep_feet", confidence };
+  const upperBody = Boolean(nose && leftShoulder && rightShoulder && leftHip && rightHip && !headClipped);
+  const ankleOutside = [JOINT.leftAnkle, JOINT.rightAnkle].some((index) => {
+    const point = landmarks[index];
+    if (!point || (point.visibility ?? 0) < config.minVisibility) return false;
+    return !inCameraFrame(point);
+  });
+  if (ankleOutside || (!feetVisible && !upperBody)) return { code: "keep_feet", confidence };
   if (!headVisible) return { code: shouldersAtTop ? "tilt_up" : "adjust_camera", confidence };
 
-  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip || !leftKnee || !rightKnee) {
+  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) {
     return { code: "adjust_camera", confidence };
   }
 
@@ -335,13 +342,14 @@ export function gestureBlocks(
 ): GestureBlocks {
   const leftArm = !chainVisible(landmarks, [JOINT.leftShoulder, JOINT.leftElbow, JOINT.leftWrist], minVisibility);
   const rightArm = !chainVisible(landmarks, [JOINT.rightShoulder, JOINT.rightElbow, JOINT.rightWrist], minVisibility);
-  const squat = !chainVisible(landmarks, [JOINT.leftHip, JOINT.rightHip, JOINT.leftKnee, JOINT.rightKnee], minVisibility);
-  const jump = !chainVisible(landmarks, [JOINT.leftHip, JOINT.rightHip, JOINT.leftAnkle, JOINT.rightAnkle], minVisibility);
+  const hips = chainVisible(landmarks, [JOINT.leftHip, JOINT.rightHip], minVisibility);
+  const squat = !hips;
+  const jump = !hips;
   const notes: string[] = [];
   if (leftArm) notes.push("LEFT ARM NOT IN FRAME");
   if (rightArm) notes.push("RIGHT ARM NOT IN FRAME");
-  if (squat) notes.push("SQUAT NEEDS HIPS AND KNEES");
-  if (jump) notes.push("JUMP NEEDS HIPS AND ANKLES");
+  if (squat) notes.push("SQUAT NEEDS HIPS");
+  if (jump) notes.push("JUMP NEEDS HIPS");
   return { leftArm, rightArm, squat, jump, note: notes.length > 0 ? notes.join(" · ") : null };
 }
 

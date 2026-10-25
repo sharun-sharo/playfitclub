@@ -10,7 +10,7 @@ import {
   pushPose,
   setNeutral,
   setThresholds,
-  resetMovementReady,
+  resetPhoneForRound,
   settleGestures,
   type DetectorState,
   type DetectorUpdate,
@@ -136,6 +136,8 @@ export class PoseEstimator {
   private lastAction = "";
   private lastActionAt = 0;
   private resumePlay = false;
+  /** After Play Again or pause, ignore the pose already in frame until the next play sample. */
+  private holdVertical = false;
   private cameraFrames = 0;
   private poseFrames = 0;
   private inferenceTotal = 0;
@@ -203,8 +205,10 @@ export class PoseEstimator {
 
   setMode(mode: "idle" | "calibrate" | "play") {
     if (mode === "play" && this.resumePlay) return;
+    const enteringPlay = mode === "play" && this.mode !== "play";
     this.mode = mode;
     if (mode === "idle") this.stopLoop();
+    if (enteringPlay) this.readyForRound();
   }
 
   setThresholds(overrides: Partial<MovementThresholds>) {
@@ -261,9 +265,10 @@ export class PoseEstimator {
    * The calibrated stance stays. A jump in the air or a latched squat does not.
    */
   readyForRound() {
-    this.detector = resetMovementReady(this.detector);
+    this.detector = resetPhoneForRound(this.detector);
     this.lastAction = "";
     this.lastActionAt = 0;
+    this.holdVertical = true;
   }
 
   suspend(message: string) {
@@ -395,7 +400,7 @@ export class PoseEstimator {
       } else if (!this.detector.neutral) {
         this.recent = [];
       }
-      if (this.detector.neutral && this.mode === "calibrate") {
+      if (this.detector.neutral && this.mode === "calibrate" && !this.holdVertical) {
         playUpdate = pushPose(this.detector, frame);
         this.detector = playUpdate.state;
         this.observeCoach(playUpdate, now, view.code === "good");
@@ -413,6 +418,10 @@ export class PoseEstimator {
         framing: { ...view, instruction: guidance },
       }, now);
       return;
+    }
+    if (this.holdVertical) {
+      this.detector = resetPhoneForRound(this.detector);
+      this.holdVertical = false;
     }
     const update = pushPose(this.detector, frame);
     this.detector = update.state;
@@ -463,6 +472,7 @@ export class PoseEstimator {
     const key = `${this.poseCount}|${state.framing?.code ?? ""}|${state.framing?.banner}|${state.framing?.pause}|${state.framing?.canResume}|${state.guidance}|${cue}|${state.movement ?? ""}|${state.diagnostics?.reject ?? ""}|${state.diagnostics?.leftPhase ?? ""}|${state.diagnostics?.rightPhase ?? ""}|${state.diagnostics?.jumpMotion ?? ""}|${state.diagnostics?.squatPhase ?? ""}`;
     const changed = key !== this.lastFramingKey;
     const urgent = Boolean(state.movement) || /paused|hidden|No body|lost you/i.test(state.guidance);
+    // Unchanged labels can wait. pushPose and onMovement already ran on this frame.
     if (!changed && now - this.lastUi < 180 && !urgent) return;
     this.lastFramingKey = key;
     this.lastUi = now;

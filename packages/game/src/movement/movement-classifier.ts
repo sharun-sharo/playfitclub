@@ -11,6 +11,7 @@ import {
 
 /**
  * Classifies a single smoothed pose against a calibrated neutral stance.
+ * MediaPipe Pose tracks body landmarks. It does not classify clothing.
  * Lane direction uses MediaPipe's anatomical left and right arms, not raw screen x.
  * Jump speed is a hip-rise estimate. A fixed monocular camera cannot measure
  * real-world height or prove that both feet left the ground.
@@ -32,11 +33,14 @@ export function classifyPose(
     }
   }
 
+  // A joint under the visibility floor is not a measurement. It must not pull this
+  // average under the action gate, and it must not be read as a knee or an ankle.
   let visibility = 0;
   let counted = 0;
   for (const index of REQUIRED_LANDMARKS) {
     const landmark = landmarks[index];
     if (!landmark || !Number.isFinite(landmark.x) || !Number.isFinite(landmark.y)) continue;
+    if ((landmark.visibility ?? 0) < thresholds.minVisibility) continue;
     visibility += landmark.visibility ?? 0;
     counted += 1;
   }
@@ -51,10 +55,14 @@ export function classifyPose(
   const rightHip = point(landmarks, POSE.rightHip)!;
   const leftAnkle = point(landmarks, POSE.leftAnkle);
   const rightAnkle = point(landmarks, POSE.rightAnkle);
+  const anklesReady = [POSE.leftAnkle, POSE.rightAnkle].every((index) => {
+    const landmark = landmarks[index];
+    return Boolean(landmark && (landmark.visibility ?? 0) >= thresholds.minVisibility);
+  });
 
   const shoulder = midpoint(leftShoulder, rightShoulder);
   const hip = midpoint(leftHip, rightHip);
-  const ankle = leftAnkle && rightAnkle ? midpoint(leftAnkle, rightAnkle) : null;
+  const ankle = anklesReady && leftAnkle && rightAnkle ? midpoint(leftAnkle, rightAnkle) : null;
   const centerX = (shoulder.x + hip.x) / 2;
   const shoulderTilt = (leftShoulder.y - rightShoulder.y) / neutral.shoulderWidth;
   const lean = (neutral.centerX - centerX) / neutral.shoulderWidth + shoulderTilt * 0.45;
@@ -88,7 +96,12 @@ export function classifyPose(
     const landmark = landmarks[index];
     return Boolean(landmark && Number.isFinite(landmark.x) && Number.isFinite(landmark.y) && (landmark.visibility ?? 0) >= thresholds.minVisibility);
   });
-  const forwardBend = legsReady && kneeFlex < 12 && (shoulderDrop > hipDrop + 0.18 || torsoNow / neutral.torso < 0.72);
+  const torsoRatio = torsoNow / neutral.torso;
+  // 0.90 is a clear shorten against the standing torso. A few percent is a bow, not a duck.
+  const torsoFold = torsoRatio < 0.9;
+  const coveredBow = !legsReady && hipDrop < thresholds.squatEnterDrop && torsoRatio < 0.72;
+  const visibleBow = legsReady && kneeFlex < 12 && (shoulderDrop > hipDrop + 0.18 || torsoRatio < 0.72);
+  const forwardBend = coveredBow || visibleBow;
   let bodyVisible = 0;
   for (const index of REQUIRED_LANDMARKS) {
     const landmark = landmarks[index];
@@ -117,6 +130,8 @@ export function classifyPose(
     rightArm,
     legsReady,
     forwardBend,
+    torsoFold,
+    shoulderVelocity: 0,
   };
 }
 
@@ -315,5 +330,7 @@ function emptySignals(): PoseSignals {
     rightArm: { lateral: 0, height: 1, elbowAngle: 0, reach: 0, elevation: 0, visible: false },
     legsReady: false,
     forwardBend: false,
+    torsoFold: false,
+    shoulderVelocity: 0,
   };
 }

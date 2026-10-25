@@ -447,6 +447,13 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       }
       live.disconnectPause = false;
       broadcast(live, true);
+      if (live.round.phase === "paused") emitRoundReset(live);
+    });
+
+    socket.on(CLIENT_EVENTS.roundReset, () => {
+      const live = hostLive(socket);
+      if (!live) return;
+      emitRoundReset(live);
     });
 
     socket.on(CLIENT_EVENTS.gameResume, async () => {
@@ -527,6 +534,7 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       live.record.status = "LOBBY";
       broadcast(live, true);
       if (everyoneReady(live) && hasCameraPlayer(live)) await armCountdown(live, "start");
+      emitRoundReset(live);
       if (typeof ack === "function") {
         ack({
           ok: true,
@@ -967,6 +975,7 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       await options.repository.updateStatus(live.record.id, "RUNNING");
     }
     broadcast(live, true);
+    emitRoundReset(live);
   }
 
   async function finishLive(live: LiveSession) {
@@ -995,6 +1004,13 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       results,
     });
     log("info", "game ended", { sessionId: live.record.id, reason: live.round.endReason });
+  }
+
+  function emitRoundReset(live: LiveSession) {
+    io.to(roomFor(live.record.id)).emit(SERVER_EVENTS.roundReset, {
+      v: PROTOCOL_VERSION,
+      sessionId: live.record.id,
+    });
   }
 
   function broadcast(live: LiveSession, force = false) {

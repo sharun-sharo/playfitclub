@@ -1,6 +1,6 @@
 import { wristLaterals } from "./movement-classifier";
 import { angleDegrees, distance, midpoint, point } from "./geometry";
-import { POSE, type Landmark, type MovementThresholds, type NeutralPose, type PoseFrame } from "./movement-types";
+import { DEFAULT_THRESHOLDS, POSE, type Landmark, type MovementThresholds, type NeutralPose, type PoseFrame } from "./movement-types";
 
 export interface FramingAssessment {
   ready: boolean;
@@ -27,8 +27,9 @@ function inImage(landmark: Landmark | null | undefined) {
 }
 
 /**
- * Ready when the head, shoulders, hips, knees, and ankles are visible inside the image.
- * The body may stand on the left, the center, or the right. There is no standing box.
+ * Ready when the head, shoulders, and hips are visible inside the image.
+ * Knees and ankles under the visibility floor are covered. They do not block calibration.
+ * A joint that is visible but outside the image still blocks. There is no standing box.
  */
 export function assessFraming(landmarks: Array<Landmark | null | undefined>, minVisibility: number): FramingAssessment {
   const missing: string[] = [];
@@ -49,51 +50,66 @@ export function assessFraming(landmarks: Array<Landmark | null | undefined>, min
   const uniqueMissing = [...new Set(missing)];
   const uniqueOutside = [...new Set(outside)];
   const confidence = counted > 0 ? visibilityTotal / counted : 0;
-  const absent = [...new Set([...uniqueMissing, ...uniqueOutside])];
-  if (absent.length > 0) {
-    const feet = absent.includes("ankles");
-    const head = absent.includes("head") || absent.includes("shoulders");
+  const covered = uniqueMissing.filter((label) => label === "knees" || label === "ankles");
+  const blocking = [...new Set([...uniqueMissing.filter((label) => label !== "knees" && label !== "ankles"), ...uniqueOutside])];
+  if (blocking.length > 0) {
+    const feet = blocking.includes("ankles");
+    const head = blocking.includes("head") || blocking.includes("shoulders");
     const guidance = feet
       ? "Step back until both feet are visible."
       : head
         ? "Step back so your head and shoulders fit in frame."
-        : `Move so your ${absent.join(", ")} stay in frame.`;
-    return { ready: false, confidence, missing: absent, guidance };
+        : `Move so your ${blocking.join(", ")} stay in frame.`;
+    return { ready: false, confidence, missing: blocking, guidance };
   }
-  return { ready: true, confidence, missing: [], guidance: "Hold still to calibrate your neutral stance." };
+  return {
+    ready: true,
+    confidence,
+    missing: [],
+    guidance: covered.length > 0 ? "Upper body and hips are visible. Hold still to calibrate." : "Hold still to calibrate your neutral stance.",
+  };
 }
 
 export function neutralFromLandmarks(landmarks: Array<Landmark | null | undefined>): NeutralPose | null {
-  const leftShoulder = point(landmarks, POSE.leftShoulder);
-  const rightShoulder = point(landmarks, POSE.rightShoulder);
-  const leftHip = point(landmarks, POSE.leftHip);
-  const rightHip = point(landmarks, POSE.rightHip);
-  const leftKnee = point(landmarks, POSE.leftKnee);
-  const rightKnee = point(landmarks, POSE.rightKnee);
-  const leftAnkle = point(landmarks, POSE.leftAnkle);
-  const rightAnkle = point(landmarks, POSE.rightAnkle);
-  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip || !leftKnee || !rightKnee || !leftAnkle || !rightAnkle) {
-    return null;
-  }
+  const floor = DEFAULT_THRESHOLDS.minVisibility;
+  const seen = (index: number) => {
+    const landmark = landmarks[index];
+    if (!landmark || (landmark.visibility ?? 0) < floor) return null;
+    return point(landmarks, index);
+  };
+  const leftShoulder = seen(POSE.leftShoulder);
+  const rightShoulder = seen(POSE.rightShoulder);
+  const leftHip = seen(POSE.leftHip);
+  const rightHip = seen(POSE.rightHip);
+  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return null;
+  const leftKnee = seen(POSE.leftKnee);
+  const rightKnee = seen(POSE.rightKnee);
+  const leftAnkle = seen(POSE.leftAnkle);
+  const rightAnkle = seen(POSE.rightAnkle);
   const shoulder = midpoint(leftShoulder, rightShoulder);
   const hip = midpoint(leftHip, rightHip);
-  const ankle = midpoint(leftAnkle, rightAnkle);
   const torso = Math.max(0.05, Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y));
   const shoulderWidth = Math.max(0.04, Math.hypot(rightShoulder.x - leftShoulder.x, rightShoulder.y - leftShoulder.y));
-  const kneeAngle = (angleDegrees(leftHip, leftKnee, leftAnkle) + angleDegrees(rightHip, rightKnee, rightAnkle)) / 2;
   const wrists = wristLaterals(landmarks, shoulderWidth);
+  const legsMeasured = Boolean(leftKnee && rightKnee && leftAnkle && rightAnkle);
+  const ankle = legsMeasured && leftAnkle && rightAnkle ? midpoint(leftAnkle, rightAnkle) : null;
+  const kneeAngle =
+    legsMeasured && leftKnee && rightKnee && leftAnkle && rightAnkle
+      ? (angleDegrees(leftHip, leftKnee, leftAnkle) + angleDegrees(rightHip, rightKnee, rightAnkle)) / 2
+      : 180;
   return {
     centerX: (shoulder.x + hip.x) / 2,
     hipY: hip.y,
     shoulderY: shoulder.y,
     torso,
     shoulderWidth,
-    ankleY: ankle.y,
+    ankleY: ankle ? ankle.y : hip.y + torso,
     kneeAngle,
-    thighLength: (distance(leftHip, leftKnee) + distance(rightHip, rightKnee)) / 2,
-    shinLength: (distance(leftKnee, leftAnkle) + distance(rightKnee, rightAnkle)) / 2,
+    thighLength: legsMeasured && leftKnee && rightKnee ? (distance(leftHip, leftKnee) + distance(rightHip, rightKnee)) / 2 : 0,
+    shinLength: legsMeasured && leftKnee && rightKnee && leftAnkle && rightAnkle ? (distance(leftKnee, leftAnkle) + distance(rightKnee, rightAnkle)) / 2 : 0,
     leftWristLateral: wrists.left,
     rightWristLateral: wrists.right,
+    legsMeasured,
   };
 }
 
@@ -106,10 +122,10 @@ export function driftNeutral(neutral: NeutralPose, sample: NeutralPose, alpha: n
     shoulderY: blend(neutral.shoulderY, sample.shoulderY),
     torso: blend(neutral.torso, sample.torso),
     shoulderWidth: blend(neutral.shoulderWidth, sample.shoulderWidth),
-    ankleY: blend(neutral.ankleY, sample.ankleY),
-    kneeAngle: blend(neutral.kneeAngle, sample.kneeAngle),
-    thighLength: blend(neutral.thighLength, sample.thighLength),
-    shinLength: blend(neutral.shinLength, sample.shinLength),
+    ankleY: sample.legsMeasured === false ? neutral.ankleY : blend(neutral.ankleY, sample.ankleY),
+    kneeAngle: sample.legsMeasured === false ? neutral.kneeAngle : blend(neutral.kneeAngle, sample.kneeAngle),
+    thighLength: sample.legsMeasured === false ? neutral.thighLength : blend(neutral.thighLength, sample.thighLength),
+    shinLength: sample.legsMeasured === false ? neutral.shinLength : blend(neutral.shinLength, sample.shinLength),
     leftWristLateral: blend(neutral.leftWristLateral, sample.leftWristLateral),
     rightWristLateral: blend(neutral.rightWristLateral, sample.rightWristLateral),
   };
@@ -134,6 +150,8 @@ export function calibrateNeutral(
   if (hipSpread > 0.03 || centerSpread > 0.03) {
     return { neutral: null, stable: false, guidance: "Hold still — too much movement to calibrate." };
   }
+  const withLegs = neutrals.filter((item) => item.legsMeasured !== false);
+  const legSource = withLegs.length > 0 ? withLegs : neutrals;
   return {
     stable: true,
     guidance: "Calibrated to your stance. You can play when the TV starts.",
@@ -143,12 +161,13 @@ export function calibrateNeutral(
       shoulderY: average(neutrals.map((item) => item.shoulderY)),
       torso: average(neutrals.map((item) => item.torso)),
       shoulderWidth: average(neutrals.map((item) => item.shoulderWidth)),
-      ankleY: average(neutrals.map((item) => item.ankleY)),
-      kneeAngle: average(neutrals.map((item) => item.kneeAngle)),
-      thighLength: average(neutrals.map((item) => item.thighLength)),
-      shinLength: average(neutrals.map((item) => item.shinLength)),
+      ankleY: average(legSource.map((item) => item.ankleY)),
+      kneeAngle: average(legSource.map((item) => item.kneeAngle)),
+      thighLength: average(legSource.map((item) => item.thighLength)),
+      shinLength: average(legSource.map((item) => item.shinLength)),
       leftWristLateral: average(neutrals.map((item) => item.leftWristLateral)),
       rightWristLateral: average(neutrals.map((item) => item.rightWristLateral)),
+      legsMeasured: withLegs.length > 0,
     },
   };
 }

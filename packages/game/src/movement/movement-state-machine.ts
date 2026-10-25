@@ -50,6 +50,7 @@ export function createDetector(overrides: Partial<MovementThresholds> = {}): Det
     neutral: null,
     phase: "NEUTRAL",
     lastHipY: null,
+    lastShoulderY: null,
     lastAnkleY: null,
     lastTimestamp: null,
     sequence: 0,
@@ -111,11 +112,17 @@ export function resetMovementReady(state: DetectorState): DetectorState {
     lostSince: null,
     riseWindow: [],
     lastHipY: null,
+    lastShoulderY: null,
     lastAnkleY: null,
     lastTimestamp: null,
     smoother: [],
     awaitRelease: false,
   };
+}
+
+/** The phone round-reset listener calls this. Same standing-ready clear as a fresh detector. */
+export function resetPhoneForRound(state: DetectorState): DetectorState {
+  return resetMovementReady(state);
 }
 
 /**
@@ -138,6 +145,7 @@ export function settleGestures(state: DetectorState): DetectorState {
     lostSince: null,
     riseWindow: [],
     lastHipY: null,
+    lastShoulderY: null,
     lastAnkleY: null,
     lastTimestamp: null,
     smoother: [],
@@ -155,13 +163,17 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   const framing = assessFraming(smoothed.landmarks, state.thresholds.minVisibility);
   const dt = state.lastTimestamp !== null ? Math.max(0, mirrored.timestampMs - state.lastTimestamp) : 0;
   let riseSpeed = 0;
+  let shoulderSpeed = 0;
   let ankleSpeed = 0;
-  const hip = hipY(smoothed.landmarks);
-  const ankle = ankleY(smoothed.landmarks);
+  const minVisibility = state.thresholds.minVisibility;
+  const hip = midY(smoothed.landmarks, 23, 24, minVisibility);
+  const shoulder = midY(smoothed.landmarks, 11, 12, minVisibility);
+  const ankle = midY(smoothed.landmarks, 27, 28, minVisibility);
   const seconds = dt / 1000;
   const torso = state.neutral?.torso ?? 0.2;
   if (seconds > 0 && seconds < 0.5) {
     if (hip !== null && state.lastHipY !== null) riseSpeed = (state.lastHipY - hip) / seconds / torso;
+    if (shoulder !== null && state.lastShoulderY !== null) shoulderSpeed = (state.lastShoulderY - shoulder) / seconds / torso;
     if (ankle !== null && state.lastAnkleY !== null) ankleSpeed = (state.lastAnkleY - ankle) / seconds / torso;
   }
 
@@ -171,6 +183,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
     ...state,
     smoother: smoothed.smoother,
     lastHipY: hip ?? state.lastHipY,
+    lastShoulderY: shoulder ?? state.lastShoulderY,
     lastAnkleY: ankle ?? state.lastAnkleY,
     lastTimestamp: mirrored.timestampMs,
     riseWindow,
@@ -188,6 +201,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
 
   const signals = classifyPose(smoothed.landmarks, state.neutral, state.thresholds, peakRise);
   signals.hipVelocity = riseSpeed;
+  signals.shoulderVelocity = shoulderSpeed;
   signals.ankleVelocity = ankleSpeed;
   if (!signals.ok || signals.confidence < state.thresholds.minActionConfidence) {
     const reason: PoseRejectReason = !signals.ok && signals.reason === "missing" ? "tracking_lost" : "low_confidence";
@@ -199,6 +213,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
         ...base,
         lostSince,
         lastHipY: expired ? null : base.lastHipY,
+        lastShoulderY: expired ? null : base.lastShoulderY,
         lastAnkleY: expired ? null : base.lastAnkleY,
         riseWindow: expired ? [] : base.riseWindow,
         left: keep(state.left),
@@ -223,6 +238,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
       state: {
         ...base,
         lastHipY: null,
+        lastShoulderY: null,
         lastAnkleY: null,
         riseWindow: [],
         phase: "NEUTRAL",
@@ -319,17 +335,17 @@ function transitionPhase(
 
   const planted = signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.03);
   const dipping =
-    signals.legsReady &&
     !signals.forwardBend &&
-    planted &&
     signals.hipDrop > thresholds.jumpPrepDrop &&
-    signals.kneeFlex >= thresholds.jumpPrepKnee;
+    (signals.legsReady ? planted && signals.kneeFlex >= thresholds.jumpPrepKnee : true);
   const armedPrep = state.prepSince !== null && now - state.prepSince >= thresholds.jumpPrepMs;
+  const upward = signals.legsReady ? signals.hipVelocity : Math.max(signals.hipVelocity, signals.shoulderVelocity);
+  const offGround = signals.hipDrop < -0.05 || signals.ankleRise > thresholds.jumpAnkleRise;
   const takeoffFromDip =
     armedPrep &&
-    signals.legsReady &&
     !signals.forwardBend &&
-    signals.hipVelocity > thresholds.jumpRise;
+    upward > thresholds.jumpRise &&
+    (signals.legsReady || offGround);
 
   let justLanded = false;
   if (jump.phase === "CONFIRMED" || jump.phase === "SENT" || jump.phase === "WAIT_RESET") {
@@ -356,12 +372,18 @@ function transitionPhase(
 
   const squatLatched = squat.phase === "CONFIRMED" || squat.phase === "SENT" || squat.phase === "WAIT_RESET";
   const squatOpen = squat.phase === "CANDIDATE" || squatLatched;
-  const squatShape = signals.legsReady && !signals.forwardBend && planted && signals.ankleFlex >= thresholds.squatAnkleFlex;
+  // Visible legs still need a knee bend, planted ankles, and shin flexion.
+  // Covered legs use a hip drop plus a clear torso shorten. No knee angle is invented.
+  const coveredShape = !signals.legsReady && signals.torsoFold && !signals.forwardBend;
+  const visibleShape = signals.legsReady && !signals.forwardBend && planted && signals.ankleFlex >= thresholds.squatAnkleFlex;
+  const squatShape = coveredShape || visibleShape;
+  const kneeInBand = signals.legsReady
+    ? signals.kneeAngle < (squatOpen ? thresholds.squatKneeExit : thresholds.squatKneeEnter)
+    : true;
   const inSquatBand =
     squatShape &&
-    (squatOpen
-      ? signals.hipDrop > thresholds.squatExitDrop && signals.kneeAngle < thresholds.squatKneeExit
-      : signals.hipDrop > thresholds.squatEnterDrop && signals.kneeAngle < thresholds.squatKneeEnter);
+    kneeInBand &&
+    (squatOpen ? signals.hipDrop > thresholds.squatExitDrop : signals.hipDrop > thresholds.squatEnterDrop);
   if (signals.forwardBend) reject("forward_bend");
 
   // A short dip, then hips rising faster than jumpRise, is one jump. It is not a squat.
@@ -542,22 +564,21 @@ function delayCandidate(track: GestureTrack, dt: number): GestureTrack {
 function poseIsQuiet(signals: PoseSignals, thresholds: MovementThresholds, neutral: NeutralPose) {
   const leftUp = armRaised(signals.leftArm, neutral.leftWristLateral, false, thresholds);
   const rightUp = armRaised(signals.rightArm, neutral.rightWristLateral, false, thresholds);
-  const squatting =
-    signals.legsReady &&
-    !signals.forwardBend &&
-    signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.03) &&
-    signals.ankleFlex >= thresholds.squatAnkleFlex &&
-    signals.hipDrop > thresholds.squatEnterDrop &&
-    signals.kneeAngle < thresholds.squatKneeEnter;
+  const squatting = signals.legsReady
+    ? !signals.forwardBend &&
+      signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.03) &&
+      signals.ankleFlex >= thresholds.squatAnkleFlex &&
+      signals.hipDrop > thresholds.squatEnterDrop &&
+      signals.kneeAngle < thresholds.squatKneeEnter
+    : signals.torsoFold && !signals.forwardBend && signals.hipDrop > thresholds.squatEnterDrop;
   const preparing =
-    signals.legsReady &&
     !signals.forwardBend &&
     signals.hipDrop > thresholds.jumpPrepDrop &&
-    signals.kneeFlex >= thresholds.jumpPrepKnee;
-  const jumping =
-    signals.legsReady &&
-    (signals.ankleRise > thresholds.jumpAnkleRise || signals.hipDrop < -0.05) &&
-    (signals.riseSpeed > thresholds.jumpRise || signals.hipVelocity > thresholds.jumpRise);
+    (signals.legsReady ? signals.kneeFlex >= thresholds.jumpPrepKnee : true);
+  const jumping = signals.legsReady
+    ? (signals.ankleRise > thresholds.jumpAnkleRise || signals.hipDrop < -0.05) &&
+      (signals.riseSpeed > thresholds.jumpRise || signals.hipVelocity > thresholds.jumpRise)
+    : signals.hipVelocity > thresholds.jumpRise || signals.shoulderVelocity > thresholds.jumpRise;
   return !leftUp && !rightUp && !squatting && !preparing && !jumping;
 }
 
@@ -605,17 +626,17 @@ function overheadRaised(arm: ArmPose, engaged: boolean) {
   return arm.elevation >= elevation && arm.reach >= reach && arm.elbowAngle >= elbow;
 }
 
-function hipY(landmarks: Array<{ y: number } | null>): number | null {
-  const left = landmarks[23];
-  const right = landmarks[24];
+function midY(
+  landmarks: Array<{ y: number; visibility?: number } | null>,
+  leftIndex: number,
+  rightIndex: number,
+  minVisibility: number,
+): number | null {
+  const left = landmarks[leftIndex];
+  const right = landmarks[rightIndex];
   if (!left || !right) return null;
-  return (left.y + right.y) / 2;
-}
-
-function ankleY(landmarks: Array<{ y: number } | null>): number | null {
-  const left = landmarks[27];
-  const right = landmarks[28];
-  if (!left || !right) return null;
+  if ((left.visibility ?? 0) < minVisibility || (right.visibility ?? 0) < minVisibility) return null;
+  if (!Number.isFinite(left.y) || !Number.isFinite(right.y)) return null;
   return (left.y + right.y) / 2;
 }
 
