@@ -177,7 +177,7 @@ export const RUNNING_JUMP_CLIP = "RunningJump";
 export const RUNNING_JUMP_LEAVE_S = 0.036;
 export const RUNNING_JUMP_RETURN_S = 0.598;
 
-export function jumpCommandClip() {
+export function jumpCommandClip(): typeof RUNNING_JUMP_CLIP {
   return RUNNING_JUMP_CLIP;
 }
 
