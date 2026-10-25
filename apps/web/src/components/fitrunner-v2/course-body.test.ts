@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { groundCourseBody, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, replayClip, SIDE_STEP_S, sideStepPose, sideStepTravel, verticalCommandReady } from "./course-body";
+import { COMMAND_SLICE_S, groundCourseBody, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, SIDE_STEP_S, sideStepPose, sideStepTravel, verticalCommandReady } from "./course-body";
+import { sampleJump } from "./jump-arc";
 
 describe("course body after pause and play again", () => {
   it("drops an airborne jump and a waiting squat instead of playing them on resume", () => {
@@ -27,6 +28,14 @@ describe("course body after pause and play again", () => {
     expect(oldSmoothstep(16 / 250)).toBeLessThan(0.02);
     expect(laneSlideFraction(0)).toBe(0);
     expect(laneSlideFraction(1)).toBe(1);
+    const slice = sampleJump(COMMAND_SLICE_S);
+    expect(slice.airborne).toBe(true);
+    expect(slice.height).toBeGreaterThan(0.05);
+    expect(slice.height).toBeLessThan(0.15);
+    expect(laneSlideFraction(COMMAND_SLICE_S / SIDE_STEP_S)).toBeGreaterThan(0);
+    expect(remainingMotionDt(0.02, COMMAND_SLICE_S)).toBeCloseTo(0.02 - COMMAND_SLICE_S, 5);
+    expect(remainingMotionDt(0.01, COMMAND_SLICE_S)).toBe(0);
+    expect(remainingMotionDt(0.016, 0)).toBeCloseTo(0.016, 5);
     expect(jumpDuringRoll("roll", "jump")).toBe(true);
     expect(jumpDuringRoll("roll", "squat")).toBe(false);
     expect(jumpDuringRoll("jump", "jump")).toBe(false);

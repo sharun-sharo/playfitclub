@@ -3,6 +3,7 @@ import {
   alignLandmarkDepth,
   calibrationThresholds,
   calibrateNeutral,
+  COMMAND_STALE_MS,
   createDetector,
   createMotionCalibration,
   noteBodyScale,
@@ -19,6 +20,7 @@ import {
   type MovementThresholds,
   type PoseFrame,
 } from "@fitplay/game";
+import { emptyCameraGate, finishCameraFrame, offerCameraFrame, type CameraFrameGate } from "@/lib/vision/frame-gate";
 import { CAMERA_LOST_MESSAGE, classifyCameraError } from "@/lib/vision/camera-status";
 import { frontCameraAttempts, frontCameraFallback, portraitScore } from "@/lib/vision/front-camera";
 import {
@@ -98,7 +100,12 @@ export interface PoseDiagnostics {
 export interface PoseRates {
   cameraFps: number | null;
   poseFps: number | null;
+  /** Mean detectForVideo time over the last rate window. */
   inferenceMs: number | null;
+  /** Latest detectForVideo time. Not a cross-device percentile. */
+  lastInferenceMs: number | null;
+  /** GPU when the runtime accepts it. CPU after that init throws. */
+  delegate: "GPU" | "CPU" | null;
 }
 
 export interface PoseUiState {
@@ -167,7 +174,11 @@ export class PoseEstimator {
   private inferenceSamples = 0;
   private rateWindowStart = 0;
   private cameraClock = false;
-  private rates: PoseRates = { cameraFps: null, poseFps: null, inferenceMs: null };
+  private rates: PoseRates = { cameraFps: null, poseFps: null, inferenceMs: null, lastInferenceMs: null, delegate: null };
+  private frameGate: CameraFrameGate = emptyCameraGate();
+  private delegate: "GPU" | "CPU" | null = null;
+  /** One skeleton draw for this inference, after the command is handed off. */
+  private pendingDraw: { points: Array<{ x: number; y: number }> | undefined } | null = null;
   private framing = createFramingMonitor();
   private lastFramingKey = "";
   /** Play-profile pause is armed only after the race has started. */
@@ -203,12 +214,15 @@ export class PoseEstimator {
     };
     try {
       this.landmarker = await vision.PoseLandmarker.createFromOptions(files, options);
+      this.delegate = "GPU";
     } catch {
       this.landmarker = await vision.PoseLandmarker.createFromOptions(files, {
         ...options,
         baseOptions: { ...options.baseOptions, delegate: "CPU" },
       });
+      this.delegate = "CPU";
     }
+    this.rates = { ...this.rates, delegate: this.delegate };
   }
 
   setFacing(facing: Facing) {
@@ -367,9 +381,11 @@ export class PoseEstimator {
     }
     this.sampleRates(now, performance.now() - inferenceStarted);
     this.poseCount = result.landmarks?.length ?? 0;
+    const raw = result.landmarks?.[0];
+    this.pendingDraw = now - this.lastDraw > 50 ? { points: raw } : null;
+    if (this.pendingDraw !== null) this.lastDraw = now;
     if (this.poseCount > 1) {
       this.landmarkSample = null;
-      this.draw(undefined);
       const view = this.framingView([], now);
       this.emitUi({
         guidance: "One person at a time",
@@ -383,12 +399,7 @@ export class PoseEstimator {
       }, now);
       return;
     }
-    const raw = result.landmarks?.[0];
     this.landmarkSample = formatLandmarkSample(raw);
-    if (now - this.lastDraw > 50) {
-      this.lastDraw = now;
-      this.draw(raw);
-    }
     const aspect = video.videoWidth > 0 && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 1;
     const frame: PoseFrame | null = raw
       ? {
@@ -512,15 +523,27 @@ export class PoseEstimator {
     const changed = key !== this.lastFramingKey;
     const urgent = Boolean(state.movement) || /paused|hidden|No body|lost you/i.test(state.guidance);
     // Unchanged labels can wait. pushPose and onMovement already ran on this frame.
-    if (!changed && now - this.lastUi < 180 && !urgent) return;
-    this.lastFramingKey = key;
-    this.lastUi = now;
-    this.handlers?.onUi({
-      ...state,
-      poseCount: this.poseCount,
-      landmarksLabel: this.landmarkSample,
-      rates: this.rates,
-      calibrationCue: this.coaching ? this.motion.instruction : null,
+    const throttled = !changed && now - this.lastUi < 180 && !urgent;
+    if (!throttled) {
+      this.lastFramingKey = key;
+      this.lastUi = now;
+    }
+    const marks = this.pendingDraw;
+    this.pendingDraw = null;
+    const payload = throttled
+      ? null
+      : {
+          ...state,
+          poseCount: this.poseCount,
+          landmarksLabel: this.landmarkSample,
+          rates: this.rates,
+          calibrationCue: this.coaching ? this.motion.instruction : null,
+        };
+    if (!marks && !payload) return;
+    // React and the skeleton paint after the socket emit has been queued.
+    queueMicrotask(() => {
+      if (marks) this.draw(marks.points);
+      if (payload) this.handlers?.onUi(payload);
     });
   }
 
@@ -544,10 +567,32 @@ export class PoseEstimator {
   }
 
   /**
+   * Latest frame only. A frame that arrives while detectForVideo is running replaces
+   * the queued one. Two poses are never in flight. A frame older than the stale
+   * bound is not classified.
+   */
+  private acceptFrame(frameAt: number) {
+    const decision = offerCameraFrame(this.frameGate, frameAt, performance.now(), COMMAND_STALE_MS);
+    this.frameGate = decision.gate;
+    if (decision.action === "run") this.drainInference();
+  }
+
+  private drainInference() {
+    while (this.frameGate.busy && this.frameGate.running !== null) {
+      this.tick(this.frameGate.running);
+      const decision = finishCameraFrame(this.frameGate, performance.now(), COMMAND_STALE_MS);
+      this.frameGate = decision.gate;
+      if (decision.action !== "run") break;
+    }
+  }
+
+  /**
    * Prefer the camera's presented-frame callback. Falling back to animation
    * frames skips a repeated `currentTime`, so the same picture is not classified
    * again. A capture stream whose `currentTime` stays 0 still samples on the
    * animation clock; phones that support the frame callback do not take that path.
+   * The next callback is armed before inference so a newer presented frame can
+   * replace a queued one instead of waiting for another cycle.
    */
   private armDetectClock(video: HTMLVideoElement) {
     const withFrames = video as HTMLVideoElement & {
@@ -558,17 +603,14 @@ export class PoseEstimator {
     if (withFrames.requestVideoFrameCallback) {
       const onFrame = (now: number, metadata: { presentedFrames?: number }) => {
         if (!this.running) return;
+        this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
         const presented = typeof metadata.presentedFrames === "number" ? metadata.presentedFrames : -1;
-        if (presented >= 0 && presented === this.presentedFrames) {
-          this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
-          return;
-        }
+        if (presented >= 0 && presented === this.presentedFrames) return;
         if (presented >= 0) this.presentedFrames = presented;
         this.cameraClock = true;
         this.cameraFrames += 1;
         this.sampleRates(now, null);
-        this.tick(now);
-        this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
+        this.acceptFrame(now);
       };
       this.videoFrameHandle = withFrames.requestVideoFrameCallback(onFrame);
       return;
@@ -583,7 +625,7 @@ export class PoseEstimator {
       this.cameraClock = true;
       this.cameraFrames += 1;
       this.sampleRates(now, null);
-      this.tick(now);
+      this.acceptFrame(now);
     };
     this.raf = requestAnimationFrame(loop);
   }
@@ -611,7 +653,7 @@ export class PoseEstimator {
       this.poseFrames += 1;
       this.inferenceSamples += 1;
       this.inferenceTotal += inferenceMs;
-      this.rates = { ...this.rates, inferenceMs };
+      this.rates = { ...this.rates, inferenceMs, lastInferenceMs: inferenceMs, delegate: this.delegate };
     }
     const elapsed = now - this.rateWindowStart;
     if (elapsed < 1000) return;
@@ -620,6 +662,8 @@ export class PoseEstimator {
       cameraFps: this.cameraClock ? this.cameraFrames / seconds : null,
       poseFps: this.poseFrames / seconds,
       inferenceMs: this.inferenceSamples > 0 ? this.inferenceTotal / this.inferenceSamples : this.rates.inferenceMs,
+      lastInferenceMs: this.rates.lastInferenceMs,
+      delegate: this.delegate,
     };
     this.cameraFrames = 0;
     this.poseFrames = 0;

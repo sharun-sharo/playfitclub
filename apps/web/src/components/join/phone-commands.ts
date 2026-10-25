@@ -166,6 +166,15 @@ export function motionDebugLines(input: {
   serverAck?: string | null;
   grounded?: string | null;
   cameraFps?: number | null;
+  /** Presentation clock for this frame. Same clock as confirmMs. */
+  frameMs?: number | null;
+  /** Latest detectForVideo duration on this phone. */
+  inferenceMs?: number | null;
+  /** Frame time when the gesture was confirmed. */
+  confirmMs?: number | null;
+  /** Phone date stamp when the socket emit ran. Not a duration. */
+  sendMs?: number | null;
+  delegate?: "GPU" | "CPU" | null;
 }) {
   const pct = (value: number) => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
   const num = (value: number) => (Number.isFinite(value) ? value : 0);
@@ -188,7 +197,17 @@ export function motionDebugLines(input: {
     `last jump ${input.lastJump || "none"}`,
     `server ${input.serverAck || "none"}`,
     `body ${input.grounded || "grounded"}`,
+    `frame ${stamp(input.frameMs)}`,
+    `inference ${input.inferenceMs == null || !Number.isFinite(input.inferenceMs) ? "—" : `${input.inferenceMs.toFixed(1)} ms`}`,
+    `confirm ${stamp(input.confirmMs)}`,
+    `send ${stamp(input.sendMs)}`,
+    `delegate ${input.delegate ?? "—"}`,
   ];
+}
+
+function stamp(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${Math.round(value)}`;
 }
 
 /** One diagnostics sample. Numbers and phase names only. */
@@ -206,6 +225,10 @@ export interface MotionDiagSample {
   lastJump: string | null;
   serverAck: string;
   grounded: string;
+  frameMs?: number | null;
+  inferenceMs?: number | null;
+  confirmMs?: number | null;
+  sendMs?: number | null;
 }
 
 export function groundedLabel(jumpMotion: string) {
@@ -241,6 +264,10 @@ export function motionDiagDownload(samples: MotionDiagSample[]) {
       lastJump: sample.lastJump,
       serverAck: sample.serverAck,
       grounded: sample.grounded,
+      frameMs: diagNumber(sample.frameMs ?? null),
+      inferenceMs: diagNumber(sample.inferenceMs ?? null),
+      confirmMs: diagNumber(sample.confirmMs ?? null),
+      sendMs: diagNumber(sample.sendMs ?? null),
     })),
   });
 }

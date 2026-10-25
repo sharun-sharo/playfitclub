@@ -2289,6 +2289,94 @@ describe("same-frame jump and partial lane re-arm", () => {
     expect(squat.events.map((event) => event.movementType)).toEqual(["squat"]);
   });
 
+  it("emits a qualifying rise on that sample, squats a held ambiguous dip without jumping on the stand, and re-arms after a short stand", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    expect(DEFAULT_THRESHOLDS.smoothingAlpha).toBe(0.92);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    expect(JUMP_RISE_DISPLACEMENT).toBe(0.011);
+    expect(JUMP_RISE_WINDOW_MS).toBe(220);
+
+    const frame = 33;
+    const firstRise = 5 * frame;
+    const first = hopFrames(0, frame);
+    const played = play(first);
+    const jump = played.events.find((event) => event.movementType === "jump");
+    expect(jump?.clientTimestamp).toBe(firstRise);
+    expect((jump?.clientTimestamp ?? 0) - firstRise).toBe(0);
+
+    const heldDip = play([
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: index * 40 })),
+      ...Array.from({ length: 8 }, (_, index) => pose({ time: 120 + index * 40, hipDrop: 0.024 })),
+      ...Array.from({ length: 4 }, (_, index) => pose({ time: 440 + index * 40 })),
+    ]);
+    const squats = heldDip.events.filter((event) => event.movementType === "squat");
+    expect(squats).toHaveLength(1);
+    expect(heldDip.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+    expect((squats[0]?.clientTimestamp ?? 0) - 120).toBeLessThanOrEqual(DEFAULT_THRESHOLDS.dipClassifyMs + 40);
+
+    // Takeoff leaves the hips up. The next sample is still up, but slower than jumpRise,
+    // while the 220ms window still contains the rise. That bob must not hold the latch.
+    // One stand, then the next dip, emits on the second rise sample.
+    const takeoff = [
+      pose({ time: 0 }),
+      pose({ time: frame }),
+      pose({ time: 2 * frame }),
+      pose({ time: 3 * frame, hipDrop: 0.03 }),
+      pose({ time: 4 * frame, hipDrop: 0.03 }),
+      pose({ time: 5 * frame, rise: 0.008 }),
+    ];
+    const secondRise = 10 * frame;
+    const chained = play([
+      ...takeoff,
+      pose({ time: 6 * frame, rise: 0.0082 }),
+      pose({ time: 7 * frame }),
+      pose({ time: 8 * frame, hipDrop: 0.03 }),
+      pose({ time: 9 * frame, hipDrop: 0.03 }),
+      pose({ time: secondRise, hipDrop: 0.03, rise: 0.002244 }),
+    ]);
+    expect(chained.events.filter((event) => event.movementType === "jump").map((event) => event.clientTimestamp)).toEqual([
+      5 * frame,
+      secondRise,
+    ]);
+    expect(chained.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+
+  it("emits left and right once at the 0.16 lean, holds, and re-arms at the 0.115 midpoint", () => {
+    expect(torsoLeanReleaseLine(0.16, 0.07)).toBeCloseTo(0.115, 5);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    const left = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * 33 })),
+      ...Array.from({ length: 4 }, (_, index) => pose({ time: (2 + index) * 33, shoulderLean: -0.032 })),
+    ]);
+    expect(left.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect(left.events[0]?.clientTimestamp).toBe(2 * 33);
+
+    const right = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * 33 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (2 + index) * 33, shoulderLean: 0.032 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (5 + index) * 33, shoulderLean: 0.02 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (8 + index) * 33, shoulderLean: 0.032 })),
+    ]);
+    expect(right.events.map((event) => event.movementType)).toEqual(["lean_right", "lean_right"]);
+    expect(right.events[0]?.clientTimestamp).toBe(2 * 33);
+    expect(right.events[1]?.clientTimestamp).toBe(8 * 33);
+  });
+
+  it("ignores a stale frame that arrives after a newer frame", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+    state = pushPose(state, pose({ time: 500 })).state;
+    const stale = pushPose(state, pose({ time: 400, shoulderLean: -0.032 }));
+    expect(stale.events).toHaveLength(0);
+    expect(stale.state.lastTimestamp).toBe(500);
+    const fresh = pushPose(stale.state, pose({ time: 533, shoulderLean: -0.032 }));
+    expect(fresh.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect(fresh.events[0]?.clientTimestamp).toBe(533);
+  });
+
   it("keeps physical left on the left after the selfie mirror", () => {
     const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
     if (!neutral) throw new Error("Failed to build a neutral pose");

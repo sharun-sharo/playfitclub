@@ -47,7 +47,7 @@ import { readMotionThresholds } from "@/lib/vision/motion-thresholds";
 import { containFrame } from "@/lib/vision/preview-fit";
 import { gestureLabel, openCamera, PoseEstimator, releaseCamera, type PoseDiagnostics, type PoseUiState } from "@/lib/vision/pose-estimator";
 
-const EMPTY_RATES = { cameraFps: null, poseFps: null, inferenceMs: null };
+const EMPTY_RATES = { cameraFps: null, poseFps: null, inferenceMs: null, lastInferenceMs: null, delegate: null as "GPU" | "CPU" | null };
 const PHONE_INSTALL_KEY = "fitplay.phone.install";
 
 function phoneInstallId() {
@@ -152,6 +152,7 @@ export function PhoneSession({ code }: { code: string }) {
   const [ui, setUi] = useState<PoseUiState>(EMPTY_UI);
   const [trace, setTrace] = useState<MotionTrace>(EMPTY_TRACE);
   const sentAtRef = useRef<Map<string, number>>(new Map());
+  const lastSendMsRef = useRef<number | null>(null);
   const motionDiagRef = useRef(false);
   const [motionDiag, setMotionDiag] = useState(false);
   const diagLogRef = useRef<MotionDiagSample[]>([]);
@@ -803,6 +804,10 @@ export function PhoneSession({ code }: { code: string }) {
               lastJump: diagnostics.lastJump,
               serverAck: diagAckRef.current,
               grounded: diagnostics.grounded,
+              frameMs: diagnostics.poseAtMs,
+              inferenceMs: state.rates.lastInferenceMs,
+              confirmMs: diagnostics.gestureAtMs,
+              sendMs: state.movement ? lastSendMsRef.current : null,
             });
           }
           const hands = syncHandsRef.current();
@@ -884,6 +889,7 @@ export function PhoneSession({ code }: { code: string }) {
     for (const item of step.send) {
       const label = gestureLabel(item.body.movementType);
       sentAtRef.current.set(item.eventId, now);
+      lastSendMsRef.current = now;
       noteEvent(`movement ${label}`);
       if (motionDiagRef.current) console.info(`[motiondiag] sent ${label}`);
       socket.emit(
@@ -1256,6 +1262,11 @@ export function PhoneSession({ code }: { code: string }) {
                 serverAck: authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck }),
                 grounded: ui.diagnostics.grounded,
                 cameraFps: ui.rates.cameraFps,
+                frameMs: ui.diagnostics.poseAtMs,
+                inferenceMs: ui.rates.lastInferenceMs,
+                confirmMs: ui.diagnostics.gestureAtMs,
+                sendMs: trace.sentPhoneMs,
+                delegate: ui.rates.delegate,
               }).map((line) => (
                 <p key={line}>{line}</p>
               ))}
@@ -1465,6 +1476,9 @@ function diagnosticRows(
     ["Confirmed", diagnostics?.lastGesture || trace.lastGesture || "none"],
     ["State", diagnostics?.recognition ?? "—"],
     ["Last command sent", trace.lastSent || "none"],
+    ["Frame", clockLabel(diagnostics?.poseAtMs, "phone performance")],
+    ["Inference", ui.rates.lastInferenceMs == null ? "—" : `${ui.rates.lastInferenceMs.toFixed(1)} ms`],
+    ["Delegate", ui.rates.delegate ?? "—"],
     ["Gesture detected", clockLabel(trace.gestureAtMs ?? diagnostics?.gestureAtMs, "phone performance")],
     ["Command sent", clockLabel(trace.sentPhoneMs, "phone date")],
     ["Command accepted", clockLabel(trace.serverMs, "server date")],

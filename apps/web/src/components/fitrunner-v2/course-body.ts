@@ -32,6 +32,20 @@ export function laneSlideFraction(t: number): number {
  */
 export const SIDE_STEP_S = 0.3;
 
+/**
+ * First slice of a jump or lane, applied in the command handler.
+ * sampleJump at 1/60s is about 0.09 m, so the body leaves the ground on receipt.
+ * The 300 ms lane slide starts on this slice. The next animation frame subtracts it.
+ */
+export const COMMAND_SLICE_S = 1 / 60;
+
+/** Frame time already shown must not be added again on the next loop step. */
+export function remainingMotionDt(frameDt: number, alreadyShown: number) {
+  if (!(frameDt > 0)) return 0;
+  const spent = alreadyShown > 0 ? alreadyShown : 0;
+  return Math.max(0, frameDt - spent);
+}
+
 /** Ease-out travel. 0 at the command, 1 when the mesh has arrived. */
 export function sideStepTravel(t: number): number {
   return laneSlideFraction(t);

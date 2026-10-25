@@ -11,7 +11,7 @@ import {
 } from "@/components/fitrunner-v2/course";
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
-import { jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
+import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
 import { fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionUserAgent } from "@/components/fitrunner-v2/tv-graphics";
@@ -557,9 +557,11 @@ export async function startFitRunner(
     }
 
     function advanceVisualLane(dt: number) {
-      if (laneT >= 1) return;
+      const step = remainingMotionDt(dt, shownLane);
+      shownLane = 0;
+      if (laneT >= 1 || step <= 0) return;
       const duration = visualStepSeconds();
-      laneT = Math.min(1, laneT + dt / duration);
+      laneT = Math.min(1, laneT + step / duration);
       const shaped = tuning.laneEasing === "cubic" ? shapeLane(laneT) : sideStepTravel(laneT);
       visualLane = laneFrom + (laneTo - laneFrom) * shaped;
     }
@@ -827,6 +829,11 @@ export async function startFitRunner(
     let jumpArc: JumpArc | null = null;
     let footTarget: number | null = null;
     let groundLock = 0;
+    /** Slice already drawn for this command, so the next loop step does not add it again. */
+    let shownLane = 0;
+    let shownJump = 0;
+    let shownMixer = 0;
+    let inTick = false;
     let rollCursor = 0;
     let frameStep = 0;
     let nearestAhead = "none";
@@ -989,9 +996,11 @@ export async function startFitRunner(
 
     /** One arc owns the airborne collision height. Running Jump is scrubbed to that same clock. */
     function updateVertical(dt: number) {
+      const step = remainingMotionDt(dt, shownJump);
+      shownJump = 0;
       const arc = jumpArc;
       if (arc && arc.active) {
-        const stepped = stepJumpArc(arc, dt);
+        const stepped = stepJumpArc(arc, step);
         jumpArc = stepped;
         const sample = sampleJump(stepped.elapsed);
         const action = jumpAction;
@@ -1084,12 +1093,12 @@ export async function startFitRunner(
       return true;
     }
 
-    function reportPose(event: PoseCommand, accepted: boolean, reason: string | null): PoseReport {
+    function reportPose(event: PoseCommand, accepted: boolean, reason: string | null, latencyMs: number | null = null): PoseReport {
       const source: InputSource = event.source === "keyboard" ? "keyboard" : "camera";
       const next: PoseReport = {
         accepted,
         reason,
-        latencyMs: null,
+        latencyMs,
         lane: laneLabel(lane),
         action: motion,
         movementType: event.movementType,
@@ -1135,11 +1144,37 @@ export async function startFitRunner(
       return stepLane(1, source, event.confidence, event.eventId);
     }
 
+    /**
+     * Draws the first slice before the next animation frame.
+     * The loop subtracts that slice, so the arc and the lane are not stepped twice.
+     */
+    function showCommand(movementType: PoseCommand["movementType"]) {
+      if (inTick || courseMode !== "live" || paused || finished || demoOver) return;
+      if (movementType === "lean_left" || movementType === "lean_right") {
+        advanceVisualLane(COMMAND_SLICE_S);
+        shownLane = COMMAND_SLICE_S;
+        applySideStep();
+        runner.position.x = visualLane * tuning.laneSpacing;
+      } else if (movementType === "jump") {
+        updateVertical(COMMAND_SLICE_S);
+        shownJump = COMMAND_SLICE_S;
+        mixer.update(0);
+        commitBodyHeight();
+      } else if (movementType === "squat") {
+        mixer.update(remainingMotionDt(COMMAND_SLICE_S, shownMixer));
+        shownMixer = COMMAND_SLICE_S;
+      } else {
+        return;
+      }
+      renderer.render(scene, camera);
+    }
+
     function flushPoseBuffer() {
       if (!poseBuffer || courseMode !== "live" || paused || finished) return;
       const event = poseBuffer.value;
+      const receivedAt = poseBuffer.receivedAt;
       const timing = poseTiming(event);
-      const step = releaseCommand(poseBuffer, Date.now(), COMMAND_STALE_MS, timing === "now");
+      const step = releaseCommand(poseBuffer, performance.now(), COMMAND_STALE_MS, timing === "now");
       if (step.dropped === "stale") {
         poseBuffer = null;
         reportPose(event, false, "stale");
@@ -1157,10 +1192,12 @@ export async function startFitRunner(
       poseBuffer = null;
       fx.prime();
       const acted = actPose(event);
-      reportPose(event, acted, acted ? null : "not_ready");
+      if (acted) showCommand(event.movementType);
+      reportPose(event, acted, acted ? null : "not_ready", acted ? Math.round(performance.now() - receivedAt) : null);
     }
 
     function applyPose(event: PoseCommand): PoseReport {
+      const opened = performance.now();
       if (seenPose.has(event.eventId)) return reportPose(event, false, "duplicate");
       if (event.sequenceNumber !== undefined && event.sequenceNumber <= lastPoseSequence) return reportPose(event, false, "duplicate");
       if (finished || demoOver || livesHold) return reportPose(event, false, "finished");
@@ -1174,13 +1211,14 @@ export async function startFitRunner(
       const timing = poseTiming(event);
       if (timing === "later") {
         if (poseBuffer && poseBuffer.value.eventId !== event.eventId) reportPose(poseBuffer.value, false, "replaced");
-        poseBuffer = holdCommand(poseBuffer, event, Date.now());
+        poseBuffer = holdCommand(poseBuffer, event, opened);
         return reportPose(event, false, "buffered");
       }
       if (timing === "never") return reportPose(event, false, "not_ready");
       fx.prime();
       const acted = actPose(event);
-      return reportPose(event, acted, acted ? null : "not_ready");
+      if (acted) showCommand(event.movementType);
+      return reportPose(event, acted, acted ? null : "not_ready", acted ? Math.round(performance.now() - opened) : null);
     }
 
     function finish() {
@@ -1744,6 +1782,9 @@ export async function startFitRunner(
         playRun();
       }
 
+      inTick = true;
+      try {
+      flushPoseBuffer();
       advanceVisualLane(dt);
       visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, sideLeanTarget(), tuning.leanDamp, dt);
       const previousX = runner.position.x;
@@ -1775,10 +1816,11 @@ export async function startFitRunner(
         distance += step;
         frameStep = step;
       }
-      mixer.update(dt);
+      const mixerDt = remainingMotionDt(dt, shownMixer);
+      shownMixer = 0;
+      mixer.update(mixerDt);
       applySideStep();
       commitBodyHeight();
-      flushPoseBuffer();
       runDistance = distance;
       ensureCourse(distance);
       recycle();
@@ -1847,6 +1889,9 @@ export async function startFitRunner(
       fx.update(dt);
       publish(speed);
       renderer.render(scene, camera);
+      } finally {
+        inTick = false;
+      }
     }
 
     window.addEventListener("keydown", onKey);

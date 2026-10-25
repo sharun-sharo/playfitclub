@@ -713,8 +713,8 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
             <dd>{poseReport?.accepted ? `${poseReport.movementType} · ${poseReport.source}` : "—"}</dd>
             <dt className="text-[#9aa8bd]">Rejected</dt>
             <dd>{rejectText(poseReport && !poseReport.accepted ? poseReport.reason : phoneDiag?.reject)}</dd>
-            <dt className="text-[#9aa8bd]">Latency</dt>
-            <dd>{poseReport?.latencyMs === null || poseReport?.latencyMs === undefined ? "—" : `${poseReport.latencyMs} ms`}</dd>
+            <dt className="text-[#9aa8bd]">TV response</dt>
+            <dd>{poseReport?.latencyMs === null || poseReport?.latencyMs === undefined ? "—" : `${poseReport.latencyMs} ms on this screen`}</dd>
             <dt className="text-[#9aa8bd]">Lane</dt>
             <dd>{liveMotion.lane}</dd>
             <dt className="text-[#9aa8bd]">Action</dt>

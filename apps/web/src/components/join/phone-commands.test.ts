@@ -49,7 +49,32 @@ describe("phone command gate", () => {
     expect(lines).toContain("command none");
     expect(lines).toContain("jump candidate NEUTRAL");
     expect(lines).toContain("body grounded");
+    expect(lines).toContain("frame —");
+    expect(lines).toContain("inference —");
+    expect(lines).toContain("confirm —");
+    expect(lines).toContain("send —");
     expect(lines.join(" ")).not.toMatch(/token|session|name/i);
+    const timed = motionDebugLines({
+      confidence: 0.86,
+      kneeAngle: 141.2,
+      hipDrop: 0.18,
+      hipVelocity: 1.4,
+      recognition: "POSSIBLE_JUMP_PREPARATION",
+      jumpConfidence: 0.42,
+      squatConfidence: 0.7,
+      command: "none",
+      frameMs: 1200.4,
+      inferenceMs: 18.2,
+      confirmMs: 1205,
+      sendMs: 1300,
+      delegate: "GPU",
+    });
+    expect(timed).toContain("frame 1200");
+    expect(timed).toContain("inference 18.2 ms");
+    expect(timed).toContain("confirm 1205");
+    expect(timed).toContain("send 1300");
+    expect(timed).toContain("delegate GPU");
+    expect(timed.join(" ")).not.toMatch(/token|session|name/i);
   });
 
   it("downloads a short pose log with timestamps and without identity fields", () => {

@@ -290,6 +290,10 @@ export function setThresholds(state: DetectorState, overrides: Partial<MovementT
 }
 
 export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate {
+  // A frame that arrives after a newer sample must not move the clock backward or emit.
+  if (state.lastTimestamp !== null && frame.timestampMs < state.lastTimestamp) {
+    return { state, events: [], signals: null, guidance: "Tracking", framingReady: false };
+  }
   const mirrored = state.thresholds.mirror ? mirrorFrame(frame) : frame;
   const smoothed = smoothFrame(state.smoother, mirrored, state.thresholds.smoothingAlpha);
   const framing = assessFraming(smoothed.landmarks, state.thresholds.minVisibility);
@@ -627,7 +631,10 @@ function transitionPhase(
     // Hips and ankles both have to be up. An ankle flicker with the hips already back used to
     // stay in WAIT_RESET and swallow the next hop and the next lean.
     const clearlyAirborne = signals.hipDrop < -0.08 && signals.ankleRise > 0.06;
-    const stillRising = risingNow && signals.hipDrop < -0.02;
+    // risingNow is also true while the 220ms window still holds this takeoff.
+    // A tiny upward bob in that window used to keep WAIT_RESET and swallow the next hop.
+    // Staying airborne requires this frame to be climbing faster than jumpRise.
+    const stillRising = instant > thresholds.jumpRise && signals.hipDrop < -0.02;
     const landed = !clearlyAirborne && !stillRising;
     if (!landed) {
       jump = { ...jump, phase: jump.phase === "CONFIRMED" ? "SENT" : "WAIT_RESET" };
@@ -667,11 +674,14 @@ function transitionPhase(
     jumpMotion === "recovery" && signals.hipVelocity > 0.35 && signals.hipDrop > thresholds.jumpPrepDrop;
   // Landing knees stay disarmed. A brief stand re-arms the next hop even when hip speed is noisy.
   // |hipVelocity| < 0.2 never cleared on a phone, so the second hop stayed in LANDING.
-  const nearStand =
-    signals.hipDrop < 0.05 &&
-    signals.hipDrop > -0.05 &&
-    signals.ankleRise < Math.max(thresholds.jumpAnkleRise, 0.06);
-  if (jumpMotion === "landing" && nearStand && !justLanded) jumpMotion = "grounded";
+  // ±0.05 never cleared when a phone frame was already above a squat. The same landing
+  // frame can re-arm. justLanded still blocks a second emit on this sample.
+  const briefStand =
+    signals.hipDrop < thresholds.squatEnterDrop &&
+    signals.hipDrop > -0.12 &&
+    signals.ankleRise < 0.12 &&
+    !signals.forwardBend;
+  if (jumpMotion === "landing" && briefStand) jumpMotion = "grounded";
   if (dipping && !countermovement && !squatLatched && jump.phase === "NEUTRAL" && !standingOutOfSquat && jumpMotion !== "landing") {
     // Keep the clock from the frame the dip started. Resetting it on every downward
     // sample made the rise 33ms later, which is after a one-frame hop has already slowed.
