@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { Outfit, Oxanium } from "next/font/google";
 import { SiteAnalytics } from "@/components/analytics/site-analytics";
+import { ScreenRemote } from "@/components/tv/screen-remote";
+import { TvDiagnosticsOverlay } from "@/components/tv/tv-diagnostics-overlay";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -24,6 +26,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={`${outfit.variable} ${oxanium.variable} h-full`}>
       <body className="min-h-full antialiased">
         {children}
+        <ScreenRemote />
+        {process.env.NODE_ENV !== "production" ? <TvDiagnosticsOverlay /> : null}
         <Suspense fallback={null}>
           <SiteAnalytics />
         </Suspense>

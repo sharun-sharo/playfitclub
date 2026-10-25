@@ -16,6 +16,7 @@ import { FitRunnerTutorial } from "@/components/fitrunner-v2/tutorial-overlay";
 import { useTvSession, type LivesAck } from "@/components/fitrunner-v2/use-tv-session";
 import { useWorkoutSync } from "@/components/fitrunner-v2/use-workout-sync";
 import { framingStatusLine, LOST_YOU } from "@/lib/vision/framing";
+import "./tv-shell.css";
 import { STEP_BACK_INTO_FRAME } from "@/lib/vision/hands-free";
 import { MOTION_THRESHOLD_FIELDS, thresholdDefaults, thresholdDraft, writeMotionThresholds } from "@/lib/vision/motion-thresholds";
 import type { PoseDiagnostics } from "@/lib/vision/pose-estimator";
@@ -41,6 +42,7 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const timeRef = useRef<HTMLElement>(null);
   const uiRef = useRef<(state: { paused: boolean; muted: boolean }) => void>(() => {});
   const [error, setError] = useState("");
+  const [graphicsError, setGraphicsError] = useState("");
   const [ready, setReady] = useState(false);
   const [camera, setCamera] = useState({ ...tuning.camera });
   const [devOpen, setDevOpen] = useState(false);
@@ -114,6 +116,7 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
     }
     saveRun.current = createOnce();
     endedByLivesRef.current = false;
+    setGraphicsError("");
     let cancelled = false;
     let handle: FitRunnerHandle | null = null;
 
@@ -206,6 +209,9 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
             notifyRef.current(report);
             if (report.accepted && !playingRef.current) tutorialPoseRef.current(report);
           },
+          onGraphicsFailure: (message) => {
+            if (!cancelled) setGraphicsError(message);
+          },
         }, { holdCourse: true, demoLimitSeconds: remaining }),
       )
       .then((next) => {
@@ -219,7 +225,9 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
-        setError(cause instanceof Error ? cause.message : "FitRunner V2 failed to start.");
+        const message = cause instanceof Error ? cause.message : "FitRunner V2 failed to start.";
+        if (/WebGL|shader|graphics context/i.test(message)) setGraphicsError(message);
+        else setError(message);
       });
 
     return () => {
@@ -430,12 +438,13 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }
 
   return (
-    <div className="fixed inset-0 bg-[#8ec8ea] text-white">
+    <div className="fixed inset-0 bg-[#8ec8ea] text-white" data-fitrunner-root="">
       <canvas
         ref={canvasRef}
         data-fitrunner-v2=""
         aria-label="FitRunner V2 prototype"
         className="h-full w-full"
+        hidden={Boolean(graphicsError)}
       />
       <LivesHearts hidden={!playing} lives={session.lives} />
       <PlayScoreCard
@@ -729,7 +738,12 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           </div>
         </fieldset>
       </aside>
-      {error ? <p className="absolute bottom-4 left-4 z-30 max-w-md rounded-xl bg-[#3a1212ee] px-3 py-2 text-sm">{error}</p> : null}
+      {graphicsError ? (
+        <p data-fitrunner-graphics-error="" role="alert">
+          {graphicsError}
+        </p>
+      ) : null}
+      {error && !graphicsError ? <p className="absolute bottom-4 left-4 z-30 max-w-md rounded-xl bg-[#3a1212ee] px-3 py-2 text-sm">{error}</p> : null}
       {demoOver ? (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#10141ce6] px-6" data-fitrunner-demo-over="">
           <section className="w-full max-w-md rounded-3xl border border-white/15 bg-[#1c1f24] px-8 py-8 text-center shadow-2xl" aria-labelledby="fitrunner-demo-over-title">

@@ -18,7 +18,9 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  min-height: 100vh;
   min-height: 100dvh;
+  overflow-x: hidden;
   background: linear-gradient(180deg, #e7f6ff 0%, #f7fbf4 22%, #f4faf6 48%, #f3f7f2 100%);
   color: #14211a;
 }
@@ -48,6 +50,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.78fr);
   align-items: center;
+  grid-gap: 2.5rem;
   gap: 2.5rem;
   min-width: 0;
   min-height: calc(100dvh - 4.7rem);
@@ -181,12 +184,16 @@
   background: #d7f4ef;
 }
 
+.tv-card-visual a,
 .tv-card-visual img {
   display: block;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   height: 100%;
+}
+
+.tv-card-visual img {
   object-fit: cover;
   object-position: center center;
 }
@@ -387,6 +394,7 @@
 
 .tv-stage {
   position: relative;
+  height: 68vh;
   height: min(68vh, 40rem);
   margin: 0;
   overflow: hidden;
@@ -396,9 +404,14 @@
   box-shadow: 0 18px 40px rgba(20, 32, 25, 0.12);
 }
 
+.tv-stage picture,
 .tv-stage img {
+  display: block;
   width: 100%;
   height: 100%;
+}
+
+.tv-stage img {
   object-fit: cover;
   object-position: center 20%;
 }

@@ -1,11 +1,11 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 type ArrowKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
 
-function gameOwnsArrows() {
+export function gameOwnsArrows() {
   const canvas = document.querySelector<HTMLCanvasElement>("[data-fitrunner-v2]");
   if (!canvas) return false;
   if (canvas.dataset.tutorialKeys === "1") return true;
@@ -23,9 +23,13 @@ function focusableControls(root: ParentNode) {
   });
 }
 
-function moveTvFocus(key: ArrowKey) {
-  const root = document.querySelector("[data-tv-shell]");
-  if (!root) return;
+export function isTvBackKey(event: KeyboardEvent) {
+  const code = event.keyCode || 0;
+  if (code === 10009 || code === 461) return true;
+  return event.key === "Escape" || event.key === "GoBack" || event.key === "BrowserBack" || event.key === "XF86Back" || event.key === "Back";
+}
+
+export function moveFocusWithin(root: ParentNode, key: ArrowKey) {
   const items = focusableControls(root);
   if (items.length === 0) return;
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -69,7 +73,6 @@ function focusPrimary() {
 
 export function TvRemote() {
   const pathname = usePathname();
-  const router = useRouter();
 
   useEffect(() => {
     let tries = 0;
@@ -87,10 +90,10 @@ export function TvRemote() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape" || event.key === "GoBack" || event.key === "BrowserBack") {
-        if (pathname === "/tv/play" || pathname.startsWith("/tv/play/")) {
+      if (isTvBackKey(event)) {
+        if (window.history.length > 1) {
           event.preventDefault();
-          router.push("/tv");
+          window.history.back();
         }
         return;
       }
@@ -100,11 +103,12 @@ export function TvRemote() {
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
       event.preventDefault();
-      moveTvFocus(event.key);
+      const shell = document.querySelector("[data-tv-shell]");
+      if (shell) moveFocusWithin(shell, event.key);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pathname, router]);
+  }, []);
 
   return null;
 }

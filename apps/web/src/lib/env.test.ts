@@ -44,6 +44,16 @@ describe("resolveBrowserRealtimeUrl", () => {
 });
 
 describe("resolveBrowserRealtimeConnection", () => {
+  it("keeps the production Railway host and refuses to rewrite it", () => {
+    expect(
+      resolveBrowserRealtimeConnection({
+        pageOrigin: "https://playfitclub.com",
+        configuredUrl: "https://fitplayrealtime-production.up.railway.app",
+        production: true,
+      }),
+    ).toEqual({ ok: true, url: "https://fitplayrealtime-production.up.railway.app" });
+  });
+
   it("connects production to the public https realtime host", () => {
     expect(
       resolveBrowserRealtimeConnection({

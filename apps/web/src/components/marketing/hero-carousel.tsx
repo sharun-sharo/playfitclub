@@ -4,6 +4,7 @@ import { CirclePlay, Play, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
+import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
 const slides = [
@@ -11,21 +12,24 @@ const slides = [
     id: "run",
     name: "Run",
     live: "Run. Move forward.",
-    src: "/marketing/hero-run.png",
+    jpeg: "/marketing/hero-run.jpg",
+    png: "/marketing/hero-run.png",
     alt: "Illustrated home-play scene. A woman in a teal shirt jogs in a living room. The television banner reads Run, Move forward.",
   },
   {
     id: "jump",
     name: "Jump",
     live: "Jump. Leap over.",
-    src: "/marketing/hero-jump.png",
+    jpeg: "/marketing/hero-jump.jpg",
+    png: "/marketing/hero-jump.png",
     alt: "Illustrated home-play scene. A woman in a teal shirt jumps in a living room. The television banner reads Jump, Leap over.",
   },
   {
     id: "squat",
     name: "Squat",
     live: "Squat. Duck under.",
-    src: "/marketing/hero-squat.png",
+    jpeg: "/marketing/hero-squat.jpg",
+    png: "/marketing/hero-squat.png",
     alt: "Illustrated home-play scene. A woman in a teal shirt squats in a living room. The television banner reads Squat, Duck under.",
   },
 ] as const;
@@ -289,14 +293,7 @@ export function HeroShowcase() {
                 .join(" ");
               return (
                 <div key={item.id} className={className} aria-hidden={shown ? undefined : true}>
-                  <img
-                    src={item.src}
-                    alt={item.alt}
-                    width={864}
-                    height={1152}
-                    decoding="async"
-                    fetchPriority={item.id === "run" ? "high" : "auto"}
-                  />
+                  <HeroPicture jpeg={item.jpeg} png={item.png} alt={item.alt} priority={item.id === "run"} />
                 </div>
               );
             })}

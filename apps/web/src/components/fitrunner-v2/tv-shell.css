@@ -1,0 +1,57 @@
+[data-fitrunner-graphics-error] {
+  position: absolute;
+  z-index: 70;
+  top: 1rem;
+  right: 1rem;
+  left: 1rem;
+  margin: 0;
+  padding: 1rem 1.25rem;
+  background: #3a1212;
+  color: #fff;
+  font: 1.25rem/1.45 "Segoe UI", sans-serif;
+}
+
+/*
+  Tailwind utilities for the game shell are emitted inside @layer.
+  Tizen browsers before Chromium 99 drop @layer, so the canvas stays at its
+  default 300×150 size and looks like a still. These rules apply only when
+  color-mix is missing, which current laptop Chrome supports.
+*/
+@supports not (color-mix(in srgb, black 50%, white)) {
+  [data-fitrunner-root] {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    overflow: hidden;
+    background: #8ec8ea;
+    color: #fff;
+  }
+
+  [data-fitrunner-root] canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-tutorial-step] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 2rem;
+    background: #14171c;
+    color: #fff;
+  }
+
+  [data-tutorial-step] button,
+  [data-tutorial-step] a {
+    min-height: 3rem;
+    font-size: 1.2rem;
+  }
+}

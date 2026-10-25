@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 export default function TvHomePage() {
   return (
     <div className={`${fpDisplay.variable} ${fpSans.variable}`}>
+      <link rel="preload" as="image" href="/marketing/hero-run.jpg" type="image/jpeg" />
       <TvHome />
     </div>
   );

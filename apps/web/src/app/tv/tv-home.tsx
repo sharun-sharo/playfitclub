@@ -4,6 +4,7 @@ import { CirclePlay, Play, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
+import { HeroPicture } from "@/components/marketing/hero-picture";
 
 const games = [
   {
@@ -42,19 +43,22 @@ const slides = [
   {
     id: "run",
     name: "Run",
-    src: "/marketing/hero-run.png",
+    jpeg: "/marketing/hero-run.jpg",
+    png: "/marketing/hero-run.png",
     alt: "Illustrated home-play scene. A woman jogs in a living room. The television banner reads Run, Move forward.",
   },
   {
     id: "jump",
     name: "Jump",
-    src: "/marketing/hero-jump.png",
+    jpeg: "/marketing/hero-jump.jpg",
+    png: "/marketing/hero-jump.png",
     alt: "Illustrated home-play scene. A woman jumps in a living room. The television banner reads Jump, Leap over.",
   },
   {
     id: "squat",
     name: "Squat",
-    src: "/marketing/hero-squat.png",
+    jpeg: "/marketing/hero-squat.jpg",
+    png: "/marketing/hero-squat.png",
     alt: "Illustrated home-play scene. A woman squats in a living room. The television banner reads Squat, Duck under.",
   },
 ] as const;
@@ -111,7 +115,7 @@ export function TvHome() {
           </div>
         </div>
         <figure className="tv-stage">
-          <img src={active.src} alt={active.alt} width={864} height={1152} />
+          <HeroPicture jpeg={active.jpeg} png={active.png} alt={active.alt} priority={active.id === "run"} />
           <div className="tv-dots">
             {slides.map((item, itemIndex) => (
               <button key={item.id} type="button" aria-label={`Show ${item.name}`} aria-current={itemIndex === index ? "true" : undefined} onClick={() => go(itemIndex)} />
@@ -146,7 +150,13 @@ export function TvHome() {
               {games.map((game) => (
                 <article key={game.title} className="tv-card">
                   <div className="tv-card-visual">
-                    <img src={game.image} alt={game.alt} />
+                    {game.href ? (
+                      <Link href={game.href}>
+                        <img src={game.image} alt={game.alt} />
+                      </Link>
+                    ) : (
+                      <img src={game.image} alt={game.alt} />
+                    )}
                     <span className={game.status === "Coming soon" ? "tv-card-soon" : undefined}>{game.status}</span>
                   </div>
                   <div className="tv-card-copy">

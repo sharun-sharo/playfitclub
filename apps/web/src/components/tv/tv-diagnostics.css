@@ -1,0 +1,38 @@
+[data-tv-diagnostics] {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  width: min(28rem, calc(100% - 2rem));
+  max-height: 70vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 0.9rem 1rem;
+  background: #14171c;
+  color: #f4f7fb;
+  font: 0.95rem/1.4 "Segoe UI", sans-serif;
+}
+
+[data-tv-diagnostics] p {
+  margin: 0 0 0.5rem;
+  color: #beff39;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-tv-diagnostics] dl {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.35rem 0.6rem;
+  margin: 0;
+}
+
+[data-tv-diagnostics] dt {
+  color: #9aa8bd;
+}
+
+[data-tv-diagnostics] dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

@@ -35,6 +35,7 @@ const moves = ["Run", "Jump", "Dodge", "Move"];
 export default function HomePage() {
   return (
     <MarketingFrame>
+      <link rel="preload" as="image" href="/marketing/hero-run.jpg" type="image/jpeg" />
       <script dangerouslySetInnerHTML={{ __html: motionBootScript() }} />
       <MotionBoot />
       <a className="fp-skip" href="#content">

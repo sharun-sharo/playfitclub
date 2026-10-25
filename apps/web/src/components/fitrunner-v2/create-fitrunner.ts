@@ -13,6 +13,7 @@ import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
 import { jumpDuringRoll, laneSlideFraction, releaseStuckClip, replayClip, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
+import { fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionUserAgent } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
 import { createRunRecorder } from "@/lib/fitrunner-v2/run-recorder";
@@ -85,6 +86,7 @@ export type FitRunnerHud = {
     bestCombo: number;
   }) => void;
   onPose?: (report: PoseReport) => void;
+  onGraphicsFailure?: (message: string) => void;
 };
 
 export type PoseCommand = {
@@ -321,18 +323,38 @@ export async function startFitRunner(
   const holdCourse = options?.holdCourse === true;
   const rawLimit = options?.demoLimitSeconds;
   const demoLimit = typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : null;
+  const television = isTelevisionUserAgent(typeof navigator === "undefined" ? "" : navigator.userAgent);
+  if (television) tuning.quality = fitRunnerQuality(true);
+  const gl = canvas.getContext("webgl2", {
+    alpha: false,
+    antialias: !television,
+    depth: true,
+    stencil: false,
+    preserveDrawingBuffer: false,
+    failIfMajorPerformanceCaveat: false,
+    ...(television ? { powerPreference: "low-power" as const } : {}),
+  });
+  if (!gl) {
+    canvas.dataset.webgl = "unavailable";
+    throw new Error(graphicsFailureMessage("no-webgl2"));
+  }
+  const rendererInfo = gl.getExtension("WEBGL_debug_renderer_info");
+  canvas.dataset.webgl = "2";
+  canvas.dataset.glVersion = String(gl.getParameter(gl.VERSION));
+  if (rendererInfo) canvas.dataset.glRenderer = String(gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL));
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    context: gl,
+    antialias: !television,
     alpha: false,
-    preserveDrawingBuffer: true,
+    preserveDrawingBuffer: false,
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = tuning.quality !== "low";
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(fitRunnerPixelRatio(window.devicePixelRatio || 1, television));
   renderer.setClearColor("#8ec8ea");
 
   const scene = new THREE.Scene();
@@ -345,8 +367,9 @@ export async function startFitRunner(
   scene.add(new THREE.HemisphereLight("#e7f6ff", "#e4c48a", 0.92));
   scene.add(new THREE.AmbientLight("#fff8ee", 0.2));
   const sun = new THREE.DirectionalLight("#fff1d2", 2.45);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  const shadowSize = tuning.quality === "high" ? 2048 : tuning.quality === "medium" ? 1024 : 1;
+  sun.castShadow = tuning.quality !== "low";
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.near = 0.5;
   sun.shadow.camera.far = 46;
   sun.shadow.camera.left = -18;

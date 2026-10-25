@@ -36,7 +36,19 @@ export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
       {games.map((game) => (
         <article key={game.title} className="fp-library-card">
           <div className="fp-library-visual">
-            <img src={game.image} alt={game.alt} width={960} height={890} />
+            {game.href ? (
+              <TrackedLink
+                href={game.href}
+                events={[
+                  { name: "play_clicked", params: { surface: "library" } },
+                  { name: "fit_run_selected", params: { surface: "library" } },
+                ]}
+              >
+                <img src={game.image} alt={game.alt} width={960} height={890} />
+              </TrackedLink>
+            ) : (
+              <img src={game.image} alt={game.alt} width={960} height={890} />
+            )}
             <span className={game.status === "Coming soon" ? "fp-library-soon" : undefined}>{game.status}</span>
           </div>
           <div className="fp-library-copy">

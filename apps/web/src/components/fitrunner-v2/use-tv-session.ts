@@ -13,6 +13,7 @@ import {
   shouldApplyHostSession,
   writeStoredHostToken,
 } from "@/components/fitrunner-v2/host-session-boot";
+import { noteTvDiagnostic } from "@/components/tv/tv-diagnostics";
 import { browserRealtimeConnection, clientEnv, devCertificateHost, GAME_SERVER_DISCONNECTED, socketUsesPageOrigin } from "@/lib/env";
 import type { PoseDiagnostics } from "@/lib/vision/pose-estimator";
 
@@ -190,6 +191,7 @@ export function useTvSession(
       setJoinCode("");
       setQr("");
       setError(GAME_SERVER_DISCONNECTED);
+      noteTvDiagnostic({ realtime: "error", session: "error", lastError: GAME_SERVER_DISCONNECTED });
       return () => {
         stopped = true;
       };
@@ -217,7 +219,10 @@ export function useTvSession(
       if (typeof payload.lives === "number") setLives(payload.lives);
       if (typeof payload.hits === "number") setHits(payload.hits);
       if (typeof payload.runOver === "boolean") setRunOver(payload.runOver);
-      if (payload.joinCode) setJoinCode(payload.joinCode);
+      if (payload.joinCode) {
+        setJoinCode(payload.joinCode);
+        noteTvDiagnostic({ session: "ready", lastError: "" });
+      }
       if (payload.phase) setPhase(payload.phase);
       if (typeof payload.countdown === "number") setCountdown(payload.countdown);
       if (payload.countdownPurpose === "start" || payload.countdownPurpose === "resume" || payload.countdownPurpose === null) {
@@ -249,11 +254,14 @@ export function useTvSession(
           auth: body.socketToken ? { userToken: body.socketToken } : {},
         });
         socketRef.current = socket;
+        noteTvDiagnostic({ realtime: "connecting", session: "creating", lastError: "" });
         socket.on("connect_error", () => {
           const separateServer = !socketUsesPageOrigin(window.location.origin);
           const approveCertificate = separateServer && devCertificateHost(realtimeUrl);
           setTrustUrl(approveCertificate ? `${realtimeUrl}/health` : "");
-          setError(approveCertificate ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.");
+          const message = approveCertificate ? "The session server needs a one-time certificate approval." : "Could not reach the game connection.";
+          setError(message);
+          noteTvDiagnostic({ realtime: "error", session: "error", lastError: message });
         });
         const sendKeyboard = () => {
           const current = socketRef.current;
@@ -300,6 +308,7 @@ export function useTvSession(
           if (stopped) return;
           setConnected(true);
           setError("");
+          noteTvDiagnostic({ realtime: "connected", lastError: "" });
           sessionReady.current = false;
           keyboardSent.current = false;
           const plan = hostBootAction({
@@ -340,7 +349,10 @@ export function useTvSession(
         });
         socket.on(SERVER_EVENTS.sessionError, (payload: { code?: string; message?: string }) => {
           if (payload?.code === "NOT_READY") started.current = "";
-          if (payload?.message) setError(payload.message);
+          if (payload?.message) {
+            setError(payload.message);
+            noteTvDiagnostic({ session: "error", lastError: payload.message });
+          }
         });
         socket.on(SERVER_EVENTS.sessionCreated, (payload: { token?: string; session?: { id?: string; joinCode?: string; phase?: string; players?: unknown } }) => {
           if (payload.session?.id) acceptedSessionId.current = payload.session.id;
@@ -364,7 +376,11 @@ export function useTvSession(
         });
       })
       .catch(() => {
-        if (!stopped) setError("Could not reach the PlayFit Club server.");
+        if (!stopped) {
+          const message = "Could not reach the PlayFit Club server.";
+          setError(message);
+          noteTvDiagnostic({ realtime: "error", session: "error", lastError: message });
+        }
       });
 
     return () => {
