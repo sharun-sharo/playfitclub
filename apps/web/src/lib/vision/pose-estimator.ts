@@ -20,7 +20,18 @@ import {
   type MovementThresholds,
   type PoseFrame,
 } from "@fitplay/game";
-import { classificationTimestamp, emptyCameraGate, finishCameraFrame, offerCameraFrame, type CameraFrameGate } from "@/lib/vision/frame-gate";
+import {
+  cameraSampleSource,
+  classificationTimestamp,
+  emptyCameraGate,
+  emptyVideoCursor,
+  finishCameraFrame,
+  offerCameraFrame,
+  takeVideoFrame,
+  type CameraFrameGate,
+  type PhoneVideoMetadata,
+  type VideoFrameCursor,
+} from "@/lib/vision/frame-gate";
 import { CAMERA_LOST_MESSAGE, classifyCameraError } from "@/lib/vision/camera-status";
 import { frontCameraAttempts, frontCameraFallback, portraitScore } from "@/lib/vision/front-camera";
 import {
@@ -149,8 +160,13 @@ export class PoseEstimator {
   private raf = 0;
   private videoFrameHandle = 0;
   private lastDetectAt = 0;
-  private presentedFrames = -1;
   private lastMediaTime = Number.NaN;
+  private videoCursor: VideoFrameCursor = emptyVideoCursor();
+  private videoFramesAccepted = 0;
+  private lastVideoFrameAt = 0;
+  private clockStarted = 0;
+  private lastAnimationSample = 0;
+  private removeTimeUpdate: (() => void) | null = null;
   private running = false;
   private mode: "idle" | "calibrate" | "play" = "idle";
   private recent: PoseFrame[] = [];
@@ -340,6 +356,8 @@ export class PoseEstimator {
     const video = this.video as (HTMLVideoElement & { cancelVideoFrameCallback?: (handle: number) => void }) | null;
     if (video?.cancelVideoFrameCallback && this.videoFrameHandle) video.cancelVideoFrameCallback(this.videoFrameHandle);
     this.videoFrameHandle = 0;
+    this.removeTimeUpdate?.();
+    this.removeTimeUpdate = null;
   }
 
   private streamEnded() {
@@ -590,47 +608,83 @@ export class PoseEstimator {
   }
 
   /**
-   * Prefer the camera's presented-frame callback. Falling back to animation
-   * frames skips a repeated `currentTime`, so the same picture is not classified
-   * again. A capture stream whose `currentTime` stays 0 still samples on the
-   * animation clock; phones that support the frame callback do not take that path.
-   * The next callback is armed before inference so a newer presented frame can
-   * replace a queued one instead of waiting for another cycle.
+   * Prefer a presented camera frame. iOS defines requestVideoFrameCallback and
+   * then may never call it for a camera stream, so the animation clock still
+   * runs and takes over when no video frame arrives. `timeupdate` covers a
+   * playing element whose animation callbacks are paused. Both fallbacks use
+   * performance.now(). mediaTime stays in seconds and is not the frame stamp.
+   * The next video-frame callback is armed before inference so a newer frame
+   * can replace a queued one.
    */
   private armDetectClock(video: HTMLVideoElement) {
+    this.clockStarted = performance.now();
+    this.lastVideoFrameAt = 0;
+    this.videoFramesAccepted = 0;
+    this.lastAnimationSample = 0;
+    this.videoCursor = emptyVideoCursor();
+    this.lastMediaTime = Number.NaN;
     const withFrames = video as HTMLVideoElement & {
       requestVideoFrameCallback?: (
-        callback: (now: number, metadata: { presentedFrames?: number; mediaTime?: number }) => void,
+        callback: (now: number, metadata: PhoneVideoMetadata) => void,
       ) => number;
     };
-    if (withFrames.requestVideoFrameCallback) {
-      const onFrame = (now: number, metadata: { presentedFrames?: number }) => {
-        if (!this.running) return;
-        this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
-        const presented = typeof metadata.presentedFrames === "number" ? metadata.presentedFrames : -1;
-        if (presented >= 0 && presented === this.presentedFrames) return;
-        if (presented >= 0) this.presentedFrames = presented;
-        this.cameraClock = true;
-        this.cameraFrames += 1;
-        this.sampleRates(performance.now(), null);
-        this.acceptFrame(now);
-      };
-      this.videoFrameHandle = withFrames.requestVideoFrameCallback(onFrame);
-      return;
-    }
-    const loop = () => {
+    let hasVideoFrameCallback = typeof withFrames.requestVideoFrameCallback === "function";
+    const onFrame = (now: number, metadata: PhoneVideoMetadata) => {
       if (!this.running) return;
-      this.raf = requestAnimationFrame(loop);
+      this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
+      const arrivedAt = performance.now();
+      const decision = takeVideoFrame(this.videoCursor, { callbackNow: now, metadata, arrivedAt });
+      this.videoCursor = decision.cursor;
+      if (!decision.accept) return;
+      this.videoFramesAccepted += 1;
+      this.lastVideoFrameAt = arrivedAt;
+      this.cameraClock = true;
+      this.cameraFrames += 1;
+      this.sampleRates(arrivedAt, null);
+      this.acceptFrame(decision.frameAt);
+    };
+    const animationDue = () => {
+      const now = performance.now();
+      return cameraSampleSource({
+        hasVideoFrameCallback,
+        videoFrames: this.videoFramesAccepted,
+        elapsedMs: now - this.clockStarted,
+        sinceVideoFrameMs: this.lastVideoFrameAt === 0 ? Number.POSITIVE_INFINITY : now - this.lastVideoFrameAt,
+      }) === "animation";
+    };
+    const sampleAnimation = () => {
+      if (!animationDue()) return;
+      const now = performance.now();
+      if (now - this.lastAnimationSample < 12) return;
       const mediaTime = video.currentTime;
       if (Number.isFinite(this.lastMediaTime) && mediaTime === this.lastMediaTime && mediaTime > 0) return;
       this.lastMediaTime = mediaTime;
-      const now = performance.now();
+      this.lastAnimationSample = now;
       this.cameraClock = true;
       this.cameraFrames += 1;
       this.sampleRates(now, null);
       this.acceptFrame(now);
     };
+    const loop = () => {
+      if (!this.running) return;
+      this.raf = requestAnimationFrame(loop);
+      sampleAnimation();
+    };
     this.raf = requestAnimationFrame(loop);
+    if (hasVideoFrameCallback) {
+      try {
+        this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
+      } catch {
+        hasVideoFrameCallback = false;
+        this.videoFrameHandle = 0;
+      }
+    }
+    const onTimeUpdate = () => {
+      if (!this.running) return;
+      sampleAnimation();
+    };
+    video.addEventListener("timeupdate", onTimeUpdate);
+    this.removeTimeUpdate = () => video.removeEventListener("timeupdate", onTimeUpdate);
   }
 
   private noteDiag(update: { events: Array<{ movementType: string }>; state: { recognition: string; lastReject: { reason: string } | null; squat: { phase: string }; jump: { phase: string }; torso: { phase: string }; left: { phase: string }; right: { phase: string } } }) {

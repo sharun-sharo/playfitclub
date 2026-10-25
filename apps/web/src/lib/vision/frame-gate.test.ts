@@ -1,5 +1,121 @@
 import { describe, expect, it } from "vitest";
-import { classificationTimestamp, emptyCameraGate, finishCameraFrame, offerCameraFrame } from "./frame-gate";
+import {
+  COMMAND_STALE_MS,
+  createDetector,
+  DEFAULT_THRESHOLDS,
+  neutralFromLandmarks,
+  pushPose,
+  setNeutral,
+  type Landmark,
+  type PoseFrame,
+} from "@fitplay/game";
+import {
+  cameraSampleSource,
+  classificationTimestamp,
+  emptyCameraGate,
+  emptyVideoCursor,
+  finishCameraFrame,
+  framePresentationMs,
+  offerCameraFrame,
+  takeVideoFrame,
+  VIDEO_FRAME_FALLBACK_MS,
+  type VideoFrameCursor,
+} from "./frame-gate";
+
+function landmark(x: number, y: number, visibility = 1): Landmark {
+  return { x, y, visibility };
+}
+
+function pose(options: {
+  time: number;
+  hipDrop?: number;
+  rise?: number;
+  shoulderLean?: number;
+  kneeForward?: number;
+}): PoseFrame {
+  const cx = 0.5;
+  const rise = options.rise ?? 0;
+  const hipDrop = options.hipDrop ?? 0;
+  const shoulderY = 0.3 - rise;
+  const hipY = 0.5 + hipDrop - rise;
+  const kneeY = 0.68 + hipDrop * 0.45 - rise;
+  const ankleY = 0.88 - rise * 0.6;
+  const kneeForward = options.kneeForward ?? (hipDrop > 0.05 ? 0.09 : 0.01);
+  const points: Landmark[] = Array.from({ length: 33 }, () => landmark(cx, 0.5, 0.1));
+  const set = (index: number, x: number, y: number) => {
+    points[index] = landmark(x, y, 1);
+  };
+  set(0, cx, shoulderY - 0.08);
+  set(11, cx - 0.08, shoulderY);
+  set(12, cx + 0.08, shoulderY);
+  set(13, cx - 0.1, shoulderY + 0.08);
+  set(15, cx - 0.08, shoulderY + 0.16);
+  set(14, cx + 0.1, shoulderY + 0.08);
+  set(16, cx + 0.08, shoulderY + 0.16);
+  set(23, cx - 0.06, hipY);
+  set(24, cx + 0.06, hipY);
+  set(25, cx - 0.07 + kneeForward, kneeY);
+  set(26, cx + 0.07 - kneeForward, kneeY);
+  set(27, cx - 0.05, ankleY);
+  set(28, cx + 0.05, ankleY);
+  if (options.shoulderLean) {
+    for (const index of [11, 12]) {
+      const point = points[index];
+      if (point) points[index] = { ...point, x: point.x + options.shoulderLean };
+    }
+  }
+  return { timestampMs: options.time, landmarks: points };
+}
+
+/** Phone requestVideoFrameCallback payload. mediaTime is seconds. The other stamps are milliseconds. */
+function phoneMetadata(index: number, presentedFrames: number) {
+  const arrivedAt = 180_000 + index * 33;
+  return {
+    arrivedAt,
+    callbackNow: arrivedAt,
+    metadata: {
+      mediaTime: 3.2 + index * 0.033,
+      presentationTime: arrivedAt,
+      presentedFrames,
+    },
+  };
+}
+
+function classifyPhoneFrames(count: number, presentedFrames: number | "increment") {
+  let cursor: VideoFrameCursor = emptyVideoCursor();
+  let gate = emptyCameraGate();
+  let last = 0;
+  const stamps: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const frame = phoneMetadata(index, presentedFrames === "increment" ? index + 1 : presentedFrames);
+    const taken = takeVideoFrame(cursor, frame);
+    cursor = taken.cursor;
+    expect(taken.accept).toBe(true);
+    const offer = offerCameraFrame(gate, taken.frameAt, frame.arrivedAt, COMMAND_STALE_MS);
+    expect(offer.action).toBe("run");
+    if (offer.action !== "run") return stamps;
+    const done = finishCameraFrame(offer.gate, frame.arrivedAt, COMMAND_STALE_MS);
+    expect(done.action).toBe("ignore");
+    gate = done.gate;
+    const stamp = classificationTimestamp(offer.at, frame.arrivedAt, last, COMMAND_STALE_MS);
+    last = stamp;
+    stamps.push(stamp);
+  }
+  return stamps;
+}
+
+function play(times: number[], build: (index: number, time: number) => PoseFrame, smoothingAlpha = 1) {
+  const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+  if (!neutral) throw new Error("Failed to build a neutral pose");
+  let state = setNeutral(createDetector({ mirror: false, smoothingAlpha, cooldownMs: 200 }), neutral);
+  const events = [];
+  for (let index = 0; index < times.length; index += 1) {
+    const update = pushPose(state, build(index, times[index] ?? 0));
+    state = update.state;
+    events.push(...update.events);
+  }
+  return events;
+}
 
 describe("camera frame gate", () => {
   it("does not run a second pose while inference is busy, and drops the older queued frame", () => {
@@ -101,5 +217,127 @@ describe("camera frame gate", () => {
 
     const sameClock = classificationTimestamp(25_033, 25_040, 25_000, 800);
     expect(sameClock).toBe(25_033);
+  });
+
+  it("classifies a fresh phone frame when mediaTime is seconds, and a small jump, squat, and lean still emit", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    expect(VIDEO_FRAME_FALLBACK_MS).toBe(400);
+
+    expect(framePresentationMs(180_000, { mediaTime: 3.2, presentationTime: 180_000 }, 180_000)).toBe(180_000);
+    expect(framePresentationMs(3.2, { mediaTime: 3.2, presentationTime: 180_000 }, 180_000)).toBe(180_000);
+    expect(framePresentationMs(3.2, { mediaTime: 3.2, expectedDisplayTime: 180_000 }, 180_000)).toBe(180_000);
+    expect(framePresentationMs(3.2, { mediaTime: 3.2 }, 180_000)).toBe(180_000);
+    expect(framePresentationMs(0, { mediaTime: 0, presentationTime: 0 }, 180_000)).toBe(180_000);
+    expect(framePresentationMs(180_033_000, { mediaTime: 3.233, presentationTime: 180_033 }, 180_033)).toBe(180_033);
+
+    const locked = offerCameraFrame(emptyCameraGate(), 180_000_000, 180_000, COMMAND_STALE_MS);
+    expect(locked.action).toBe("run");
+    if (locked.action !== "run") return;
+    const blocked = offerCameraFrame(locked.gate, 180_033, 180_033, COMMAND_STALE_MS);
+    expect(blocked.action).toBe("ignore");
+    if (blocked.action !== "ignore") return;
+    expect(blocked.reason).toBe("stale");
+
+    const stamps = classifyPhoneFrames(10, "increment");
+    expect(stamps[1]! - stamps[0]!).toBe(33);
+    expect(stamps[0]).toBe(180_000);
+
+    const stuck = classifyPhoneFrames(8, 0);
+    expect(stuck[1]! - stuck[0]!).toBe(33);
+
+    const jump = play(stamps, (index, time) => {
+      const dip = index === 3 || index === 4;
+      return pose({
+        time,
+        hipDrop: dip || index === 5 ? 0.03 : 0,
+        rise: index === 5 ? 0.002244 : 0,
+      });
+    }, DEFAULT_THRESHOLDS.smoothingAlpha);
+    expect(jump.map((event) => event.movementType)).toEqual(["jump"]);
+
+    const squat = play(stuck, (index, time) => pose({
+      time,
+      hipDrop: index < 2 ? 0 : 0.22,
+      kneeForward: index < 2 ? 0.01 : 0.1,
+    }));
+    expect(squat.map((event) => event.movementType)).toEqual(["squat"]);
+
+    const lean = play(stuck, (index, time) => pose({ time, shoulderLean: index >= 2 ? -0.045 : 0 }));
+    expect(lean.map((event) => event.movementType)).toEqual(["lean_left"]);
+  });
+
+  it("samples the animation clock when the phone video-frame callback does not arrive", () => {
+    expect(cameraSampleSource({
+      hasVideoFrameCallback: true,
+      videoFrames: 0,
+      elapsedMs: 0,
+      sinceVideoFrameMs: Number.POSITIVE_INFINITY,
+    })).toBe("video-frame");
+    expect(cameraSampleSource({
+      hasVideoFrameCallback: true,
+      videoFrames: 0,
+      elapsedMs: VIDEO_FRAME_FALLBACK_MS,
+      sinceVideoFrameMs: Number.POSITIVE_INFINITY,
+    })).toBe("animation");
+    expect(cameraSampleSource({
+      hasVideoFrameCallback: false,
+      videoFrames: 0,
+      elapsedMs: 0,
+      sinceVideoFrameMs: Number.POSITIVE_INFINITY,
+    })).toBe("animation");
+    expect(cameraSampleSource({
+      hasVideoFrameCallback: true,
+      videoFrames: 4,
+      elapsedMs: 2_000,
+      sinceVideoFrameMs: 33,
+    })).toBe("video-frame");
+    expect(cameraSampleSource({
+      hasVideoFrameCallback: true,
+      videoFrames: 1,
+      elapsedMs: 2_000,
+      sinceVideoFrameMs: VIDEO_FRAME_FALLBACK_MS,
+    })).toBe("animation");
+
+    let cursor = emptyVideoCursor();
+    const first = takeVideoFrame(cursor, {
+      callbackNow: 180_000,
+      metadata: { presentedFrames: 0, mediaTime: 0, presentationTime: 180_000 },
+      arrivedAt: 180_000,
+    });
+    cursor = first.cursor;
+    const second = takeVideoFrame(cursor, {
+      callbackNow: 180_033,
+      metadata: { presentedFrames: 0, mediaTime: 0, presentationTime: 180_033 },
+      arrivedAt: 180_033,
+    });
+    const repeat = takeVideoFrame(second.cursor, {
+      callbackNow: 180_033,
+      metadata: { presentedFrames: 0, mediaTime: 0, presentationTime: 180_033 },
+      arrivedAt: 180_033,
+    });
+    expect(first.accept).toBe(true);
+    expect(second.accept).toBe(true);
+    expect(second.frameAt - first.frameAt).toBe(33);
+    expect(repeat.accept).toBe(false);
+
+    const counted = takeVideoFrame(emptyVideoCursor(), {
+      callbackNow: 180_000,
+      metadata: { presentedFrames: 1, mediaTime: 3.2, presentationTime: 180_000 },
+      arrivedAt: 180_000,
+    });
+    const next = takeVideoFrame(counted.cursor, {
+      callbackNow: 180_033,
+      metadata: { presentedFrames: 2, mediaTime: 3.233, presentationTime: 180_033 },
+      arrivedAt: 180_033,
+    });
+    const sameCount = takeVideoFrame(next.cursor, {
+      callbackNow: 180_066,
+      metadata: { presentedFrames: 2, mediaTime: 3.266, presentationTime: 180_066 },
+      arrivedAt: 180_066,
+    });
+    expect(next.accept).toBe(true);
+    expect(sameCount.accept).toBe(false);
   });
 });

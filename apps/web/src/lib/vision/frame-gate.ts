@@ -49,6 +49,110 @@ export function classificationTimestamp(frameAt: number, arrivedAt: number, last
   return Math.max(arrived, floor);
 }
 
+/**
+ * How long to wait for requestVideoFrameCallback before the animation clock
+ * feeds the gate. iOS defines the method for a camera stream and then may
+ * never invoke it. A stuck presented-frame count is a separate drop.
+ */
+export const VIDEO_FRAME_FALLBACK_MS = 400;
+
+export interface PhoneVideoMetadata {
+  /** Seconds. A later value must not be stored as the frame's milliseconds. */
+  mediaTime?: number;
+  /** Milliseconds on the performance clock, once the browser has converted it. */
+  presentationTime?: number;
+  expectedDisplayTime?: number;
+  presentedFrames?: number;
+}
+
+const ARRIVAL_SLACK_MS = 2_000;
+const UNIT_RATIO = 20;
+
+/** True when `stamp` is already on the same millisecond clock as `arrivedAt`. */
+export function onArrivalClock(stamp: number, arrivedAt: number) {
+  if (!Number.isFinite(stamp) || !Number.isFinite(arrivedAt) || stamp <= 0) return false;
+  const delta = Math.abs(arrivedAt - stamp);
+  const small = Math.min(Math.abs(arrivedAt), stamp);
+  const large = Math.max(Math.abs(arrivedAt), stamp);
+  if (small > 0 && large / small > UNIT_RATIO) return false;
+  return delta <= ARRIVAL_SLACK_MS;
+}
+
+/**
+ * One millisecond timestamp for the frame gate.
+ * `mediaTime` is seconds. A callback `now` of 0, of those seconds, or of
+ * microseconds is not used. The arrival clock is the fallback so a unit
+ * change cannot become `newest` and reject every later frame.
+ */
+export function framePresentationMs(callbackNow: number, metadata: PhoneVideoMetadata, arrivedAt: number) {
+  if (onArrivalClock(callbackNow, arrivedAt)) return callbackNow;
+  if (typeof metadata.presentationTime === "number" && onArrivalClock(metadata.presentationTime, arrivedAt)) {
+    return metadata.presentationTime;
+  }
+  if (typeof metadata.expectedDisplayTime === "number" && onArrivalClock(metadata.expectedDisplayTime, arrivedAt)) {
+    return metadata.expectedDisplayTime;
+  }
+  return Number.isFinite(arrivedAt) ? arrivedAt : callbackNow;
+}
+
+export interface VideoFrameCursor {
+  presentedFrames: number;
+  mediaTime: number;
+  frameAt: number;
+  /** True after the count changes between two real frames. A stuck 0 never sets this. */
+  presentedAdvanced: boolean;
+}
+
+export function emptyVideoCursor(): VideoFrameCursor {
+  return { presentedFrames: -1, mediaTime: Number.NaN, frameAt: -1, presentedAdvanced: false };
+}
+
+/**
+ * A camera callback whose `presentedFrames` stays 0 is still a new frame when
+ * the millisecond clock moved. Once the count has advanced, a repeat of that
+ * count is the same picture and is not sampled again.
+ */
+export function takeVideoFrame(
+  cursor: VideoFrameCursor,
+  input: { callbackNow: number; metadata: PhoneVideoMetadata; arrivedAt: number },
+): { accept: boolean; frameAt: number; cursor: VideoFrameCursor } {
+  const frameAt = framePresentationMs(input.callbackNow, input.metadata, input.arrivedAt);
+  const presented = input.metadata.presentedFrames;
+  const media = input.metadata.mediaTime;
+  const first = cursor.frameAt < 0;
+  const presentedMoved = typeof presented === "number" && cursor.presentedFrames >= 0 && presented !== cursor.presentedFrames;
+  const counterWorks = cursor.presentedAdvanced || presentedMoved;
+  const mediaMoved = typeof media === "number" && Number.isFinite(media) && media !== cursor.mediaTime;
+  const clockMoved = frameAt > cursor.frameAt;
+  const samePicture = !first && (counterWorks ? !presentedMoved : !clockMoved && !mediaMoved);
+  if (samePicture) return { accept: false, frameAt, cursor };
+  return {
+    accept: true,
+    frameAt,
+    cursor: {
+      presentedFrames: typeof presented === "number" ? presented : cursor.presentedFrames,
+      mediaTime: typeof media === "number" && Number.isFinite(media) ? media : cursor.mediaTime,
+      frameAt,
+      presentedAdvanced: counterWorks,
+    },
+  };
+}
+
+/** The animation clock samples only while the video-frame callback is absent or quiet. */
+export function cameraSampleSource(input: {
+  hasVideoFrameCallback: boolean;
+  videoFrames: number;
+  elapsedMs: number;
+  sinceVideoFrameMs: number;
+}): "video-frame" | "animation" {
+  if (!input.hasVideoFrameCallback) return "animation";
+  if (input.videoFrames <= 0) {
+    return input.elapsedMs >= VIDEO_FRAME_FALLBACK_MS ? "animation" : "video-frame";
+  }
+  if (input.sinceVideoFrameMs >= VIDEO_FRAME_FALLBACK_MS) return "animation";
+  return "video-frame";
+}
+
 export function offerCameraFrame(gate: CameraFrameGate, frameAt: number, now: number, staleMs: number): FrameDecision {
   if (!Number.isFinite(frameAt) || !Number.isFinite(now)) {
     return { action: "ignore", reason: "stale", gate };
