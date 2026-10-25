@@ -11,18 +11,9 @@ import { Reveal } from "@/components/marketing/reveal";
 import { ScoreBoard } from "@/components/marketing/score-board";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { homeMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "PlayFit Club — Move Your Body. Play Your World.",
-  description:
-    "Play Fit Run at home on a TV or laptop with a phone camera. Gyms buy member seats so people can play that same game at home.",
-  openGraph: {
-    title: "PlayFit Club — Move Your Body. Play Your World.",
-    description:
-      "A movement-driven arcade in the browser. One phone is the controller. The TV or laptop is the screen.",
-    type: "website",
-  },
-};
+export const metadata: Metadata = homeMetadata;
 
 const statements = [
   { title: "Your body. Your controls.", copy: "The phone camera is the controller. No console and no extra sensor." },

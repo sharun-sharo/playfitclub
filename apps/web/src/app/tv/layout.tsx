@@ -1,13 +1,9 @@
-import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { tvHomeMetadata } from "@/lib/site-metadata";
 import { TvRemote } from "./tv-remote";
 import "./tv.css";
 
-export const metadata: Metadata = {
-  title: "FitRunner on TV — PlayFit Club",
-  description: "FitRunner on a television. The phone is the controller.",
-  robots: { index: false, follow: false },
-};
+export const metadata = tvHomeMetadata;
 
 export default function TvLayout({ children }: { children: ReactNode }) {
   return (

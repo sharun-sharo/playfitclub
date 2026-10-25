@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
 import { TrackedExternal } from "@/components/analytics/tracked-link";
 import { AppShell } from "@/components/app-shell";
+import { noIndex } from "@/lib/site-metadata";
 import { whatsappUrl } from "@/lib/whatsapp";
 
-export const metadata: Metadata = {
-  title: "Get started — PlayFit Club",
-  description: "PlayFit Club accounts are activated by the team after subscription confirmation.",
-};
+export const metadata = noIndex(
+  "Get started",
+  "There is no public registration. The team opens the account after subscription confirmation. WhatsApp sends an enquiry, not a payment.",
+);
 
 export default function RegisterPage() {
   return (

@@ -2,11 +2,9 @@ import type { Metadata } from "next";
 import { MarketingFrame } from "@/components/marketing/frame";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { privacyMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "Privacy — PlayFit Club",
-  description: "What PlayFit Club measures, and what stays on your phone.",
-};
+export const metadata: Metadata = privacyMetadata;
 
 export default function PrivacyPage() {
   return (

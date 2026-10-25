@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { Suspense } from "react";
 import { playDecisionForUser } from "@fitplay/db";
 import { RoundSignal } from "@/components/analytics/product-signals";
@@ -6,13 +5,13 @@ import { SubscriptionExpired } from "@/components/account/subscription-expired";
 import { FitRunnerV2 } from "@/components/fitrunner-v2/fitrunner-v2";
 import { readUser } from "@/lib/auth";
 import { FREE_DEMO_ACTIVE_SECONDS, fitRunnerAccess } from "@/lib/fitrunner-v2/demo-access";
+import { noIndex } from "@/lib/site-metadata";
 import { TvPlayFrame, TvStatus } from "../tv-chrome";
 
-export const metadata: Metadata = {
-  title: "Play FitRunner — TV",
-  description: "FitRunner on a television. Pair the existing phone controller with the on-screen code.",
-  robots: { index: false, follow: false },
-};
+export const metadata = noIndex(
+  "Fit Run on TV",
+  "FitRunner on this television. Pair the phone with the on-screen code. This screen does not take payment.",
+);
 
 const TV_RENEWAL_NOTE = "Renewal is on your phone. Send the existing WhatsApp renew message from there. This television does not take payment.";
 

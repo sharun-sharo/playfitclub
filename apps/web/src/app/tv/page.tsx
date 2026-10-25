@@ -1,12 +1,8 @@
-import type { Metadata } from "next";
 import { fpDisplay, fpSans } from "@/components/marketing/fonts";
+import { tvHomeMetadata } from "@/lib/site-metadata";
 import { TvHome } from "./tv-home";
 
-export const metadata: Metadata = {
-  title: "PlayFit Club",
-  description: "Play Fit Run on this screen. The phone is the controller.",
-  robots: { index: false, follow: false },
-};
+export const metadata = tvHomeMetadata;
 
 export default function TvHomePage() {
   return (

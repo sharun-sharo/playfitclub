@@ -2,11 +2,9 @@ import type { Metadata } from "next";
 import { MarketingFrame } from "@/components/marketing/frame";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { termsMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "Terms — PlayFit Club",
-  description: "PlayFit Club has not published terms of service yet.",
-};
+export const metadata: Metadata = termsMetadata;
 
 export default function TermsPage() {
   return (

@@ -5,12 +5,10 @@ import { TrackedExternal, TrackedLink } from "@/components/analytics/tracked-lin
 import { MarketingFrame } from "@/components/marketing/frame";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { pricingMetadata } from "@/lib/site-metadata";
 import { whatsappUrl } from "@/lib/whatsapp";
 
-export const metadata: Metadata = {
-  title: "Pricing — PlayFit Club",
-  description: "Listed PlayFit Club plans. Accounts are activated by the PlayFit Club team after subscription confirmation.",
-};
+export const metadata: Metadata = pricingMetadata;
 
 const paidPlans = [
   {

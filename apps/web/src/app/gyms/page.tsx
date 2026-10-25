@@ -4,12 +4,10 @@ import { TrackedExternal } from "@/components/analytics/tracked-link";
 import { MarketingFrame } from "@/components/marketing/frame";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { gymsMetadata } from "@/lib/site-metadata";
 import { whatsappUrl } from "@/lib/whatsapp";
 
-export const metadata: Metadata = {
-  title: "For Gyms — PlayFit Club",
-    description: "Gyms enquire about member seats. The PlayFit Club team activates the gym subscription.",
-};
+export const metadata: Metadata = gymsMetadata;
 
 const steps = [
   {

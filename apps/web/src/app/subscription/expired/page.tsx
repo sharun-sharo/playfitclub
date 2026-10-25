@@ -1,13 +1,10 @@
-import type { Metadata } from "next";
 import { Suspense } from "react";
 import { playDecisionForUser } from "@fitplay/db";
 import { SubscriptionExpired } from "@/components/account/subscription-expired";
 import { readUser } from "@/lib/auth";
+import { noIndex } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "Subscription expired — PlayFit Club",
-  description: "An expired PlayFit Club subscription keeps your history and waits for the team to renew it.",
-};
+export const metadata = noIndex("Subscription expired", "An expired subscription keeps your history and waits for the team to renew it.");
 
 export default function ExpiredSubscriptionPage() {
   return (

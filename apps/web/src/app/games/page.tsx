@@ -3,11 +3,9 @@ import { GameLibrary } from "@/components/marketing/game-library";
 import { MarketingFrame } from "@/components/marketing/frame";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { gamesMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "Games — PlayFit Club",
-  description: "Fit Run is the motion-controlled running adventure you can play now. Fit Fight and Fit Dance are coming soon.",
-};
+export const metadata: Metadata = gamesMetadata;
 
 export default function GamesPage() {
   return (
