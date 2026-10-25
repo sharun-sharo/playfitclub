@@ -47,7 +47,7 @@ Environment:
 - `REALTIME_URL` = the same realtime origin, used by the server health check
 - `NEXT_PUBLIC_ALLOW_SHORT_SESSIONS=false`
 
-Run `npm run vision:fetch` before the build so `public/mediapipe` contains the wasm files and `pose_landmarker_lite.task`. Those files are gitignored and must be produced in CI or committed by your own release process.
+`npm run build` in `apps/web` runs `vision:fetch` before `next build`. A plain `next build` fetches the same assets while loading the Next config, which is what the default Vercel Next.js build runs. That copies the wasm files into `public/mediapipe/wasm` and downloads `pose_landmarker_lite.task`. Those files stay gitignored and are not committed.
 
 QR codes call `resolvePublicAppUrl`. If `NEXT_PUBLIC_APP_URL` is missing or points at localhost, production session creation for QR links fails closed.
 

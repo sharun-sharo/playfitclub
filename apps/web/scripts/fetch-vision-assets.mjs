@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { cpSync, mkdirSync, createWriteStream, existsSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -5,8 +6,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, "../../..");
-const wasmSource = resolve(root, "node_modules/@mediapipe/tasks-vision/wasm");
+const require = createRequire(import.meta.url);
+const visionEntry = require.resolve("@mediapipe/tasks-vision");
+const wasmSource = resolve(dirname(visionEntry), "wasm");
 const publicDir = resolve(here, "../public/mediapipe");
 const wasmTarget = resolve(publicDir, "wasm");
 const modelTarget = resolve(publicDir, "pose_landmarker_lite.task");

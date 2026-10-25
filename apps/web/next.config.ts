@@ -1,7 +1,26 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { NextConfig } from "next";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { trustLocalDevCertificate } from "./dev-realtime-proxy";
 import { devRealtimeProxyOrigin } from "./src/lib/env";
+
+function webRoot() {
+  const cwd = process.cwd();
+  if (existsSync(path.join(cwd, "scripts/fetch-vision-assets.mjs"))) return cwd;
+  const nested = path.join(cwd, "apps/web");
+  if (existsSync(path.join(nested, "scripts/fetch-vision-assets.mjs"))) return nested;
+  throw new Error("Could not find scripts/fetch-vision-assets.mjs");
+}
+
+function ensureVisionAssets() {
+  const root = webRoot();
+  execFileSync(process.execPath, [path.join(root, "scripts/fetch-vision-assets.mjs")], {
+    cwd: root,
+    stdio: "inherit",
+  });
+}
 
 trustLocalDevCertificate([
   path.resolve(process.cwd(), "certs/dev-cert.pem"),
@@ -40,4 +59,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default function config(phase: string): NextConfig {
+  if (phase === PHASE_PRODUCTION_BUILD) ensureVisionAssets();
+  return nextConfig;
+}
