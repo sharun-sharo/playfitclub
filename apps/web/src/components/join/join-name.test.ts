@@ -13,6 +13,7 @@ import {
   JOIN_WAIT,
   friendlyJoinError,
   joinNameMessage,
+  readyToPlayFieldError,
 } from "./join-name";
 
 describe("join name", () => {
@@ -35,5 +36,17 @@ describe("join name", () => {
     expect(friendlyJoinError("RATE_LIMITED", "Too many join attempts. Wait a minute.")).toBe(JOIN_WAIT);
     expect(friendlyJoinError("JOIN_FAILED", "Could not join")).toBe(JOIN_GENERIC);
     expect(friendlyJoinError("INVALID_CODE", "That session code does not exist.")).not.toMatch(/INVALID_CODE|[A-Z2-9]{6}/);
+  });
+
+  it("keeps name and join failures on Ready to Play and drops the TV-offline line", () => {
+    expect(readyToPlayFieldError(JOIN_OFFLINE)).toBeNull();
+    expect(readyToPlayFieldError(null)).toBeNull();
+    expect(readyToPlayFieldError(JOIN_NAME_REQUIRED)).toBe(JOIN_NAME_REQUIRED);
+    expect(readyToPlayFieldError(JOIN_NAME_SHORT)).toBe(JOIN_NAME_SHORT);
+    expect(readyToPlayFieldError(JOIN_NAME_LONG)).toBe(JOIN_NAME_LONG);
+    expect(readyToPlayFieldError(JOIN_NAME_CHARS)).toBe(JOIN_NAME_CHARS);
+    expect(readyToPlayFieldError(JOIN_INVALID)).toBe(JOIN_INVALID);
+    expect(readyToPlayFieldError(JOIN_EXPIRED)).toBe(JOIN_EXPIRED);
+    expect(readyToPlayFieldError(JOIN_GENERIC)).toBe(JOIN_GENERIC);
   });
 });

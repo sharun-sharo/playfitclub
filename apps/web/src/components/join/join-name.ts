@@ -25,6 +25,11 @@ export function joinNameMessage(value: string): string | null {
   return null;
 }
 
+/** Ready to Play name field. Name checks and other join failures stay; the TV-offline line does not. */
+export function readyToPlayFieldError(error: string | null): string | null {
+  return error === JOIN_OFFLINE ? null : error;
+}
+
 /** Player-facing copy. The machine code stays off the screen. */
 export function friendlyJoinError(code?: string, message?: string): string {
   const token = (code ?? "").toUpperCase();

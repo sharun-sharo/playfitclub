@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { JOIN_NAME_MAX } from "@/components/join/join-name";
+import { JOIN_NAME_MAX, readyToPlayFieldError } from "@/components/join/join-name";
 
 export const PHONE_SAFE =
   "pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]";
@@ -136,6 +136,7 @@ export function JoinPanel({
 }) {
   const frame = useVisibleFrame();
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const fieldError = readyToPlayFieldError(error);
 
   useEffect(() => {
     if (document.activeElement?.id !== "name") return;
@@ -185,13 +186,13 @@ export function JoinPanel({
               autoCorrect="off"
               enterKeyHint="go"
               maxLength={JOIN_NAME_MAX}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? "join-name-error" : undefined}
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? "join-name-error" : undefined}
               className="mt-2 h-14 w-full scroll-mb-32 rounded-2xl border border-[#14211A]/15 bg-white px-4 text-base text-[#14211A] outline-none placeholder:text-[#14211A]/40 focus-visible:border-[#14211A] focus-visible:outline-[#14211A]"
             />
-            {error ? (
+            {fieldError ? (
               <p id="join-name-error" role="alert" className="mt-2 text-sm leading-snug text-[#9b2c2c]">
-                {error}
+                {fieldError}
               </p>
             ) : null}
           </div>
