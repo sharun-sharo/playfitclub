@@ -98,6 +98,8 @@ export interface PoseDiagnostics {
   poseAtMs: number;
   /** Phone performance clock when the gesture was confirmed. Same clock as poseAtMs. */
   gestureAtMs: number | null;
+  /** Phone performance clock when a jump, squat, lean, or arm first became a candidate. */
+  candidateAtMs: number | null;
   eventId: string | null;
   joints: string | null;
   /** Standing shoulder-to-hip offset, in torso lengths. */
@@ -115,6 +117,10 @@ export interface PoseRates {
   inferenceMs: number | null;
   /** Latest detectForVideo time. Not a cross-device percentile. */
   lastInferenceMs: number | null;
+  /** Phone performance clock when detectForVideo started. Not a TV clock. */
+  inferenceStartMs: number | null;
+  /** Phone performance clock when detectForVideo returned. Same clock as inferenceStartMs. */
+  inferenceEndMs: number | null;
   /** GPU when the runtime accepts it. CPU after that init throws. */
   delegate: "GPU" | "CPU" | null;
 }
@@ -190,7 +196,17 @@ export class PoseEstimator {
   private inferenceSamples = 0;
   private rateWindowStart = 0;
   private cameraClock = false;
-  private rates: PoseRates = { cameraFps: null, poseFps: null, inferenceMs: null, lastInferenceMs: null, delegate: null };
+  private rates: PoseRates = {
+    cameraFps: null,
+    poseFps: null,
+    inferenceMs: null,
+    lastInferenceMs: null,
+    inferenceStartMs: null,
+    inferenceEndMs: null,
+    delegate: null,
+  };
+  /** Last candidate stamp on this phone. Kept after confirm so the panel can show it. */
+  private lastCandidateAt: number | null = null;
   private frameGate: CameraFrameGate = emptyCameraGate();
   private delegate: "GPU" | "CPU" | null = null;
   /** One skeleton draw for this inference, after the command is handed off. */
@@ -323,6 +339,7 @@ export class PoseEstimator {
     this.detector = resetPhoneForRound(this.detector);
     this.lastAction = "";
     this.lastActionAt = 0;
+    this.lastCandidateAt = null;
     this.holdVertical = true;
   }
 
@@ -398,7 +415,9 @@ export class PoseEstimator {
       this.suspend(CAMERA_LOST_MESSAGE);
       return;
     }
-    this.sampleRates(performance.now(), performance.now() - inferenceStarted);
+    const inferenceEnded = performance.now();
+    this.rates = { ...this.rates, inferenceStartMs: inferenceStarted, inferenceEndMs: inferenceEnded };
+    this.sampleRates(inferenceEnded, inferenceEnded - inferenceStarted);
     this.poseCount = result.landmarks?.length ?? 0;
     const raw = result.landmarks?.[0];
     this.pendingDraw = now - this.lastDraw > 50 ? { points: raw } : null;
@@ -482,7 +501,7 @@ export class PoseEstimator {
         calibrated,
         movement: null,
         actionsEnabled: false,
-        diagnostics: playUpdate ? diagnosticsFrom(playUpdate, this.facing === "user", now, raw) : null,
+        diagnostics: playUpdate ? diagnosticsFrom(playUpdate, this.facing === "user", now, raw, this.rememberCandidate(playUpdate)) : null,
         framing: { ...view, instruction: guidance },
       }, now);
       return;
@@ -521,7 +540,7 @@ export class PoseEstimator {
       calibrated: Boolean(this.detector.neutral),
       movement,
       actionsEnabled: this.actionsOpen && confident && !view.suppressAll,
-      diagnostics: diagnosticsFrom(update, this.facing === "user", now, raw),
+      diagnostics: diagnosticsFrom(update, this.facing === "user", now, raw, this.rememberCandidate(update)),
       framing: view,
     }, now);
   }
@@ -687,6 +706,12 @@ export class PoseEstimator {
     this.removeTimeUpdate = () => video.removeEventListener("timeupdate", onTimeUpdate);
   }
 
+  private rememberCandidate(update: DetectorUpdate) {
+    const live = candidateStamp(update.state);
+    if (live !== null) this.lastCandidateAt = live;
+    return this.lastCandidateAt;
+  }
+
   private noteDiag(update: { events: Array<{ movementType: string }>; state: { recognition: string; lastReject: { reason: string } | null; squat: { phase: string }; jump: { phase: string }; torso: { phase: string }; left: { phase: string }; right: { phase: string } } }) {
     if (!this.diagLog) return;
     const confirmed = update.events.map((event) => event.movementType).join(",") || "none";
@@ -720,6 +745,8 @@ export class PoseEstimator {
       poseFps: this.poseFrames / seconds,
       inferenceMs: this.inferenceSamples > 0 ? this.inferenceTotal / this.inferenceSamples : this.rates.inferenceMs,
       lastInferenceMs: this.rates.lastInferenceMs,
+      inferenceStartMs: this.rates.inferenceStartMs,
+      inferenceEndMs: this.rates.inferenceEndMs,
       delegate: this.delegate,
     };
     this.cameraFrames = 0;
@@ -779,11 +806,26 @@ export function gestureLabel(movement: string) {
   return movement.replaceAll("_", " ").toUpperCase();
 }
 
+function candidateStamp(state: DetectorState) {
+  const stamps: number[] = [];
+  if (state.squat.phase === "CANDIDATE") stamps.push(state.squat.since);
+  if (state.jump.phase === "CANDIDATE") stamps.push(state.jump.since);
+  if (state.torso.phase === "CANDIDATE") stamps.push(state.torso.since);
+  if (state.left.phase === "ARM_RISING") stamps.push(state.left.since);
+  if (state.right.phase === "ARM_RISING") stamps.push(state.right.since);
+  if ((state.takeoffPhase === "PREPARING" || state.takeoffPhase === "TAKEOFF_CANDIDATE") && state.prepSince !== null) {
+    stamps.push(state.prepSince);
+  }
+  if (!stamps.length) return null;
+  return Math.min(...stamps);
+}
+
 function diagnosticsFrom(
   update: DetectorUpdate,
   mirrored: boolean,
   poseAtMs: number,
   landmarks: Array<{ x: number; y: number; visibility?: number }> | undefined,
+  candidateAtMs: number | null,
 ): PoseDiagnostics {
   const signals = update.signals;
   const stamp = update.state.lastTimestamp ?? poseAtMs;
@@ -833,6 +875,7 @@ function diagnosticsFrom(
     cooldownMs: Math.max(0, update.state.recoverUntil - stamp),
     poseAtMs,
     gestureAtMs: update.state.lastGesture?.at ?? null,
+    candidateAtMs,
     eventId: update.state.lastGesture?.eventId ?? null,
     joints: formatBodyJoints(landmarks),
     torsoNeutral: update.state.neutral?.shoulderHip ?? 0,

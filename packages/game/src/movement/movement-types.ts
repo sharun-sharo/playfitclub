@@ -212,17 +212,16 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   jumpPrepKnee: 12,
   jumpPrepMs: 50,
   /**
-   * Ambiguous dips wait this long. A pre-jump knee bend is inside it.
-   * A rise above jumpRise, or a hop that already cleared the distance gate,
-   * leaves the window on that camera frame and emits one jump.
-   * 160 sits inside the 120–200ms band. It is not a delay on a confirmed takeoff.
+   * A still, ambiguous crouch waits this long so a rise in the window can be a jump.
+   * A drop already past squatEnterDrop that is still descending, and already still
+   * for two samples, does not wait. A confirmed takeoff does not wait.
+   * 160 sits inside the 120–200ms band.
    */
   dipClassifyMs: 160,
   /**
-   * Hip drops under this can still be the crouch before a jump.
-   * The working squat gate stays squatEnterDrop 0.10. This does not make squats deep-only.
-   * A settled drop at or above 0.32 confirms on the next still frame, which is how the
-   * 0.40 torso squat fixtures stay inside one or two camera frames.
+   * Hip drops under this can still be the crouch before a jump while the hips
+   * are still moving down. The squat gate stays squatEnterDrop 0.10.
+   * A settled drop past 0.10 uses the two-sample path and does not wait for 0.32.
    */
   jumpPrepMaxDrop: 0.32,
   kneeExtendDeg: 8,

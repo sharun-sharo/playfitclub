@@ -5,7 +5,7 @@ import { CLIENT_EVENTS, PROTOCOL_VERSION, SERVER_EVENTS } from "@fitplay/shared"
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { phoneBodyStatus, readinessInProgress } from "@/components/join/body-status";
-import { appendMotionDiag, armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagDownload, motionDiagnosticsEnabled, readMotionDiagFlag, trackingStatusLine, type MotionDiagSample, type QueuedMovement } from "@/components/join/phone-commands";
+import { appendMotionDiag, armDiagnosticLabel, authoritativeMoveLabel, buildMovementSocketBody, candidateLabel, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagDownload, motionDiagnosticsEnabled, nextMovementSequence, readMotionDiagFlag, TEST_MOVEMENT_BUTTONS, testMovementAllowed, trackingStatusLine, type MotionDiagSample, type QueuedMovement } from "@/components/join/phone-commands";
 import {
   CameraSetup,
   connectionCopy,
@@ -47,7 +47,15 @@ import { readMotionThresholds } from "@/lib/vision/motion-thresholds";
 import { containFrame } from "@/lib/vision/preview-fit";
 import { gestureLabel, openCamera, PoseEstimator, releaseCamera, type PoseDiagnostics, type PoseUiState } from "@/lib/vision/pose-estimator";
 
-const EMPTY_RATES = { cameraFps: null, poseFps: null, inferenceMs: null, lastInferenceMs: null, delegate: null as "GPU" | "CPU" | null };
+const EMPTY_RATES = {
+  cameraFps: null,
+  poseFps: null,
+  inferenceMs: null,
+  lastInferenceMs: null,
+  inferenceStartMs: null,
+  inferenceEndMs: null,
+  delegate: null as "GPU" | "CPU" | null,
+};
 const PHONE_INSTALL_KEY = "fitplay.phone.install";
 
 function phoneInstallId() {
@@ -207,6 +215,7 @@ export function PhoneSession({ code }: { code: string }) {
   const hiddenRef = useRef(false);
   const uprightRef = useRef(true);
   const phaseRef = useRef("lobby");
+  const sequenceRef = useRef(0);
   const framingPauseRef = useRef(false);
   const calibratedRef = useRef(false);
   const diagnosticsOpenRef = useRef(false);
@@ -806,8 +815,12 @@ export function PhoneSession({ code }: { code: string }) {
               grounded: diagnostics.grounded,
               frameMs: diagnostics.poseAtMs,
               inferenceMs: state.rates.lastInferenceMs,
+              inferenceStartMs: state.rates.inferenceStartMs,
+              inferenceEndMs: state.rates.inferenceEndMs,
+              candidateMs: diagnostics.candidateAtMs,
               confirmMs: diagnostics.gestureAtMs,
               sendMs: state.movement ? lastSendMsRef.current : null,
+              emitMs: state.movement ? lastSendMsRef.current : null,
             });
           }
           const hands = syncHandsRef.current();
@@ -927,21 +940,42 @@ export function PhoneSession({ code }: { code: string }) {
       cameraLive: bodyActionsRef.current,
     })) return;
     const eventId = draft.eventId.length >= 8 ? draft.eventId : draft.eventId.padEnd(8, "0");
-    const queuedAt = Date.now();
-    outboxRef.current = enqueueMovement(outboxRef.current, {
+    const sequenceNumber = nextMovementSequence(sequenceRef.current, draft.sequenceNumber);
+    sequenceRef.current = sequenceNumber;
+    queueMovement(buildMovementSocketBody({
       eventId,
-      queuedAt,
+      playerId: current.playerId,
+      sessionId: current.sessionId,
+      movementType: draft.movementType,
+      confidence: draft.confidence,
+      clientTimestamp: Date.now(),
+      sequenceNumber,
+    }));
+  }
+
+  function sendTestMovement(movementType: (typeof TEST_MOVEMENT_BUTTONS)[number]["movementType"]) {
+    const current = identity.current;
+    if (!current || !testMovementAllowed(phaseRef.current)) return;
+    const sequenceNumber = nextMovementSequence(sequenceRef.current, 0);
+    sequenceRef.current = sequenceNumber;
+    const eventId = crypto.randomUUID().replaceAll("-", "");
+    queueMovement(buildMovementSocketBody({
+      eventId,
+      playerId: current.playerId,
+      sessionId: current.sessionId,
+      movementType,
+      confidence: 1,
+      clientTimestamp: Date.now(),
+      sequenceNumber,
+    }));
+  }
+
+  function queueMovement(body: MovementPacket) {
+    outboxRef.current = enqueueMovement(outboxRef.current, {
+      eventId: body.eventId,
+      queuedAt: body.clientTimestamp,
       sent: false,
-      body: {
-        v: PROTOCOL_VERSION,
-        eventId,
-        playerId: current.playerId,
-        sessionId: current.sessionId,
-        movementType: draft.movementType,
-        confidence: draft.confidence,
-        clientTimestamp: queuedAt,
-        sequenceNumber: draft.sequenceNumber,
-      },
+      body,
     });
     flushMovesRef.current();
   }
@@ -1239,43 +1273,62 @@ export function PhoneSession({ code }: { code: string }) {
               </div>
             ) : null}
           </div>
-          {showDiagnostics && ui.diagnostics ? (
+          {(showDiagnostics && ui.diagnostics) || (motionDiag && phase === "running") ? (
             <aside
               data-motion-debug=""
               className="pointer-events-none absolute top-24 left-[max(0.75rem,env(safe-area-inset-left))] z-20 max-h-[55dvh] w-60 overflow-y-auto rounded-xl bg-black/70 px-2 py-1.5 font-mono text-[10px] leading-snug text-white/85"
             >
-              {motionDebugLines({
-                confidence: ui.diagnostics.confidence,
-                kneeAngle: ui.diagnostics.kneeAngle,
-                hipDrop: ui.diagnostics.hipDrop,
-                hipVelocity: ui.diagnostics.hipVelocity,
-                recognition: ui.diagnostics.recognition,
-                jumpConfidence: ui.diagnostics.jumpConfidence,
-                squatConfidence: ui.diagnostics.squatConfidence,
-                command: ui.diagnostics.lastGesture,
-                shoulderVelocity: ui.diagnostics.shoulderVelocity,
-                kneeExtension: ui.diagnostics.kneeExtension,
-                jumpCandidate: ui.diagnostics.takeoffPhase,
-                jumpConfirmation: ui.diagnostics.jumpPhase,
-                squatArbitration: ui.diagnostics.squatArbitration,
-                lastJump: ui.diagnostics.lastJump,
-                serverAck: authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck }),
-                grounded: ui.diagnostics.grounded,
-                cameraFps: ui.rates.cameraFps,
-                frameMs: ui.diagnostics.poseAtMs,
-                inferenceMs: ui.rates.lastInferenceMs,
-                confirmMs: ui.diagnostics.gestureAtMs,
-                sendMs: trace.sentPhoneMs,
-                delegate: ui.rates.delegate,
-              }).map((line) => (
-                <p key={line}>{line}</p>
-              ))}
+              {ui.diagnostics
+                ? motionDebugLines({
+                    confidence: ui.diagnostics.confidence,
+                    kneeAngle: ui.diagnostics.kneeAngle,
+                    hipDrop: ui.diagnostics.hipDrop,
+                    hipVelocity: ui.diagnostics.hipVelocity,
+                    recognition: ui.diagnostics.recognition,
+                    jumpConfidence: ui.diagnostics.jumpConfidence,
+                    squatConfidence: ui.diagnostics.squatConfidence,
+                    command: ui.diagnostics.lastGesture,
+                    shoulderVelocity: ui.diagnostics.shoulderVelocity,
+                    kneeExtension: ui.diagnostics.kneeExtension,
+                    jumpCandidate: ui.diagnostics.takeoffPhase,
+                    jumpConfirmation: ui.diagnostics.jumpPhase,
+                    squatArbitration: ui.diagnostics.squatArbitration,
+                    lastJump: ui.diagnostics.lastJump,
+                    serverAck: authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck }),
+                    grounded: ui.diagnostics.grounded,
+                    cameraFps: ui.rates.cameraFps,
+                    frameMs: ui.diagnostics.poseAtMs,
+                    inferenceMs: ui.rates.lastInferenceMs,
+                    inferenceStartMs: ui.rates.inferenceStartMs,
+                    inferenceEndMs: ui.rates.inferenceEndMs,
+                    candidateMs: ui.diagnostics.candidateAtMs,
+                    confirmMs: ui.diagnostics.gestureAtMs,
+                    sendMs: trace.sentPhoneMs,
+                    delegate: ui.rates.delegate,
+                  }).map((line) => <p key={line}>{line}</p>)
+                : null}
+              {motionDiag && phase === "running" ? (
+                <div className="pointer-events-auto mt-1 grid grid-cols-2 gap-1">
+                  {TEST_MOVEMENT_BUTTONS.map((button) => (
+                    <button
+                      key={button.movementType}
+                      type="button"
+                      className="min-h-11 rounded-md bg-white/15 px-1 text-left text-[10px] font-semibold text-white"
+                      onClick={() => sendTestMovement(button.movementType)}
+                    >
+                      {button.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <button type="button" className="pointer-events-auto mt-1 min-h-8 w-full rounded-md bg-white/15 text-left text-white" onClick={downloadMotionLog}>
                 Download log
               </button>
-              <p>candidate {candidateLabel(ui.diagnostics)}</p>
-              <p>confirmed {ui.diagnostics.lastGesture || trace.lastGesture || "none"}</p>
+              <p>candidate {ui.diagnostics ? candidateLabel(ui.diagnostics) : "none"}</p>
+              <p>confirmed {ui.diagnostics?.lastGesture || trace.lastGesture || "none"}</p>
               <p>sent {trace.lastSent || "none"}</p>
+              <p>emit {trace.sentPhoneMs == null ? "—" : `${Math.round(trace.sentPhoneMs)} phone date`}</p>
+              <p>server ack {trace.serverAck || trace.lastAck || "none"}</p>
               <p>ack {trace.lastAck || "none"}</p>
               <p>rtt {trace.phoneRoundTripMs === null ? "—" : `${trace.phoneRoundTripMs}ms`}</p>
               <p>{authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck })}</p>
@@ -1477,9 +1530,13 @@ function diagnosticRows(
     ["State", diagnostics?.recognition ?? "—"],
     ["Last command sent", trace.lastSent || "none"],
     ["Frame", clockLabel(diagnostics?.poseAtMs, "phone performance")],
+    ["Inference start", clockLabel(ui.rates.inferenceStartMs, "phone performance")],
+    ["Inference end", clockLabel(ui.rates.inferenceEndMs, "phone performance")],
     ["Inference", ui.rates.lastInferenceMs == null ? "—" : `${ui.rates.lastInferenceMs.toFixed(1)} ms`],
+    ["Candidate time", clockLabel(diagnostics?.candidateAtMs, "phone performance")],
     ["Delegate", ui.rates.delegate ?? "—"],
     ["Gesture detected", clockLabel(trace.gestureAtMs ?? diagnostics?.gestureAtMs, "phone performance")],
+    ["Emit", clockLabel(trace.sentPhoneMs, "phone date")],
     ["Command sent", clockLabel(trace.sentPhoneMs, "phone date")],
     ["Command accepted", clockLabel(trace.serverMs, "server date")],
     ["Command executed", clockLabel(trace.tvMs, "TV date")],

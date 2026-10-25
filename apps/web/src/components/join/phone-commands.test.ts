@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHandsFree, type HandsFreeSample } from "../../lib/vision/hands-free";
-import { appendMotionDiag, armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, canSendMovement, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, groundedLabel, leanOverlayText, liveGestureName, motionDebugLines, motionDiagDownload, motionDiagnosticsEnabled, readMotionDiagFlag, shouldRetryMovement, trackingStatusLine, type MotionDiagSample } from "./phone-commands";
+import { appendMotionDiag, armDiagnosticLabel, authoritativeMoveLabel, buildMovementSocketBody, candidateLabel, canSendMovement, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, groundedLabel, leanOverlayText, liveGestureName, motionDebugLines, motionDiagDownload, motionDiagnosticsEnabled, nextMovementSequence, readMotionDiagFlag, shouldRetryMovement, TEST_MOVEMENT_BUTTONS, testMovementAllowed, trackingStatusLine, type MotionDiagSample } from "./phone-commands";
 
 const live = {
   controllerOn: true,
@@ -73,8 +73,34 @@ describe("phone command gate", () => {
     expect(timed).toContain("inference 18.2 ms");
     expect(timed).toContain("confirm 1205");
     expect(timed).toContain("send 1300");
+    expect(timed).toContain("emit 1300");
+    expect(timed).toContain("inference start —");
+    expect(timed).toContain("candidate —");
     expect(timed).toContain("delegate GPU");
     expect(timed.join(" ")).not.toMatch(/token|session|name/i);
+    const stamped = motionDebugLines({
+      confidence: 0.86,
+      kneeAngle: 141.2,
+      hipDrop: 0.18,
+      hipVelocity: 1.4,
+      recognition: "POSSIBLE_JUMP_PREPARATION",
+      jumpConfidence: 0.42,
+      squatConfidence: 0.7,
+      command: "none",
+      frameMs: 1200,
+      inferenceMs: 18.2,
+      inferenceStartMs: 1180,
+      inferenceEndMs: 1198.2,
+      candidateMs: 1190,
+      confirmMs: 1205,
+      sendMs: 1_700_000_000_000,
+    });
+    expect(stamped).toContain("inference start 1180");
+    expect(stamped).toContain("inference end 1198");
+    expect(stamped).toContain("candidate 1190");
+    expect(stamped).toContain("confirm 1205");
+    expect(stamped).toContain("emit 1700000000000");
+    expect(stamped.join(" ")).not.toMatch(/token|session|name/i);
   });
 
   it("downloads a short pose log with timestamps and without identity fields", () => {
@@ -113,6 +139,40 @@ describe("phone command gate", () => {
     expect(groundedLabel("takeoff")).toBe("airborne");
     expect(groundedLabel("grounded")).toBe("grounded");
     expect(groundedLabel("landing")).toBe("grounded");
+  });
+
+  it("builds the test-button socket body with the same fields as a gesture", () => {
+    const gesture = buildMovementSocketBody({
+      eventId: "mv01abc123",
+      playerId: "player-1",
+      sessionId: "session-1",
+      movementType: "jump",
+      confidence: 0.86,
+      clientTimestamp: 1_700_000_000_000,
+      sequenceNumber: 4,
+    });
+    const pressed = buildMovementSocketBody({
+      eventId: "abc123def4567890",
+      playerId: "player-1",
+      sessionId: "session-1",
+      movementType: "jump",
+      confidence: 1,
+      clientTimestamp: 1_700_000_000_100,
+      sequenceNumber: nextMovementSequence(4, 0),
+    });
+    expect(Object.keys(pressed).sort()).toEqual(Object.keys(gesture).sort());
+    expect(pressed.movementType).toBe(gesture.movementType);
+    expect(pressed.v).toBe(gesture.v);
+    expect(pressed.eventId).not.toBe(gesture.eventId);
+    expect(pressed.sequenceNumber).toBe(5);
+    expect(nextMovementSequence(5, 3)).toBe(6);
+    expect(testMovementAllowed("running")).toBe(true);
+    expect(testMovementAllowed("paused")).toBe(false);
+    expect(testMovementAllowed("lobby")).toBe(false);
+    expect(TEST_MOVEMENT_BUTTONS.map((button) => button.movementType)).toEqual(["jump", "squat", "lean_left", "lean_right"]);
+    expect(TEST_MOVEMENT_BUTTONS.map((button) => button.label)).toEqual(["TEST JUMP", "TEST SQUAT", "TEST LEFT", "TEST RIGHT"]);
+    const shown = `${pressed.movementType} ${pressed.eventId}`;
+    expect(shown).not.toMatch(/token|displayName|joinCode/i);
   });
 
   it("hides motion diagnostics in production unless the tester flag is set", () => {

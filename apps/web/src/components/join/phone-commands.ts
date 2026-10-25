@@ -1,3 +1,5 @@
+import { PROTOCOL_VERSION } from "@fitplay/shared";
+
 /** Gates gameplay commands. Practice, taps, and recovery buttons never pass this. */
 export function canSendMovement(flags: {
   controllerOn: boolean;
@@ -34,6 +36,51 @@ export function gameplaySendAllowed(input: {
     cameraLive: input.cameraLive,
   });
 }
+
+/** Socket body shared by a real gesture and a motiondiag test button. */
+export function buildMovementSocketBody(input: {
+  eventId: string;
+  playerId: string;
+  sessionId: string;
+  movementType: "lean_left" | "lean_right" | "squat" | "jump" | "punch" | "hold";
+  confidence: number;
+  clientTimestamp: number;
+  sequenceNumber: number;
+}) {
+  return {
+    v: PROTOCOL_VERSION,
+    eventId: input.eventId,
+    playerId: input.playerId,
+    sessionId: input.sessionId,
+    movementType: input.movementType,
+    confidence: input.confidence,
+    clientTimestamp: input.clientTimestamp,
+    sequenceNumber: input.sequenceNumber,
+  };
+}
+
+/**
+ * One increasing sequence for gestures and test buttons.
+ * A test press must not reuse a number the server already accepted, and the next
+ * gesture must stay above that press.
+ */
+export function nextMovementSequence(lastSent: number, proposed: number) {
+  const last = Number.isFinite(lastSent) ? lastSent : 0;
+  const next = Number.isFinite(proposed) ? Math.floor(proposed) : 0;
+  return Math.max(last + 1, Math.max(0, next));
+}
+
+/** Test buttons send only while the round is running. One press is one new event. */
+export function testMovementAllowed(phase: string) {
+  return phase === "running";
+}
+
+export const TEST_MOVEMENT_BUTTONS = [
+  { label: "TEST JUMP", movementType: "jump" },
+  { label: "TEST SQUAT", movementType: "squat" },
+  { label: "TEST LEFT", movementType: "lean_left" },
+  { label: "TEST RIGHT", movementType: "lean_right" },
+] as const;
 
 /** A gesture is sent once. A stale, duplicate, or rejected command is not sent again. */
 export function shouldRetryMovement(reason: string | null, ageMs: number, staleMs = 800) {
@@ -170,9 +217,15 @@ export function motionDebugLines(input: {
   frameMs?: number | null;
   /** Latest detectForVideo duration on this phone. */
   inferenceMs?: number | null;
+  /** Phone performance clock when detectForVideo started. */
+  inferenceStartMs?: number | null;
+  /** Phone performance clock when detectForVideo returned. */
+  inferenceEndMs?: number | null;
+  /** Phone performance clock when the gesture became a candidate. */
+  candidateMs?: number | null;
   /** Frame time when the gesture was confirmed. */
   confirmMs?: number | null;
-  /** Phone date stamp when the socket emit ran. Not a duration. */
+  /** Phone date stamp when the socket emit ran. Not a duration, and not a TV clock. */
   sendMs?: number | null;
   delegate?: "GPU" | "CPU" | null;
 }) {
@@ -198,8 +251,12 @@ export function motionDebugLines(input: {
     `server ${input.serverAck || "none"}`,
     `body ${input.grounded || "grounded"}`,
     `frame ${stamp(input.frameMs)}`,
+    `inference start ${stamp(input.inferenceStartMs)}`,
+    `inference end ${stamp(input.inferenceEndMs)}`,
     `inference ${input.inferenceMs == null || !Number.isFinite(input.inferenceMs) ? "—" : `${input.inferenceMs.toFixed(1)} ms`}`,
+    `candidate ${stamp(input.candidateMs)}`,
     `confirm ${stamp(input.confirmMs)}`,
+    `emit ${stamp(input.sendMs)}`,
     `send ${stamp(input.sendMs)}`,
     `delegate ${input.delegate ?? "—"}`,
   ];
@@ -227,8 +284,13 @@ export interface MotionDiagSample {
   grounded: string;
   frameMs?: number | null;
   inferenceMs?: number | null;
+  inferenceStartMs?: number | null;
+  inferenceEndMs?: number | null;
+  candidateMs?: number | null;
   confirmMs?: number | null;
+  /** Phone date when the socket emit ran. */
   sendMs?: number | null;
+  emitMs?: number | null;
 }
 
 export function groundedLabel(jumpMotion: string) {
@@ -266,8 +328,12 @@ export function motionDiagDownload(samples: MotionDiagSample[]) {
       grounded: sample.grounded,
       frameMs: diagNumber(sample.frameMs ?? null),
       inferenceMs: diagNumber(sample.inferenceMs ?? null),
+      inferenceStartMs: diagNumber(sample.inferenceStartMs ?? null),
+      inferenceEndMs: diagNumber(sample.inferenceEndMs ?? null),
+      candidateMs: diagNumber(sample.candidateMs ?? null),
       confirmMs: diagNumber(sample.confirmMs ?? null),
       sendMs: diagNumber(sample.sendMs ?? null),
+      emitMs: diagNumber(sample.emitMs ?? sample.sendMs ?? null),
     })),
   });
 }

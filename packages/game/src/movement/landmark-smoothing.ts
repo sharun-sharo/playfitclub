@@ -1,9 +1,10 @@
 import type { Landmark, PoseFrame } from "./movement-types";
 
 /**
- * One blend per camera frame. Alpha near 1 shows a held pose within one or two frames.
- * It is not a multi-frame average. A lane emits on the frame the smoothed pose is already
- * past the line. A squat still has to remain down on the next frame.
+ * One blend per camera frame. Alpha near 1 reaches most of a step on the next sample.
+ * Jump, squat, and lean onset read the raw sample, because a step that lands on the
+ * line never quite arrives through this blend. The phone skeleton is drawn from the
+ * camera sample, not from this blend.
  */
 export function smoothFrame(
   previous: Array<{ x: number; y: number; z?: number } | null>,

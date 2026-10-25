@@ -1218,6 +1218,8 @@ export async function startFitRunner(
       fx.prime();
       const acted = actPose(event);
       if (acted) showCommand(event.movementType);
+      // This duration is the TV performance clock, from this handler through the draw.
+      // Do not subtract a phone timestamp from it.
       return reportPose(event, acted, acted ? null : "not_ready", acted ? Math.round(performance.now() - opened) : null);
     }
 
@@ -1242,6 +1244,9 @@ export async function startFitRunner(
       });
     }
 
+    // Arrow keys and Space call jump, roll, or stepLane on this TV. They do not emit
+    // movement:event and they do not go through the phone camera. Camera commands
+    // arrive later, in applyPose, after the phone and the server.
     function onKey(event: KeyboardEvent) {
       if (finished || demoOver || livesHold || courseMode === "hold") return;
       if (courseMode !== "live" && canvas.dataset.tutorialKeys !== "1") return;

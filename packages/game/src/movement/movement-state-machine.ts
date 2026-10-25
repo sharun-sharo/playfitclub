@@ -354,6 +354,23 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   signals.riseSpeed = Math.max(signals.riseSpeed, peakRise);
   signals.shoulderVelocity = shoulderSpeed;
   signals.ankleVelocity = ankleSpeed;
+  // Alpha 0.92 never quite reaches a lean or a hip drop that lands on the line.
+  // Jump speed is already the raw hip. Onset for jump, squat, and lean uses the raw
+  // sample too. The smoother above still updates. The skeleton is a separate draw.
+  const rawPose = classifyPose(mirrored.landmarks, state.neutral, state.thresholds, peakRise);
+  if (rawPose.ok) {
+    signals.hipDrop = rawPose.hipDrop;
+    signals.torsoLean = rawPose.torsoLean;
+    signals.leftArm = rawPose.leftArm;
+    signals.rightArm = rawPose.rightArm;
+    signals.ankleRise = rawPose.ankleRise;
+    signals.kneeAngle = rawPose.kneeAngle;
+    signals.kneeFlex = rawPose.kneeFlex;
+    signals.ankleFlex = rawPose.ankleFlex;
+    signals.forwardBend = rawPose.forwardBend;
+    signals.legsReady = rawPose.legsReady;
+    signals.torsoFold = rawPose.torsoFold;
+  }
   if (!signals.ok || signals.confidence < state.thresholds.minActionConfidence) {
     const reason: PoseRejectReason = !signals.ok && signals.reason === "missing" ? "tracking_lost" : "low_confidence";
     const lostSince = state.lostSince ?? mirrored.timestampMs;
@@ -717,13 +734,17 @@ function transitionPhase(
     if (!squatLatched) {
       const since = squat.phase === "CANDIDATE" ? squat.since : now;
       const held = squat.phase === "CANDIDATE" && now - since >= thresholds.squatHoldMs;
-      // An ambiguous dip waits dipClassifyMs. Takeoff during that window is a jump, handled above.
-      // A deeper settled squat does not wait. A dip that is still falling does not confirm yet.
+      // A still crouch under jumpPrepMaxDrop keeps dipClassifyMs. The rise inside that
+      // window is a jump. The old check also waited those 160ms while the hips were still
+      // descending, after the drop was already past squatEnterDrop and two samples were still.
+      // That descent emits on this frame. A one-frame bob never has squatCalm.
       const dipAgeNow = prepSince !== null ? now - prepSince : Number.POSITIVE_INFINITY;
       const ambiguousDip = signals.hipDrop < thresholds.jumpPrepMaxDrop;
       const falling = signals.hipVelocity < -thresholds.jumpRise;
       const windowOpen = dipAgeNow < thresholds.dipClassifyMs;
-      const deferSquat = jumpMotion === "preparing" && windowOpen && (ambiguousDip || falling);
+      const settledSquat = held && squatStill && squatCalm && signals.hipDrop > thresholds.squatEnterDrop;
+      const deferSquat =
+        jumpMotion === "preparing" && windowOpen && ambiguousDip && !(settledSquat && falling);
       if (held && squatStill && squatCalm && !deferSquat) {
         const sent = emit("squat", signals.confidence);
         squatArbitration = "emitted";

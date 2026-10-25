@@ -2444,3 +2444,119 @@ describe("same-frame jump and partial lane re-arm", () => {
     expect(events[0]?.clientTimestamp).toBe(2 * 33);
   });
 });
+
+describe("camera onset without the extra waits", () => {
+  function play(frames: PoseFrame[]) {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: DEFAULT_THRESHOLDS.smoothingAlpha }), neutral);
+    const events = [];
+    for (const frame of frames) {
+      const update = pushPose(state, frame);
+      state = update.state;
+      events.push(...update.events);
+    }
+    return { events };
+  }
+
+  it("emits a qualifying jump on the rise frame, not after dipClassifyMs", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.smoothingAlpha).toBe(0.92);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    expect(JUMP_RISE_DISPLACEMENT).toBe(0.011);
+    const frame = 33;
+    const riseAt = 5 * frame;
+    const played = play(
+      Array.from({ length: 8 }, (_, index) => {
+        const dip = index === 3 || index === 4;
+        return pose({
+          time: index * frame,
+          hipDrop: dip || index === 5 ? 0.03 : 0,
+          rise: index === 5 ? 0.008 : 0,
+        });
+      }),
+    );
+    const jump = played.events.find((event) => event.movementType === "jump");
+    expect(jump?.clientTimestamp).toBe(riseAt);
+    expect((jump?.clientTimestamp ?? 0) - riseAt).toBe(0);
+    expect(played.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+
+  it("keeps the 160ms window for a still crouch so the rise can be a jump", () => {
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    const frame = 33;
+    const played = play(Array.from({ length: 14 }, (_, index) => pose({ time: index * frame, hipDrop: index >= 2 ? 0.024 : 0 })));
+    const squats = played.events.filter((event) => event.movementType === "squat");
+    expect(squats).toHaveLength(1);
+    expect(played.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+    expect((squats[0]?.clientTimestamp ?? 0) - 2 * frame).toBeGreaterThanOrEqual(DEFAULT_THRESHOLDS.dipClassifyMs);
+  });
+
+  it("emits a descending squat once two samples are past 0.10, without the extra 160ms", () => {
+    const frame = 33;
+    const played = play(Array.from({ length: 16 }, (_, index) => pose({ time: index * frame, hipDrop: index * 0.004 })));
+    const squat = played.events.find((event) => event.movementType === "squat");
+    // First sample past 0.10 is 165ms. The next descending sample emits.
+    // The old (ambiguous || falling) gate waited until that dip was 160ms old.
+    expect(squat?.clientTimestamp).toBe(198);
+    expect((squat?.clientTimestamp ?? 0) - 165).toBe(frame);
+    expect((squat?.clientTimestamp ?? 0) - 165).toBeLessThan(DEFAULT_THRESHOLDS.dipClassifyMs);
+    expect(played.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+    expect(played.events.filter((event) => event.movementType === "squat")).toHaveLength(1);
+  });
+
+  it("emits left and right on the frame the lean crosses 0.16, and a hold does not repeat", () => {
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    expect(DEFAULT_THRESHOLDS.torsoLeanHoldMs).toBe(0);
+    expect(torsoLeanReleaseLine(0.16, 0.07)).toBeCloseTo(0.115, 5);
+    const left = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * 33 })),
+      ...Array.from({ length: 6 }, (_, index) => pose({ time: (2 + index) * 33, shoulderLean: -0.032 })),
+    ]);
+    expect(left.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+    expect(left.events[0]?.clientTimestamp).toBe(2 * 33);
+
+    const right = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * 33 })),
+      ...Array.from({ length: 4 }, (_, index) => pose({ time: (2 + index) * 33, shoulderLean: 0.032 })),
+    ]);
+    expect(right.events.map((event) => event.movementType)).toEqual(["lean_right"]);
+    expect(right.events[0]?.clientTimestamp).toBe(2 * 33);
+
+    const again = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * 33 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (2 + index) * 33, shoulderLean: -0.032 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (5 + index) * 33, shoulderLean: -0.02 })),
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: (8 + index) * 33, shoulderLean: -0.032 })),
+    ]);
+    expect(again.events.map((event) => event.movementType)).toEqual(["lean_left", "lean_left"]);
+    expect(again.events[1]?.clientTimestamp).toBe(8 * 33);
+  });
+
+  it("does not squat or jump a one-frame bob, landing knees, a stand-up, or both arms", () => {
+    const bob = play(Array.from({ length: 8 }, (_, index) => pose({ time: index * 33, hipDrop: index === 3 ? 0.024 : 0 })));
+    expect(bob.events.filter((event) => event.movementType === "squat" || event.movementType === "jump")).toHaveLength(0);
+
+    const deepBob = play(Array.from({ length: 8 }, (_, index) => pose({ time: index * 33, hipDrop: index === 3 ? 0.2 : 0 })));
+    expect(deepBob.events).toHaveLength(0);
+
+    const landing = play([
+      ...Array.from({ length: 3 }, (_, index) => pose({ time: index * 33 })),
+      pose({ time: 99, hipDrop: 0.02, kneeForward: 0.04 }),
+      pose({ time: 132, rise: 0.02, kneeForward: 0.02 }),
+      pose({ time: 165, rise: 0.03, kneeForward: 0.08 }),
+      pose({ time: 198, hipDrop: 0.04, kneeForward: 0.1 }),
+      pose({ time: 231, hipDrop: 0.02, kneeForward: 0.06 }),
+      ...Array.from({ length: 6 }, (_, index) => pose({ time: 264 + index * 33 })),
+    ]);
+    expect(landing.events.map((event) => event.movementType)).toEqual(["jump"]);
+
+    const stand = play(Array.from({ length: 12 }, (_, index) => pose({ time: index * 60, hipDrop: index >= 2 && index < 7 ? 0.2 : 0 })));
+    expect(stand.events.filter((event) => event.movementType === "squat")).toHaveLength(1);
+    expect(stand.events.filter((event) => event.movementType === "jump")).toHaveLength(0);
+
+    const arms = play(Array.from({ length: 8 }, (_, index) => pose({ time: index * 33, armsOut: index >= 2 })));
+    expect(arms.events).toHaveLength(0);
+  });
+});
