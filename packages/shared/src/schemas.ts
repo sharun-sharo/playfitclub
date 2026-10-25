@@ -79,9 +79,23 @@ export const movementResultSchema = z.object({
   executedAtMs: z.number().finite().optional(),
 });
 
+export const PLAYER_STATUSES = [
+  "joined",
+  "connecting",
+  "camera_starting",
+  "searching",
+  "body_detected",
+  "calibrating",
+  "ready",
+  "tracking",
+  "camera_error",
+] as const;
+
+export type PlayerStatusName = (typeof PLAYER_STATUSES)[number];
+
 export const playerStatusSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
-  status: z.enum(["joined", "calibrating", "ready", "tracking", "camera_error"]),
+  status: z.enum(PLAYER_STATUSES),
   confidence: z.number().min(0).max(1).optional(),
   message: z.string().max(180).optional(),
   diagnostics: poseDiagnosticsSchema.optional(),

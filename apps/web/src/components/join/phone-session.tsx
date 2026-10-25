@@ -4,6 +4,7 @@ import { armMappingVerdict, type MovementDraft } from "@fitplay/game";
 import { CLIENT_EVENTS, PROTOCOL_VERSION, SERVER_EVENTS } from "@fitplay/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import { phoneBodyStatus, readinessInProgress } from "@/components/join/body-status";
 import { armDiagnosticLabel, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDiagnosticsEnabled, trackingStatusLine } from "@/components/join/phone-commands";
 import {
   CameraSetup,
@@ -175,6 +176,7 @@ export function PhoneSession({ code }: { code: string }) {
   const cameraStatusRef = useRef<CameraPermission>("off");
   const bodyActionsRef = useRef(false);
   const lastStatusAt = useRef(0);
+  const lastBodyStatus = useRef("");
   const openingRef = useRef(false);
   const linkedRef = useRef(false);
   const joinedRef = useRef(false);
@@ -488,6 +490,7 @@ export function PhoneSession({ code }: { code: string }) {
           setSubmitError(null);
           setPreviewError(null);
           setJoined(true);
+          announceJoined();
         },
       );
     };
@@ -508,6 +511,7 @@ export function PhoneSession({ code }: { code: string }) {
         setSubmitError(null);
         setPreviewError(null);
         setJoined(true);
+        announceJoined();
         return;
       }
       window.sessionStorage.removeItem(`fitplay.token.${code}`);
@@ -536,26 +540,23 @@ export function PhoneSession({ code }: { code: string }) {
     return () => window.removeEventListener("storage", apply);
   }, []);
 
-  function reportCameraError(message: string) {
-    socketRef.current?.emit("player:status", {
-      v: PROTOCOL_VERSION,
-      status: "camera_error",
-      confidence: 0,
-      message: message.slice(0, 180),
-    });
-  }
-
-  function publishDiagnostics(confidence: number, diagnostics: PoseDiagnostics | null, calibrated: boolean, actionsEnabled: boolean, guidance = "") {
-    if (!identity.current) return;
-    if (!diagnostics && !guidance) return;
+  function pushBodyStatus(
+    status: ReturnType<typeof phoneBodyStatus>,
+    confidence: number,
+    message: string,
+    diagnostics: PoseDiagnostics | null,
+    force = false,
+  ) {
+    if (!identity.current || !status) return;
     const now = Date.now();
-    if (now - lastStatusAt.current < 500) return;
+    if (!force && status === lastBodyStatus.current && now - lastStatusAt.current < 500) return;
     lastStatusAt.current = now;
+    lastBodyStatus.current = status;
     socketRef.current?.emit("player:status", {
       v: PROTOCOL_VERSION,
-      status: actionsEnabled ? "tracking" : calibrated ? "ready" : "calibrating",
+      status,
       confidence,
-      message: guidance.slice(0, 180),
+      message: message.slice(0, 180),
       ...(diagnostics
         ? {
             diagnostics: {
@@ -581,6 +582,57 @@ export function PhoneSession({ code }: { code: string }) {
     });
   }
 
+  function reportCameraError(message: string) {
+    pushBodyStatus("camera_error", 0, message, null, true);
+  }
+
+  function announceJoined() {
+    const liveRound = phaseRef.current === "running" || phaseRef.current === "paused" || phaseRef.current === "countdown";
+    pushBodyStatus(
+      phoneBodyStatus({
+        joined: true,
+        camera: cameraStatusRef.current,
+        poseCount: sampleRef.current.poseCount,
+        ready: readySent.current,
+        liveRound,
+        actionsEnabled: false,
+        calibrated: calibratedRef.current,
+        readinessActive: false,
+      }),
+      sampleRef.current.confidence,
+      "",
+      null,
+      true,
+    );
+  }
+
+  function publishDiagnostics(
+    confidence: number,
+    diagnostics: PoseDiagnostics | null,
+    calibrated: boolean,
+    actionsEnabled: boolean,
+    guidance: string,
+    readinessActive: boolean,
+    poseCount: number,
+  ) {
+    const liveRound = phaseRef.current === "running" || phaseRef.current === "paused" || phaseRef.current === "countdown";
+    pushBodyStatus(
+      phoneBodyStatus({
+        joined: joinedRef.current,
+        camera: cameraStatusRef.current,
+        poseCount,
+        ready: readySent.current,
+        liveRound,
+        actionsEnabled,
+        calibrated,
+        readinessActive,
+      }),
+      confidence,
+      guidance,
+      diagnostics,
+    );
+  }
+
   async function enableCamera() {
     if (openingRef.current) return;
     openingRef.current = true;
@@ -589,6 +641,7 @@ export function PhoneSession({ code }: { code: string }) {
     if (!window.isSecureContext) {
       bodyActionsRef.current = false;
       const failure = classifyCameraError(new DOMException("insecure", "SecurityError"), false);
+      cameraStatusRef.current = failure.status;
       setCameraStatus(failure.status);
       setNotice(insecureNotice());
       reportCameraError(failure.message);
@@ -600,6 +653,7 @@ export function PhoneSession({ code }: { code: string }) {
     const canvas = canvasRef.current;
     if (!video || !canvas) {
       bodyActionsRef.current = false;
+      cameraStatusRef.current = "unavailable";
       setCameraStatus("unavailable");
       setNotice({
         id: "camera",
@@ -607,10 +661,13 @@ export function PhoneSession({ code }: { code: string }) {
         body: "The camera preview is not on the page yet. Reload this page and try again.",
         primary: { label: "Try again", action: "camera" },
       });
+      reportCameraError("The camera preview is not on the page yet. Reload this page and try again.");
       openingRef.current = false;
       return;
     }
+    cameraStatusRef.current = "requesting";
     setCameraStatus("requesting");
+    pushBodyStatus("camera_starting", 0, "", null, true);
     let track: MediaStreamTrack | null = null;
     try {
       releaseCamera(streamRef.current, video);
@@ -653,13 +710,16 @@ export function PhoneSession({ code }: { code: string }) {
           primary: { label: "Try again", action: "camera" },
         });
         setUi((current) => ({ ...current, guidance: MODEL_FAILED_MESSAGE, actionsEnabled: false }));
+        reportCameraError(MODEL_FAILED_MESSAGE);
         return;
       }
       if (cameraStatusFromTrack(track) === "disconnected") {
         bodyActionsRef.current = false;
+        cameraStatusRef.current = "disconnected";
         setCameraStatus("disconnected");
         setNotice(cameraNotice({ status: "disconnected", message: CAMERA_LOST_MESSAGE }, "lost"));
         setUi((current) => ({ ...current, guidance: CAMERA_LOST_MESSAGE, confidence: 0, actionsEnabled: false }));
+        reportCameraError(CAMERA_LOST_MESSAGE);
         return;
       }
       estimator.setFacing("user");
@@ -676,7 +736,23 @@ export function PhoneSession({ code }: { code: string }) {
           };
           setUi(state);
           const hands = syncHandsRef.current();
-          publishDiagnostics(state.confidence, state.diagnostics, state.calibrated, state.actionsEnabled, state.calibrationCue || hands.cue || state.guidance);
+          publishDiagnostics(
+            state.confidence,
+            state.diagnostics,
+            state.calibrated,
+            state.actionsEnabled,
+            state.calibrationCue || hands.cue || state.guidance,
+            readinessInProgress({
+              calibrated: state.calibrated,
+              guidance: state.guidance,
+              calibrationCue: state.calibrationCue,
+              framingCalibrate: Boolean(state.framing?.calibrate),
+              handsPhase: hands.phase,
+              handsCue: hands.cue,
+              poseCount: state.poseCount,
+            }),
+            state.poseCount,
+          );
         },
         onMovement: (draft) => {
           emitMovement(draft);
@@ -704,6 +780,7 @@ export function PhoneSession({ code }: { code: string }) {
       bodyActionsRef.current = false;
       if (track && cameraStatusFromTrack(track) === "disconnected") return;
       const failure = classifyCameraError(cameraError, true);
+      cameraStatusRef.current = failure.status;
       setCameraStatus(failure.status);
       setNotice(failure.message.includes("certificate") ? insecureNotice() : cameraNotice(failure, "camera"));
       reportCameraError(failure.message);
@@ -761,12 +838,31 @@ export function PhoneSession({ code }: { code: string }) {
     readySent.current = isReady;
     noteEvent(isReady ? "player:ready" : "player:not-ready");
     socketRef.current?.emit("player:ready", { v: PROTOCOL_VERSION, ready: isReady });
-    socketRef.current?.emit("player:status", {
-      v: PROTOCOL_VERSION,
-      status: isReady ? "ready" : "calibrating",
+    const liveRound = phaseRef.current === "running" || phaseRef.current === "paused" || phaseRef.current === "countdown";
+    if (isReady) {
+      pushBodyStatus("ready", confidence, "Motion tracking active", null, true);
+      return;
+    }
+    if (liveRound) {
+      pushBodyStatus("calibrating", confidence, "", null, true);
+      return;
+    }
+    pushBodyStatus(
+      phoneBodyStatus({
+        joined: joinedRef.current,
+        camera: cameraStatusRef.current,
+        poseCount: sampleRef.current.poseCount,
+        ready: false,
+        liveRound: false,
+        actionsEnabled: false,
+        calibrated: calibratedRef.current,
+        readinessActive: false,
+      }),
       confidence,
-      message: isReady ? "Motion tracking active" : "",
-    });
+      "",
+      null,
+      true,
+    );
   }
 
   function commitPause() {

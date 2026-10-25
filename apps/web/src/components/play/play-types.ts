@@ -1,3 +1,5 @@
+import { PLAYER_STATUSES, type PlayerStatusName } from "@fitplay/shared";
+
 export interface PlayerView {
   id: string;
   displayName: string;
@@ -10,7 +12,7 @@ export interface PlayerView {
 
 /** Phone `player:status` payload. Absent until that event arrives. */
 export interface PhoneTracking {
-  status: "joined" | "calibrating" | "ready" | "tracking" | "camera_error";
+  status: PlayerStatusName;
   confidence?: number;
   message?: string;
 }
@@ -29,7 +31,7 @@ export interface SessionState {
   tracking?: PhoneTracking;
 }
 
-const TRACKING_STATUSES = new Set<PhoneTracking["status"]>(["joined", "calibrating", "ready", "tracking", "camera_error"]);
+const TRACKING_STATUSES = new Set<PhoneTracking["status"]>(PLAYER_STATUSES);
 
 export function readPhoneTracking(value: unknown): PhoneTracking | undefined {
   if (!value || typeof value !== "object") return undefined;

@@ -3,6 +3,8 @@
 import { DEFAULT_THRESHOLDS, isCalibrationCue } from "@fitplay/game";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, RefObject } from "react";
+import { bodyInitView } from "@/components/fitrunner-v2/body-init";
+import { BodyInitScreen } from "@/components/fitrunner-v2/body-init-screen";
 import type { FitRunnerHandle, PoseReport } from "@/components/fitrunner-v2/create-fitrunner";
 import { GESTURE_STEPS, tutorialGestureFor, type TutorialGesture } from "@/components/fitrunner-v2/tutorial-actions";
 import type { TvPlayer, TvTracking } from "@/components/fitrunner-v2/use-tv-session";
@@ -424,6 +426,22 @@ export function FitRunnerTutorial({
 
   const coach = cameraCoach(session.tracking, Boolean(phone));
   const calibrationLine = isCalibrationCue(session.tracking?.message) ? session.tracking?.message?.trim() ?? "" : "";
+  const showBodyInit =
+    !keyboardOn &&
+    ((step === "camera" && (Boolean(phone) || /disconnected/i.test(notice))) ||
+      (step === "countdown" && session.countdownPurpose !== "resume" && Boolean(phone)));
+  if (showBodyInit) {
+    const init = bodyInitView({
+      phase: session.phase,
+      countdown: session.countdown,
+      countdownPurpose: session.countdownPurpose,
+      phoneConnected: Boolean(phone),
+      tracking: session.tracking,
+      stall: notice,
+    });
+    if (!init) return null;
+    return <BodyInitScreen view={init} step={step} onKeyboard={enableKeyboard} onRetry={retryConnection} />;
+  }
   const narrowHint = narrow
     ? "This window is small. Open the game on a larger display. Casting or desktop mode can work."
     : "";
@@ -517,7 +535,9 @@ export function FitRunnerTutorial({
                 {session.joinCode || !serverDown ? (
                   <>
                     <p className="text-sm tracking-[0.16em] text-white/50 uppercase">Join code</p>
-                    <p className="mt-1 font-display text-4xl tracking-[0.28em]">{session.joinCode || "······"}</p>
+                    <p className="mt-1 font-display text-4xl tracking-[0.28em]" data-join-code={session.joinCode || undefined}>
+                      {session.joinCode || "······"}
+                    </p>
                   </>
                 ) : null}
                 {session.joinUrl ? <p className="mt-3 max-w-md break-all text-sm text-white/45">{session.joinUrl}</p> : null}

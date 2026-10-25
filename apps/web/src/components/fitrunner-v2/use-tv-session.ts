@@ -1,6 +1,6 @@
 "use client";
 
-import { CLIENT_EVENTS, PROTOCOL_VERSION, RUN_LIVES, resolvePublicAppUrl, SERVER_EVENTS } from "@fitplay/shared";
+import { CLIENT_EVENTS, PLAYER_STATUSES, PROTOCOL_VERSION, RUN_LIVES, resolvePublicAppUrl, SERVER_EVENTS, type PlayerStatusName } from "@fitplay/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { io, type Socket } from "socket.io-client";
@@ -39,7 +39,7 @@ function emitWithAck<T>(socket: Socket, event: string, payload: unknown): Promis
 }
 
 const MOVEMENTS = new Set(["lean_left", "lean_right", "squat", "jump", "punch", "hold"]);
-const TRACKING_STATUSES = new Set(["joined", "calibrating", "ready", "tracking", "camera_error"]);
+const TRACKING_STATUSES = new Set<string>(PLAYER_STATUSES);
 
 export type TvPlayer = {
   id: string;
@@ -50,7 +50,7 @@ export type TvPlayer = {
 };
 
 export type TvTracking = {
-  status: "joined" | "calibrating" | "ready" | "tracking" | "camera_error";
+  status: PlayerStatusName;
   confidence?: number;
   message?: string;
   diagnostics?: PoseDiagnostics;
