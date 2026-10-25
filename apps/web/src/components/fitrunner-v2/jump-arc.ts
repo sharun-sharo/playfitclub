@@ -33,8 +33,8 @@ import { fitRunnerTuning as tuning } from "./tuning";
  * A jump started close still has to be high before the leading face, which is
  * the tighter check at max speed. A jump started early still has to be high at
  * the trailing edge, which is the tighter check at low speed. The sweep test
- * covers both. Obstacles stay 9 m apart (tile 3 m × every 3rd tile). Max travel
- * is 5.10 m, so the spacing is left alone and the track is not sped up.
+ * covers both. Max travel is 5.10 m. The live schedule keeps obstacles
+ * farther apart than the old 9 m tile step, and the track is not sped up.
  */
 export const PREVIOUS_JUMP = {
   fallGravity: 28,

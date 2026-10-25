@@ -80,5 +80,16 @@ describe("fitrunner lives", () => {
     expect(again.run.hits).toBe(0);
     expect(again.run.over).toBe(false);
     expect(again.run.obstacleIds).toEqual([]);
+    expect(again.run.courseSeed).toBeNull();
+  });
+
+  it("keeps the course seed when a life is spent", () => {
+    const started = beginRun(emptyRun());
+    const armed = { ...started.run, courseSeed: 77, courseCeiling: "intermediate" as const };
+    const hit = applyObstacleHit(armed, "obs:0", 0, 0);
+    expect(hit.accepted).toBe(true);
+    if (!hit.accepted) return;
+    expect(hit.run.courseSeed).toBe(77);
+    expect(hit.run.courseCeiling).toBe("intermediate");
   });
 });

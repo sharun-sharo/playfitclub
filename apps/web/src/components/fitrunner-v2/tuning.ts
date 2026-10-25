@@ -34,9 +34,8 @@ export const fitRunnerTuning = {
   segmentCount: 22,
   recycleBehind: 10,
   /**
-   * Every third tile, so obstacles are 9 m apart. The jump arc at max speed
-   * travels about 5.1 m, which still fits in that gap. Spacing is not tightened
-   * and the track is not sped up to fake a longer jump.
+   * Old tile step. The live course no longer spawns from this. Obstacle times
+   * come from the shared schedule, which is wider than 9 m so a person can act.
    */
   obstacleEvery: 3,
   obstacleLeadIn: 4,

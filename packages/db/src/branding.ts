@@ -1,4 +1,4 @@
-import { RUN_LIVES, type GymBranding, type RunLives } from "@fitplay/shared";
+import { RUN_LIVES, type CourseLevel, type GymBranding, type RunLives } from "@fitplay/shared";
 
 export function readBranding(value: unknown): GymBranding | null {
   if (!value || typeof value !== "object") return null;
@@ -32,6 +32,8 @@ export function readRun(value: unknown): RunLives | null {
   const obstacleIds = Array.isArray(row.obstacleIds)
     ? row.obstacleIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 80).slice(0, RUN_LIVES)
     : [];
+  const ceiling: CourseLevel = row.courseCeiling === "intermediate" || row.courseCeiling === "advanced" ? row.courseCeiling : "beginner";
+  const courseSeed = typeof row.courseSeed === "number" && Number.isFinite(row.courseSeed) ? row.courseSeed >>> 0 : null;
   return {
     active: row.active === true,
     over: row.over === true || lives === 0,
@@ -39,5 +41,7 @@ export function readRun(value: unknown): RunLives | null {
     hits,
     obstacleIds,
     invulnerableUntil: typeof row.invulnerableUntil === "number" && Number.isFinite(row.invulnerableUntil) ? row.invulnerableUntil : 0,
+    courseSeed: courseSeed === 0 ? null : courseSeed,
+    courseCeiling: ceiling,
   };
 }

@@ -19,7 +19,14 @@ import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fit
 import { createRunRecorder } from "@/lib/fitrunner-v2/run-recorder";
 import { MIN_FITNESS_CONFIDENCE, type WorkoutEventDraft } from "@/lib/fitrunner-v2/workout";
 import { COMMAND_STALE_MS, holdCommand, releaseCommand, type HeldCommand } from "@fitplay/game";
-import { RUN_LIVES } from "@fitplay/shared";
+import {
+  courseDebugSnapshot,
+  scheduleCourse,
+  upcomingCue,
+  type CourseLevel,
+  type ScheduledObstacle,
+  RUN_LIVES,
+} from "@fitplay/shared";
 
 const ASSETS = {
   xbot: "/assets/fitrunner/xbot.glb",
@@ -65,6 +72,10 @@ export type FitRunnerHud = {
   tokens: HTMLElement | null;
   combo: HTMLElement | null;
   demoTime?: HTMLElement | null;
+  /** Upcoming action from the real obstacle. Empty when the current lane is clear. */
+  cue?: HTMLElement | null;
+  /** Development readout. Production leaves this null. */
+  courseDebug?: HTMLElement | null;
   onDemoOver?: (info: { activeMs: number }) => void;
   /** Local overlap. The server decides whether this obstacle id spends a life. */
   onHit?: (hit: { obstacleId: string; clientTimestamp: number }) => void;
@@ -132,6 +143,8 @@ export type FitRunnerHandle = {
   dropHit: (obstacleId: string) => void;
   releaseLivesHold: () => void;
   setLives: (lives: number) => void;
+  /** Places meshes from the server seed. The browser does not roll its own obstacles. */
+  applyCourse: (plan: { seed: number; ceiling: CourseLevel }) => void;
 };
 
 type Placed = {
@@ -166,14 +179,6 @@ function shapeLane(t: number) {
     return clamped < 0.5 ? 4 * clamped * clamped * clamped : 1 - (-2 * clamped + 2) ** 3 / 2;
   }
   return laneSlideFraction(clamped);
-}
-
-function rng(seed: number) {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
 }
 
 type RootCurve = {
@@ -302,17 +307,6 @@ async function loadRunner() {
     console.warn("Pulse robot failed to load. Using X Bot.", error);
     return loadAsset(ASSETS.xbot);
   }
-}
-
-function chooseObstacles(spawn: number, random: () => number) {
-  if (spawn < tuning.obstacleLeadIn || spawn % tuning.obstacleEvery !== 0) return [];
-  const kind = obstacleKinds[Math.floor(random() * obstacleKinds.length)] ?? "log";
-  const lanes = [-1, 0, 1];
-  if (spawn % 12 !== 0) {
-    return [{ kind, lane: lanes[Math.floor(random() * lanes.length)] ?? 0 }];
-  }
-  const open = lanes[Math.floor(random() * lanes.length)] ?? 0;
-  return lanes.filter((lane) => lane !== open).map((lane) => ({ kind, lane }));
 }
 
 export async function startFitRunner(
@@ -598,6 +592,24 @@ export async function startFitRunner(
     }
 
     const roads = roadGltfs.map((gltf) => roadTemplate(gltf.scene));
+    let coursePlan: { seed: number; ceiling: CourseLevel } | null = null;
+    let courseObstacles: ScheduledObstacle[] = [];
+    let courseValid = false;
+    let courseReasons: string[] = [];
+    let courseHorizonM = 0;
+    /** Meters already run. Obstacle placement skips anything the body has passed. */
+    let runDistance = 0;
+
+    function obstaclesForSpawn(spawn: number) {
+      if (!courseObstacles.length) return [];
+      const worldZ = tuning.tileSize * 2 - spawn * tuning.tileSize;
+      const half = tuning.tileSize / 2;
+      return courseObstacles.filter((item) => {
+        if (item.distanceM < runDistance - 0.5) return false;
+        const centerZ = -item.distanceM - item.depthM / 2;
+        return centerZ >= worldZ - half && centerZ < worldZ + half;
+      });
+    }
 
     function makeSegment(spawn: number): Segment {
       const group = new THREE.Group();
@@ -632,17 +644,21 @@ export async function startFitRunner(
     function refill(segment: Segment, spawn: number) {
       segment.spawn = spawn;
       segment.dressing.apply(spawn);
-      const random = rng(spawn * 9176 + 42);
       for (const kind of obstacleKinds) {
         for (const obstacle of segment.slots[kind]) obstacle.visible = false;
       }
-      const chosen = chooseObstacles(spawn, random);
-      segment.placed = chosen.map((item, index) => {
-        const object = segment.slots[item.kind][index];
-        if (!object) throw new Error(`Missing ${item.kind} obstacle slot.`);
+      const chosen = obstaclesForSpawn(spawn);
+      const used: Record<ObstacleKind, number> = { rock: 0, log: 0, fence: 0 };
+      const worldZ = tuning.tileSize * 2 - spawn * tuning.tileSize;
+      segment.placed = chosen.flatMap((item) => {
+        const slot = used[item.kind];
+        used[item.kind] = slot + 1;
+        const object = segment.slots[item.kind][slot];
+        if (!object) return [];
         object.visible = true;
-        object.position.set(item.lane * tuning.laneSpacing, 0, 0);
-        return { id: `${spawn}:${index}`, kind: item.kind, lane: item.lane, object, resolved: false, hit: false, threatened: false };
+        const centerZ = -item.distanceM - item.depthM / 2;
+        object.position.set(item.lane * tuning.laneSpacing, 0, centerZ - worldZ);
+        return [{ id: item.id, kind: item.kind, lane: item.lane, object, resolved: false, hit: false, threatened: false }];
       });
       const spots = tokenLayout(spawn, chosen.map((item) => item.lane));
       segment.tokens.forEach((token, index) => {
@@ -668,6 +684,29 @@ export async function startFitRunner(
       segments.push(segment);
     }
     let nextSpawn = tuning.segmentCount;
+
+    function ensureCourse(distanceM: number) {
+      if (!coursePlan) return;
+      const need = distanceM + 90;
+      if (courseHorizonM >= need) return;
+      courseHorizonM = need + 40;
+      const next = scheduleCourse({
+        seed: coursePlan.seed,
+        ceiling: coursePlan.ceiling,
+        untilDistanceM: courseHorizonM,
+      });
+      courseObstacles = next.obstacles;
+      courseValid = next.valid;
+      courseReasons = next.reasons;
+    }
+
+    function applyCourse(plan: { seed: number; ceiling: CourseLevel }) {
+      coursePlan = { seed: plan.seed >>> 0 || 1, ceiling: plan.ceiling };
+      courseHorizonM = 0;
+      courseObstacles = [];
+      ensureCourse(runDistance);
+      for (const segment of segments) refill(segment, segment.spawn);
+    }
 
     let lane = 0;
     let laneFrom = 0;
@@ -1178,6 +1217,33 @@ export async function startFitRunner(
       if (hud.demoTime && demoLimit !== null) hud.demoTime.textContent = formatRemaining(demoLimit, elapsed);
       if (hud.tokens) hud.tokens.textContent = String(coins);
       if (hud.combo) hud.combo.textContent = snap.multiplier > 0 ? `x${snap.multiplier}` : "—";
+      const cueLane = Math.max(-1, Math.min(1, Math.round(visualLane))) as -1 | 0 | 1;
+      const cue = upcomingCue(courseObstacles, elapsed, cueLane);
+      if (hud.cue) {
+        hud.cue.textContent = cue?.label ?? "";
+        hud.cue.hidden = !cue;
+      }
+      canvas.dataset.cue = cue?.label ?? "";
+      if (hud.courseDebug) {
+        const readout = courseDebugSnapshot({
+          obstacles: courseObstacles,
+          elapsedS: elapsed,
+          speedMps: speed,
+          playerLane: cueLane,
+          valid: coursePlan ? courseValid : false,
+          reasons: coursePlan ? courseReasons : ["waiting"],
+        });
+        hud.courseDebug.textContent = [
+          `speed ${readout.speedMps.toFixed(2)} m/s`,
+          `next obstacle ${readout.secondsUntilNext === null ? "—" : `${readout.secondsUntilNext.toFixed(2)} s`}`,
+          `action ${readout.requiredAction}`,
+          `between actions ${readout.secondsBetweenActions === null ? "—" : `${readout.secondsBetweenActions.toFixed(2)} s`}`,
+          `latency allowance ${readout.latencyAllowanceS.toFixed(3)} s`,
+          `recovery allowance ${readout.recoveryAllowanceS.toFixed(3)} s`,
+          `difficulty ${readout.difficulty}`,
+          `validation ${readout.validation}`,
+        ].join("\n");
+      }
     }
 
     function recycle() {
@@ -1558,6 +1624,7 @@ export async function startFitRunner(
       elapsed = 0;
       previewTime = 0;
       distance = 0;
+      runDistance = 0;
       clock.getDelta();
       canvas.dataset.course = "live";
       hud.onRunBegin?.();
@@ -1647,6 +1714,8 @@ export async function startFitRunner(
       mixer.update(dt);
       commitBodyHeight();
       flushPoseBuffer();
+      runDistance = distance;
+      ensureCourse(distance);
       recycle();
       collide();
       paintFlash();
@@ -1745,6 +1814,7 @@ export async function startFitRunner(
       dropHit,
       releaseLivesHold,
       setLives,
+      applyCourse,
       dispose() {
         stopped = true;
         canvas.removeEventListener("webglcontextlost", onContextLost);

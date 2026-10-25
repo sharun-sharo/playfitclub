@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { estimateCalories } from "./calories";
+import { warningHorizonS } from "@fitplay/shared";
 import { clearanceAward, clearanceWindowsMs, ComboChain, composeScore } from "./combo";
 import {
   assignmentsForDay,
@@ -91,7 +92,9 @@ describe("FitRunner V2 engagement", () => {
     const windows = clearanceWindowsMs(6.15);
     expect(windows.perfect).toEqual({ min: 113, max: 442 });
     expect(windows.great).toEqual({ min: 26, max: 642 });
-    expect(windows.good).toEqual({ min: 0, max: 732 });
+    expect(windows.good.min).toBe(0);
+    expect(windows.good.max).toBe(Math.round(warningHorizonS(6.15) * 1000));
+    expect(windows.good.max).toBeGreaterThanOrEqual(3000);
 
     const award = clearanceAward("PERFECT", 2, true);
     expect(award).toEqual({ base: 10, bonus: 30 });

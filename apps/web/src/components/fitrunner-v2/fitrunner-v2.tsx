@@ -40,6 +40,11 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const playScoreRef = useRef<HTMLParagraphElement>(null);
   const distanceRef = useRef<HTMLElement>(null);
   const timeRef = useRef<HTMLElement>(null);
+  const cueRef = useRef<HTMLParagraphElement>(null);
+  const courseDebugRef = useRef<HTMLPreElement>(null);
+  const difficultyRef = useRef<string | null>(null);
+  /** Development only. Production builds never mount this readout. */
+  const scheduleDebug = process.env.NODE_ENV !== "production";
   const uiRef = useRef<(state: { paused: boolean; muted: boolean }) => void>(() => {});
   const [error, setError] = useState("");
   const [graphicsError, setGraphicsError] = useState("");
@@ -131,6 +136,8 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           playScore: playScoreRef.current,
           distance: distanceRef.current,
           time: timeRef.current,
+          cue: cueRef.current,
+          courseDebug: scheduleDebug ? courseDebugRef.current : null,
           tokens: null,
           combo: null,
           onDemoOver: ({ activeMs }) => {
@@ -256,11 +263,15 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   notifyRef.current = session.notifyApplied;
   beginRunRef.current = () => {
     const epoch = ++courseEpoch.current;
-    return session.beginRun().then((state) => {
+    return session.beginRun(difficultyRef.current).then((state) => {
       if (epoch !== courseEpoch.current) return state;
       if (state?.ok && !state.gameOver) armed.current = true;
       if (typeof state?.lives === "number") handleRef.current?.setLives(state.lives);
       if (typeof state?.hits === "number") hitsRef.current = state.hits;
+      if (typeof state?.courseSeed === "number") {
+        const ceiling = state.courseCeiling === "intermediate" || state.courseCeiling === "advanced" ? state.courseCeiling : "beginner";
+        handleRef.current?.applyCourse({ seed: state.courseSeed, ceiling });
+      }
       return state;
     });
   };
@@ -317,18 +328,19 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }, [playing, demoOver, results, runId]);
 
   useEffect(() => {
-    if (!playing) return;
     let cancel = false;
     void fetch("/api/me/profile")
       .then(async (response) => {
         if (!response.ok) return null;
-        const body = (await response.json()) as { profile?: { weightKg?: unknown } };
-        const weight = body.profile?.weightKg;
-        return typeof weight === "number" && Number.isFinite(weight) ? weight : null;
+        const body = (await response.json()) as { profile?: { weightKg?: unknown; difficulty?: unknown } };
+        return body.profile ?? null;
       })
       .catch(() => null)
-      .then((weight) => {
-        if (!cancel) setWeightKg(weight);
+      .then((profile) => {
+        if (cancel) return;
+        difficultyRef.current = typeof profile?.difficulty === "string" ? profile.difficulty : null;
+        const weight = profile?.weightKg;
+        setWeightKg(typeof weight === "number" && Number.isFinite(weight) ? weight : null);
       });
     return () => {
       cancel = true;
@@ -447,6 +459,19 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
         hidden={Boolean(graphicsError)}
       />
       <LivesHearts hidden={!playing} lives={session.lives} />
+      <p
+        ref={cueRef}
+        data-action-cue=""
+        hidden
+        className="pointer-events-none absolute left-1/2 top-28 z-10 -translate-x-1/2 rounded-full bg-[#10141ce6] px-8 py-3 text-center font-display text-5xl tracking-wide text-[#d6ff4a] sm:text-6xl"
+      />
+      {scheduleDebug ? (
+        <pre
+          ref={courseDebugRef}
+          data-course-debug=""
+          className="pointer-events-none absolute bottom-16 left-4 z-10 max-w-xs whitespace-pre-wrap rounded-xl bg-[#10141ccc] px-3 py-2 font-sans text-sm leading-relaxed text-[#d5deea]"
+        />
+      ) : null}
       <PlayScoreCard
         hidden={!playing}
         scoreRef={playScoreRef}

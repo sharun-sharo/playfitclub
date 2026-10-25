@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createMemoryRepository } from "@fitplay/db/memory";
-import { PROTOCOL_VERSION, SERVER_EVENTS } from "@fitplay/shared";
+import { PROTOCOL_VERSION, scheduleCourse, SERVER_EVENTS, type CourseLevel } from "@fitplay/shared";
 import { io as createClient, type Socket } from "socket.io-client";
 import { afterEach, describe, expect, it } from "vitest";
 import { attachGameServer } from "./server";
@@ -296,6 +296,14 @@ describe("realtime sessions", () => {
   });
 });
 
+function scheduledIds(started: { courseSeed?: number; courseCeiling?: CourseLevel }, count: number) {
+  return scheduleCourse({
+    seed: started.courseSeed ?? 1,
+    ceiling: started.courseCeiling ?? "beginner",
+    untilCount: count,
+  }).obstacles.slice(0, count).map((item) => item.id);
+}
+
 describe("fitrunner lives authority", () => {
   async function openHost(url: string) {
     const host = connect(url);
@@ -306,7 +314,15 @@ describe("fitrunner lives authority", () => {
       durationSeconds: 30,
       maxPlayers: 2,
     });
-    const started = await emitAck<{ ok: boolean; lives: number; hits: number; resumed: boolean; gameOver: boolean }>(host, "run:begin", {
+    const started = await emitAck<{
+      ok: boolean;
+      lives: number;
+      hits: number;
+      resumed: boolean;
+      gameOver: boolean;
+      courseSeed: number;
+      courseCeiling: CourseLevel;
+    }>(host, "run:begin", {
       v: PROTOCOL_VERSION,
     });
     return { host, created, started };
@@ -333,9 +349,12 @@ describe("fitrunner lives authority", () => {
     const { host, created, started } = await openHost(url);
     expect(started.lives).toBe(5);
     expect(started.resumed).toBe(false);
+    expect(started.courseSeed).toBeGreaterThan(0);
+    expect(started.courseCeiling).toBe("beginner");
+    const ids = scheduledIds(started, 5);
     const expected = [4, 3, 2, 1, 0];
     for (let index = 0; index < expected.length; index += 1) {
-      const decision = await reportHit(host, created.session.id, `hurdle-${index}`);
+      const decision = await reportHit(host, created.session.id, ids[index] ?? "");
       expect(decision.ok).toBe(true);
       expect(decision.accepted).toBe(true);
       expect(decision.lives).toBe(expected[index]);
@@ -371,10 +390,11 @@ describe("fitrunner lives authority", () => {
 
   it("counts one obstacle id once and rejects a client life count or score", async () => {
     const { url, repository } = await boot({ hitInvulnerabilityMs: 0 });
-    const { host, created } = await openHost(url);
-    const first = await reportHit(host, created.session.id, "log-a");
+    const { host, created, started } = await openHost(url);
+    const ids = scheduledIds(started, 1);
+    const first = await reportHit(host, created.session.id, ids[0] ?? "");
     expect(first.lives).toBe(4);
-    const again = await reportHit(host, created.session.id, "log-a");
+    const again = await reportHit(host, created.session.id, ids[0] ?? "");
     expect(again.ok).toBe(false);
     expect(again.code).toBe("DUPLICATE_HIT");
     expect(again.lives).toBe(4);
@@ -389,15 +409,20 @@ describe("fitrunner lives authority", () => {
     const stored = await repository.findById(created.session.id);
     expect(stored?.run?.lives).toBe(4);
     expect(stored?.run?.hits).toBe(1);
-    expect(stored?.run?.obstacleIds).toEqual(["log-a"]);
+    expect(stored?.run?.obstacleIds).toEqual([ids[0]]);
+    const unknown = await reportHit(host, created.session.id, "not-in-this-run");
+    expect(unknown.ok).toBe(false);
+    expect(unknown.code).toBe("UNKNOWN_OBSTACLE");
+    expect(unknown.lives).toBe(4);
   });
 
   it("rejects a second obstacle during invulnerability", async () => {
     const { url } = await boot();
-    const { host, created } = await openHost(url);
-    const first = await reportHit(host, created.session.id, "log-a");
+    const { host, created, started } = await openHost(url);
+    const ids = scheduledIds(started, 2);
+    const first = await reportHit(host, created.session.id, ids[0] ?? "");
     expect(first.accepted).toBe(true);
-    const clipped = await reportHit(host, created.session.id, "log-b");
+    const clipped = await reportHit(host, created.session.id, ids[1] ?? "");
     expect(clipped.ok).toBe(false);
     expect(clipped.code).toBe("INVULNERABLE");
     expect(clipped.lives).toBe(4);
@@ -406,9 +431,10 @@ describe("fitrunner lives authority", () => {
 
   it("keeps the remaining lives when the TV reconnects mid-run", async () => {
     const { url, repository } = await boot({ hitInvulnerabilityMs: 0 });
-    const { host, created } = await openHost(url);
-    const first = await reportHit(host, created.session.id, "rock-1");
-    const second = await reportHit(host, created.session.id, "rock-2");
+    const { host, created, started } = await openHost(url);
+    const ids = scheduledIds(started, 2);
+    const first = await reportHit(host, created.session.id, ids[0] ?? "");
+    const second = await reportHit(host, created.session.id, ids[1] ?? "");
     expect(second.lives).toBe(3);
     expect(first.lives).toBe(4);
     host.disconnect();
@@ -425,7 +451,7 @@ describe("fitrunner lives authority", () => {
     expect(resumed.hits).toBe(2);
     const stored = await repository.findById(created.session.id);
     expect(stored?.run?.lives).toBe(3);
-    expect(stored?.run?.obstacleIds).toEqual(["rock-1", "rock-2"]);
+    expect(stored?.run?.obstacleIds).toEqual(ids);
   });
 });
 
@@ -469,13 +495,16 @@ describe("play again and the same phone", () => {
     expect(phone.joined.ok).toBe(true);
     phone.socket.emit("player:ready", { v: PROTOCOL_VERSION, ready: true });
     await new Promise((resolve) => setTimeout(resolve, 40));
-    const started = await emitAck<{ ok: boolean; lives: number }>(host, "run:begin", { v: PROTOCOL_VERSION });
+    const started = await emitAck<{ ok: boolean; lives: number; courseSeed: number; courseCeiling: CourseLevel }>(host, "run:begin", {
+      v: PROTOCOL_VERSION,
+    });
     expect(started.lives).toBe(5);
+    const ids = scheduledIds(started, 5);
     for (let index = 0; index < 5; index += 1) {
       const hit = await emitAck<{ ok: boolean; lives: number; gameOver?: boolean }>(host, "obstacle:hit", {
         v: PROTOCOL_VERSION,
         sessionId: created.session.id,
-        obstacleId: `again-${index}`,
+        obstacleId: ids[index],
         clientTimestamp: Date.now(),
       });
       expect(hit.ok).toBe(true);
@@ -627,13 +656,16 @@ describe("play again and the same phone", () => {
     expect((await send("resume-jump-01", "jump", 4)).ok).toBe(true);
     expect((await send("resume-squat-01", "squat", 5)).ok).toBe(true);
 
-    const begun = await emitAck<{ ok: boolean }>(host, "run:begin", { v: PROTOCOL_VERSION });
+    const begun = await emitAck<{ ok: boolean; courseSeed: number; courseCeiling: CourseLevel }>(host, "run:begin", {
+      v: PROTOCOL_VERSION,
+    });
     expect(begun.ok).toBe(true);
+    const ids = scheduledIds(begun, 5);
     for (let index = 0; index < 5; index += 1) {
       const hit = await emitAck<{ ok: boolean; gameOver?: boolean }>(host, "obstacle:hit", {
         v: PROTOCOL_VERSION,
         sessionId: created.session.id,
-        obstacleId: `reset-${index}`,
+        obstacleId: ids[index],
         clientTimestamp: Date.now(),
       });
       expect(hit.ok).toBe(true);

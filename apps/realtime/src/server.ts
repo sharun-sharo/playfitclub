@@ -16,8 +16,10 @@ import {
   RUN_LIVES,
   applyObstacleHit,
   beginRun,
+  courseCeilingFromProfile,
   emptyRun,
   HIT_INVULNERABILITY_MS,
+  scheduleContains,
   signClaims,
   verifyClaims,
   type ControlMode,
@@ -489,17 +491,25 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
         return reply(socket, ack, "INVALID_STATE", "This session is closed.");
       }
       const next = beginRun(live.livesRun);
-      live.livesRun = next.run;
+      let run = next.run;
+      if (!next.resumed) {
+        run = { ...run, courseSeed: mintCourseSeed(), courseCeiling: courseCeilingFromProfile(parsed.data.difficulty) };
+      } else if (run.courseSeed == null) {
+        run = { ...run, courseSeed: mintCourseSeed() };
+      }
+      live.livesRun = run;
       await persistRun(live);
       broadcast(live, true);
       if (typeof ack === "function") {
         ack({
           ok: true,
           v: PROTOCOL_VERSION,
-          lives: next.run.lives,
-          hits: next.run.hits,
-          gameOver: next.run.over,
+          lives: run.lives,
+          hits: run.hits,
+          gameOver: run.over,
           resumed: next.resumed,
+          courseSeed: run.courseSeed,
+          courseCeiling: run.courseCeiling,
         });
       }
     });
@@ -548,8 +558,8 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
     });
 
     socket.on(CLIENT_EVENTS.obstacleHit, async (payload, ack) => {
-      // The TV detects the overlap locally. This process does not simulate the course
-      // or validate the geometry. It only decides whether that obstacle id spends a life.
+      // The TV detects the overlap locally. This process does not simulate the jump.
+      // It checks the obstacle id against the schedule it generated, then decides whether that id spends a life.
       const supplied = clientSuppliedAuthority(payload);
       if (supplied) return rejectSuppliedAuthority(socket, ack, supplied);
       const parsed = obstacleHitSchema.safeParse(payload);
@@ -557,6 +567,23 @@ export function attachGameServer(httpServer: HttpServer, options: GameServerOpti
       const live = hostLive(socket);
       if (!live || live.record.id !== parsed.data.sessionId) {
         return reply(socket, ack, "UNAUTHORIZED", "Only the TV can report a hit.");
+      }
+      if (live.livesRun.active && !live.livesRun.over && live.livesRun.lives > 0 && live.livesRun.courseSeed != null) {
+        if (!scheduleContains(live.livesRun.courseSeed, live.livesRun.courseCeiling, parsed.data.obstacleId)) {
+          const body = {
+            ok: false,
+            accepted: false,
+            v: PROTOCOL_VERSION,
+            code: "UNKNOWN_OBSTACLE",
+            message: "That obstacle is not in this run.",
+            lives: live.livesRun.lives,
+            hits: live.livesRun.hits,
+            gameOver: live.livesRun.over,
+            serverTimeMs: Date.now(),
+          };
+          if (typeof ack === "function") ack(body);
+          return;
+        }
       }
       const decision = applyObstacleHit(
         live.livesRun,
@@ -1162,6 +1189,11 @@ function rejectSuppliedAuthority(socket: Socket, ack: unknown, kind: "lives" | "
 
 function authOf(socket: Socket): SocketAuth {
   return (socket.data.auth as SocketAuth | undefined) ?? { kind: "anonymous" };
+}
+
+function mintCourseSeed() {
+  const value = crypto.getRandomValues(new Uint32Array(1))[0]! >>> 0;
+  return value === 0 ? 1 : value;
 }
 
 function reply(socket: Socket, ack: unknown, code: string, message: string) {

@@ -115,9 +115,13 @@ export const obstacleHitSchema = z
   })
   .strict();
 
+export const courseDifficultySchema = z.enum(["easy", "steady", "hard", "beginner", "intermediate", "advanced"]);
+
 export const runBeginSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
+    /** Saved fitness profile. Omitted for a new player, which starts at beginner. */
+    difficulty: courseDifficultySchema.optional(),
   })
   .strict();
 

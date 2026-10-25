@@ -27,6 +27,8 @@ export type LivesAck = {
   gameOver?: boolean;
   resumed?: boolean;
   code?: string;
+  courseSeed?: number;
+  courseCeiling?: "beginner" | "intermediate" | "advanced";
 };
 
 function emitWithAck<T>(socket: Socket, event: string, payload: unknown): Promise<T | null> {
@@ -427,10 +429,12 @@ export function useTvSession(
     socketRef.current?.emit(CLIENT_EVENTS.gameStart, { v: PROTOCOL_VERSION });
   }, []);
 
-  const beginRun = useCallback(() => {
+  const beginRun = useCallback((difficulty?: string | null) => {
     const socket = socketRef.current;
     if (!socket?.connected) return Promise.resolve(null);
-    return emitWithAck<LivesAck>(socket, CLIENT_EVENTS.runBegin, { v: PROTOCOL_VERSION }).then((body) => {
+    const known = difficulty === "easy" || difficulty === "steady" || difficulty === "hard" || difficulty === "beginner" || difficulty === "intermediate" || difficulty === "advanced";
+    const payload = known ? { v: PROTOCOL_VERSION, difficulty } : { v: PROTOCOL_VERSION };
+    return emitWithAck<LivesAck>(socket, CLIENT_EVENTS.runBegin, payload).then((body) => {
       if (body?.ok) {
         if (typeof body.lives === "number") setLives(body.lives);
         if (typeof body.hits === "number") setHits(body.hits);

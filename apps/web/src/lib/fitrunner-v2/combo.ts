@@ -1,19 +1,17 @@
+import { warningHorizonS } from "@fitplay/shared";
+
 /**
  * Clearance grades for FitRunner V2.
  *
- * Measured from the live prototype tuning, not a random timer:
- * - Obstacles every obstacleEvery(3) * tileSize(3) = 9 m.
- * - forwardSpeed 6.15 m/s → 1463 ms between obstacles. maxSpeed 8.2 m/s → 1098 ms.
- * - Lane slide laneChangeDuration = 250 ms.
- * - Lane crate depth props.blocker.z = 1.18 m → 192 ms at 6.15 m/s, 144 ms at 8.2 m/s.
- * - Hurdle depth props.log.z = 0.16 m → 26 ms at 6.15 m/s.
- * - Roll-gate depth props.fence.z = 0.18 m → 29 ms at 6.15 m/s.
+ * Perfect and great still use the close-timing windows measured when obstacles
+ * were 9 m apart. The live schedule is wider than that, on purpose.
+ * GOOD now covers the human warning horizon, so a jump or squat during the
+ * on-screen cue is not graded as a miss.
  *
  * The press is graded by time-to-contact = distanceMeters / speedMps.
- * At 6.15 m/s the windows are:
- * - PERFECT 113–442 ms (about half a lane slide through one slide plus the crate depth)
+ * At 6.15 m/s the close windows stay:
+ * - PERFECT 113–442 ms
  * - GREAT 26–642 ms
- * - GOOD 0–732 ms (half of the 1463 ms gap, so a press at first sight is a miss)
  */
 
 export const COMBO_MEASUREMENT = {
@@ -45,12 +43,11 @@ export function clearanceWindowsMs(speedMps: number): { perfect: ClearanceWindow
   const speed = Math.min(COMBO_MEASUREMENT.maxSpeedMps, Math.max(0.5, speedMps));
   const crateMs = (COMBO_MEASUREMENT.crateDepthM / speed) * 1000;
   const barMs = (COMBO_MEASUREMENT.hurdleDepthM / speed) * 1000;
-  const gapMs = (COMBO_MEASUREMENT.obstacleSpacingM / speed) * 1000;
   const slide = COMBO_MEASUREMENT.laneSlideMs;
   return {
     perfect: { min: Math.round(slide * 0.45), max: Math.round(slide + crateMs) },
     great: { min: Math.round(barMs), max: Math.round(slide * 1.8 + crateMs) },
-    good: { min: 0, max: Math.round(Math.min(780, gapMs * 0.5)) },
+    good: { min: 0, max: Math.round(warningHorizonS(speed) * 1000) },
   };
 }
 

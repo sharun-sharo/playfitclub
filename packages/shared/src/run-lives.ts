@@ -1,8 +1,11 @@
+import type { CourseLevel } from "./obstacle-schedule";
+
 /**
  * FitRunner V2 lives.
  * The phone and TV detect an overlap on the local course. This module does not
- * simulate that course or check geometry. It only decides whether one obstacle
- * id spends one of the five lives.
+ * simulate that course or the jump arc. It only decides whether one obstacle
+ * id spends one of the five lives. The obstacle id itself comes from the
+ * server-owned schedule.
  */
 
 export const RUN_LIVES = 5;
@@ -17,6 +20,10 @@ export type RunLives = {
   hits: number;
   obstacleIds: string[];
   invulnerableUntil: number;
+  /** Seed for the shared obstacle schedule. Null until the server starts the run. */
+  courseSeed: number | null;
+  /** Profile ceiling. The run still starts at beginner and steps up from there. */
+  courseCeiling: CourseLevel;
 };
 
 export type HitRejectCode = "NOT_RUNNING" | "GAME_OVER" | "DUPLICATE_HIT" | "INVULNERABLE";
@@ -26,7 +33,16 @@ export type HitDecision =
   | { accepted: false; code: HitRejectCode; run: RunLives };
 
 export function emptyRun(): RunLives {
-  return { active: false, over: false, lives: RUN_LIVES, hits: 0, obstacleIds: [], invulnerableUntil: 0 };
+  return {
+    active: false,
+    over: false,
+    lives: RUN_LIVES,
+    hits: 0,
+    obstacleIds: [],
+    invulnerableUntil: 0,
+    courseSeed: null,
+    courseCeiling: "beginner",
+  };
 }
 
 /** A new run starts at 5. An active run that still has lives stays as it is. */
@@ -48,6 +64,8 @@ export function applyObstacleHit(run: RunLives, obstacleId: string, now: number,
     hits: run.hits + 1,
     obstacleIds: [...run.obstacleIds, obstacleId],
     invulnerableUntil: now + invulnerabilityMs,
+    courseSeed: run.courseSeed,
+    courseCeiling: run.courseCeiling,
   };
   return { accepted: true, gameOver: next.over, run: next };
 }
