@@ -37,10 +37,12 @@ describe("analytics events", () => {
     expect(JSON.stringify(page.pageViews)).not.toContain("ada@example.com");
   });
 
-  it("keeps GA off when no measurement ID is set", () => {
-    expect(gaMeasurementId({})).toBeNull();
-    expect(gaMeasurementId({ NEXT_PUBLIC_GA_MEASUREMENT_ID: "" })).toBeNull();
+  it("uses the public measurement ID when the env var is unset", () => {
+    expect(gaMeasurementId({})).toBe("G-736X842XQL");
+    expect(gaMeasurementId({ NEXT_PUBLIC_GA_MEASUREMENT_ID: "" })).toBe("G-736X842XQL");
+    expect(gaMeasurementId({ NEXT_PUBLIC_GA_MEASUREMENT_ID: "  " })).toBe("G-736X842XQL");
     expect(gaMeasurementId({ NEXT_PUBLIC_GA_MEASUREMENT_ID: "UA-123" })).toBeNull();
+    expect(gaMeasurementId({ NEXT_PUBLIC_GA_MEASUREMENT_ID: "G-CUSTOM1" })).toBe("G-CUSTOM1");
     const planned = commandsForNavigation(null, "/pricing", null);
     expect(planned.bootstrap).toBeNull();
     expect(planned.pageViews).toEqual([]);

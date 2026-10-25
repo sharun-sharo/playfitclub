@@ -44,8 +44,16 @@ export interface PageViewCommand {
 const GA_ID = /^G-[A-Z0-9]+$/;
 const SAFE_ID = /^[A-Za-z0-9_-]{1,80}$/;
 
-export function gaMeasurementId(env: Record<string, string | undefined> = process.env): string | null {
-  const id = env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() ?? "";
+/** Public GA4 measurement ID. Used when NEXT_PUBLIC_GA_MEASUREMENT_ID is unset. */
+const PUBLIC_GA_MEASUREMENT_ID = "G-736X842XQL";
+
+export function gaMeasurementId(
+  env: Record<string, string | undefined> = {
+    NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+  },
+): string | null {
+  const raw = env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+  const id = raw === undefined || raw.trim() === "" ? PUBLIC_GA_MEASUREMENT_ID : raw.trim();
   return GA_ID.test(id) ? id : null;
 }
 
@@ -60,7 +68,7 @@ export function planPageView(input: {
   path: string;
   previousKey: string | null;
 }): { commands: PageViewCommand[]; nextKey: string | null } {
-  if (!gaMeasurementId({ NEXT_PUBLIC_GA_MEASUREMENT_ID: input.measurementId ?? undefined })) {
+  if (!input.measurementId || !GA_ID.test(input.measurementId)) {
     return { commands: [], nextKey: input.previousKey };
   }
   const pagePath = analyticsPath(input.path);
