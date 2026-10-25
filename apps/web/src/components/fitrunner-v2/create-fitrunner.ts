@@ -11,7 +11,7 @@ import {
 } from "@/components/fitrunner-v2/course";
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
-import { releaseStuckClip, replayClip, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
+import { jumpDuringRoll, laneSlideFraction, releaseStuckClip, replayClip, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -163,7 +163,7 @@ function shapeLane(t: number) {
   if (tuning.laneEasing === "cubic") {
     return clamped < 0.5 ? 4 * clamped * clamped * clamped : 1 - (-2 * clamped + 2) ** 3 / 2;
   }
-  return clamped * clamped * (3 - 2 * clamped);
+  return laneSlideFraction(clamped);
 }
 
 function rng(seed: number) {
@@ -698,6 +698,19 @@ export async function startFitRunner(
     let bodySpanX = "0,0";
     let stopped = false;
     let frame = 0;
+    const stopGraphics = (kind: "context-lost" | "shader") => {
+      stopped = true;
+      window.cancelAnimationFrame(frame);
+      hud.onGraphicsFailure?.(graphicsFailureMessage(kind));
+    };
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      stopGraphics("context-lost");
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    renderer.debug.onShaderError = () => {
+      stopGraphics("shader");
+    };
     let paused = false;
     let demoOver = false;
     let muted = false;
@@ -814,7 +827,9 @@ export async function startFitRunner(
     }
 
     function jump(source: InputSource = "keyboard", confidence?: number, eventId?: string) {
-      if (courseMode !== "live" || demoOver || motion !== "run") return false;
+      if (courseMode !== "live" || demoOver) return false;
+      if (motion === "roll") playRun();
+      if (motion !== "run") return false;
       const next = beginJumpArc(jumpArc);
       if (!next) return false;
       jumpArc = next;
@@ -958,6 +973,7 @@ export async function startFitRunner(
     }
 
     function poseTiming(event: PoseCommand): "now" | "later" | "never" {
+      if (event.movementType === "jump" && jumpDuringRoll(motion, event.movementType)) return "now";
       if (event.movementType === "jump" || event.movementType === "squat") return verticalCommandReady(motion) ? "now" : "later";
       if (event.movementType !== "lean_left" && event.movementType !== "lean_right") return "never";
       const direction = event.movementType === "lean_left" ? -1 : 1;
@@ -1708,6 +1724,7 @@ export async function startFitRunner(
       setLives,
       dispose() {
         stopped = true;
+        canvas.removeEventListener("webglcontextlost", onContextLost);
         window.cancelAnimationFrame(frame);
         window.removeEventListener("keydown", onKey);
         window.removeEventListener("resize", resize);

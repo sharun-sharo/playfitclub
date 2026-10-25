@@ -7,8 +7,11 @@ export type LaneEasing = "smoothstep" | "cubic";
 export const fitRunnerTuning = {
   tileSize: 3,
   laneSpacing: 3,
-  /** Seconds to travel one lane. The body eases; collision uses that position. */
-  laneChangeDuration: 0.25,
+  /**
+   * Seconds to travel one lane. Collision uses this position. The box size does not change.
+   * 0.10s and an ease-out start on the command frame. 0.25s smoothstep stayed put at the start.
+   */
+  laneChangeDuration: 0.1,
   laneEasing: "smoothstep" as LaneEasing,
   /** Peak parent bank while sliding, in radians. Upright again when the slide stops. */
   leanRadians: 0.2,

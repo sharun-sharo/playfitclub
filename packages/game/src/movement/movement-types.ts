@@ -301,6 +301,17 @@ export interface DetectorState {
   jumpMotion: JumpMotion;
   /** Timestamp of the current planted dip. Null when the body is not preparing. */
   prepSince: number | null;
+  /**
+   * True while this dip is still below the prep line.
+   * Leaving and entering again is a new dip, so running in place cannot add up to 50ms.
+   * Staying down does not restart the clock on every fast downward frame.
+   */
+  dipOpen: boolean;
+  /**
+   * The previous frame in the squat band was nearly still.
+   * A duck needs two still frames. The bottom of a hop is still moving, so it is not a duck.
+   */
+  squatCalm: boolean;
   lostSince: number | null;
   lastGesture: { movementType: MovementDraft["movementType"]; eventId: string; at: number } | null;
   /**

@@ -9,6 +9,23 @@ export function verticalCommandReady(motion: string): boolean {
 }
 
 /**
+ * A jump that arrives while the duck clip is still playing.
+ * The roll must not hold that jump until the 400ms stale window drops it.
+ */
+export function jumpDuringRoll(motion: string, movementType: string): boolean {
+  return motion === "roll" && movementType === "jump";
+}
+
+/**
+ * Ease-out lane slide. t is 0 at the command and 1 when the body is in the lane.
+ * The first slice already moves. Smoothstep held the body still at the start.
+ */
+export function laneSlideFraction(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  return 1 - (1 - clamped) * (1 - clamped);
+}
+
+/**
  * Play Again, the start of a pause, and resume all return here.
  * An arc or a roll that was in progress is dropped, not finished into a second jump or duck.
  */

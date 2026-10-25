@@ -1182,6 +1182,7 @@ describe("motion reliability sequences", () => {
       const covered = squat === 9;
       for (let index = 0; index < 3; index += 1) step(pose({ time, coverLegs: covered }));
       step(pose({ time, hipDrop: depth, coverLegs: covered }));
+      step(pose({ time, hipDrop: depth, coverLegs: covered }));
       step(pose({ time, hipDrop: depth, coverLegs: covered, hide: covered ? [25, 26, 27, 28] : [] }));
       for (let index = 0; index < 8; index += 1) step(pose({ time, coverLegs: covered }));
     }
@@ -1271,5 +1272,205 @@ describe("motion reliability sequences", () => {
     };
     expect(twitch(0).filter((event) => event.movementType === "jump")).toHaveLength(1);
     expect(twitch(DEFAULT_THRESHOLDS.jumpPrepMs).filter((event) => event.movementType === "jump")).toHaveLength(0);
+  });
+
+  it("jumps a moving dip that crosses the squat line, including bent knees and a hop after a squat", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const play = (frames: PoseFrame[]) => {
+      let state = setNeutral(createDetector({ mirror: false }), neutral);
+      const events = [];
+      let peak = 0;
+      for (const frame of frames) {
+        const update = pushPose(state, frame);
+        state = update.state;
+        peak = Math.max(peak, update.signals?.hipVelocity ?? 0, update.signals?.riseSpeed ?? 0);
+        events.push(...update.events);
+      }
+      return { events, peak };
+    };
+    const frame = 33;
+    const varied = [
+      { peak: 0.025, cover: false, knee: 0.02 },
+      { peak: 0.04, cover: false, knee: 0.04 },
+      { peak: 0.05, cover: false, knee: 0.05 },
+      { peak: 0.08, cover: false, knee: 0.06 },
+      { peak: 0.045, cover: false, knee: 0.09 },
+      { peak: 0.04, cover: true, knee: 0.05 },
+      { peak: 0.055, cover: true, knee: 0.08 },
+      { peak: 0.03, cover: false, knee: 0.03 },
+      { peak: 0.07, cover: false, knee: 0.07 },
+      { peak: 0.035, cover: false, knee: 0.04 },
+    ];
+    const hops = [];
+    const peaks: number[] = [];
+    let clock = 0;
+    for (const hop of varied) {
+      const frames: PoseFrame[] = [];
+      for (let index = 0; index < 16; index += 1) {
+        const down = index >= 3 && index <= 5;
+        const step = down ? (index - 2) / 3 : 0;
+        const rising = index === 6;
+        frames.push(
+          pose({
+            time: clock,
+            hipDrop: down ? hop.peak * step : 0,
+            rise: rising ? Math.max(0.012, hop.peak * 0.35) : 0,
+            kneeForward: hop.knee,
+            coverLegs: hop.cover,
+          }),
+        );
+        clock += frame;
+      }
+      const played = play(frames);
+      hops.push(...played.events);
+      peaks.push(played.peak);
+      expect(played.peak).toBeGreaterThanOrEqual(DEFAULT_THRESHOLDS.jumpRise);
+    }
+    expect(hops.filter((event) => event.movementType === "jump")).toHaveLength(10);
+    expect(hops.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    expect(new Set(hops.filter((event) => event.movementType === "jump").map((event) => event.eventId)).size).toBe(10);
+
+    const deep = play(
+      Array.from({ length: 12 }, (_, index) =>
+        pose({
+          time: 20000 + index * frame,
+          hipDrop: index === 3 ? 0.02 : index === 4 ? 0.04 : index === 5 ? 0.055 : 0,
+          rise: index === 6 ? 0.02 : 0,
+          straightKnees: true,
+        }),
+      ),
+    );
+    expect(deep.events.map((event) => event.movementType)).toEqual(["jump"]);
+    const riseAt = 20000 + 6 * frame;
+    expect((deep.events[0]?.clientTimestamp ?? 0) - riseAt).toBe(0);
+
+    const afterSquat = play([
+      ...Array.from({ length: 2 }, (_, index) => pose({ time: index * frame })),
+      ...Array.from({ length: 4 }, (_, index) => pose({ time: (2 + index) * frame, hipDrop: 0.08, bow: 0.02 })),
+      ...Array.from({ length: 6 }, (_, index) => pose({ time: (6 + index) * frame })),
+      pose({ time: 12 * frame, hipDrop: 0.02 }),
+      pose({ time: 13 * frame, hipDrop: 0.05, kneeForward: 0.06 }),
+      pose({ time: 14 * frame, rise: 0.02, straightKnees: true }),
+      ...Array.from({ length: 6 }, (_, index) => pose({ time: (15 + index) * frame })),
+    ]);
+    expect(afterSquat.events.map((event) => event.movementType)).toEqual(["squat", "jump"]);
+    console.log(JSON.stringify({
+      variedHopPeak: Number(Math.max(...peaks, deep.peak, afterSquat.peak).toFixed(2)),
+      deepJumpDelayMs: 0,
+      jumpRise: DEFAULT_THRESHOLDS.jumpRise,
+    }));
+  });
+
+  it("emits squat, then right, then jump when each follows within a few frames", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const frame = 33;
+    const script: PoseFrame[] = [];
+    let time = 0;
+    const add = (count: number, extra: Omit<Parameters<typeof pose>[0], "time">) => {
+      for (let index = 0; index < count; index += 1) {
+        script.push(pose({ ...extra, time }));
+        time += frame;
+      }
+    };
+    add(2, {});
+    add(4, { hipDrop: 0.08, bow: 0.02 });
+    add(5, {});
+    add(3, { rightArm: true });
+    add(4, {});
+    add(1, { hipDrop: 0.02 });
+    add(1, { hipDrop: 0.05, kneeForward: 0.06 });
+    add(1, { rise: 0.02, straightKnees: true });
+    add(6, {});
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    const events = [];
+    for (const step of script) {
+      const update = pushPose(state, step);
+      state = update.state;
+      events.push(...update.events);
+    }
+    expect(events.map((event) => event.movementType)).toEqual(["squat", "lean_right", "jump"]);
+    const gap = (index: number) => (events[index + 1]?.clientTimestamp ?? 0) - (events[index]?.clientTimestamp ?? 0);
+    expect(gap(0)).toBeGreaterThanOrEqual(150);
+    expect(gap(0)).toBeLessThanOrEqual(300);
+    expect(gap(1)).toBeGreaterThanOrEqual(150);
+    expect(gap(1)).toBeLessThanOrEqual(300);
+    const squatAt = 2 * frame;
+    const armAt = (2 + 4 + 5) * frame;
+    const riseAt = (2 + 4 + 5 + 3 + 4 + 2) * frame;
+    expect((events[0]?.clientTimestamp ?? 0) - squatAt).toBeLessThanOrEqual(66);
+    expect((events[1]?.clientTimestamp ?? 0) - armAt).toBeLessThanOrEqual(frame);
+    expect((events[2]?.clientTimestamp ?? 0) - riseAt).toBe(0);
+
+    const reverse: PoseFrame[] = [];
+    time = 0;
+    const push = (count: number, extra: Omit<Parameters<typeof pose>[0], "time">) => {
+      for (let index = 0; index < count; index += 1) {
+        reverse.push(pose({ ...extra, time }));
+        time += frame;
+      }
+    };
+    push(2, {});
+    push(1, { hipDrop: 0.02 });
+    push(1, { hipDrop: 0.05, kneeForward: 0.05 });
+    push(1, { rise: 0.02, straightKnees: true });
+    push(6, {});
+    push(3, { leftArm: true });
+    push(4, {});
+    push(4, { hipDrop: 0.08, bow: 0.02 });
+    push(4, {});
+    state = setNeutral(createDetector({ mirror: false }), neutral);
+    const back = [];
+    for (const step of reverse) {
+      const update = pushPose(state, step);
+      state = update.state;
+      back.push(...update.events);
+    }
+    expect(back.map((event) => event.movementType)).toEqual(["jump", "lean_left", "squat"]);
+  });
+
+  it("emits left then right, and right then left, on the frame after the hand is out", () => {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    const frame = 33;
+    const runSide = (first: "leftArm" | "rightArm", second: "leftArm" | "rightArm") => {
+      let state = setNeutral(createDetector({ mirror: false }), neutral);
+      const events = [];
+      const firstAt = 2 * frame;
+      const secondAt = 7 * frame;
+      for (let index = 0; index < 12; index += 1) {
+        const time = index * frame;
+        const update = pushPose(
+          state,
+          pose({
+            time,
+            leftArm: (first === "leftArm" && index >= 2 && index <= 4) || (second === "leftArm" && index >= 7),
+            rightArm: (first === "rightArm" && index >= 2 && index <= 4) || (second === "rightArm" && index >= 7),
+          }),
+        );
+        state = update.state;
+        events.push(...update.events);
+      }
+      return { events, firstAt, secondAt };
+    };
+    const leftRight = runSide("leftArm", "rightArm");
+    expect(leftRight.events.map((event) => event.movementType)).toEqual(["lean_left", "lean_right"]);
+    expect((leftRight.events[0]?.clientTimestamp ?? 0) - leftRight.firstAt).toBe(frame);
+    expect((leftRight.events[1]?.clientTimestamp ?? 0) - leftRight.secondAt).toBe(frame);
+    const rightLeft = runSide("rightArm", "leftArm");
+    expect(rightLeft.events.map((event) => event.movementType)).toEqual(["lean_right", "lean_left"]);
+    expect((rightLeft.events[0]?.clientTimestamp ?? 0) - rightLeft.firstAt).toBe(frame);
+    expect((rightLeft.events[1]?.clientTimestamp ?? 0) - rightLeft.secondAt).toBe(frame);
+
+    let held = setNeutral(createDetector({ mirror: false }), neutral);
+    const heldEvents = [];
+    for (let index = 0; index < 10; index += 1) {
+      const update = pushPose(held, pose({ time: index * frame, leftArm: index >= 2 }));
+      held = update.state;
+      heldEvents.push(...update.events);
+    }
+    expect(heldEvents.map((event) => event.movementType)).toEqual(["lean_left"]);
   });
 });

@@ -205,6 +205,18 @@ On this synthetic clock, a clear gesture is the next camera frame after it is al
 
 `vitest` on the movement, indoor-sequence, phone-command, and framing files: 106 passed, 0 failed (movement 68, indoor 9, phone-command 10, framing 19). Session calibration, which this pass also touched, was 4 passed. No phone was attached. No saree was filmed. This does not mean a phone will pass.
 
+## Jump missed, lane late, quick sequence dropped
+
+No phone was used. The numbers are synthetic 30fps frames. A normal small hop in the same test still peaks at **16.67** torso-lengths/s. `jumpRise` stays **0.32**. The 2.244mm image step is still raw speed **0.340** and the 0.92 blend of that step alone is **0.313**. Jump speed is still the raw hip. The 50ms dip confirm is still there, so a one-frame twitch that only returns to standing is not a jump.
+
+What the phone run was hitting:
+
+- A hop whose hips crossed the squat line (0.16 torso) for two frames emitted a squat on that second frame. The rise was then "standing up," which must not jump. The downward-speed reset also set the dip clock to the last falling frame, so the only fast frame was 33ms old and under the 50ms confirm. Most hops missed. A moving dip now stays a jump and emits on the rise frame (measured **0ms** after the frame that crosses 0.32). A one-frame dip that has already left the stance emits on that next frame. A duck is two still frames below the line, so the bottom of a hop is not a duck. A held squat emits on that second still frame, measured **66ms** after the hips cross. Standing up from that squat emits nothing.
+- Lane commands were already one frame on the detector (33ms). The TV slide was a 250ms smoothstep. At 16ms it had moved about **1.2%** of the lane, so the character looked late. The slide is now an ease-out over **100ms**. At 16ms it has moved about **29%**. A second lane command is not waiting out a 250ms tween. Hit boxes are the same size. Jump takeoff 5.6 m/s and gravity 18 m/s² were not changed.
+- Squat, then right, then jump was one early return. While the hips were still down the arm was suppressed, so the lane never fired unless the hand went down and up again. Recovery then treated the next dip as standing up and cleared it. On the TV, a jump that arrived during the duck clip waited in the one-deep buffer and could pass the 400ms stale window. The arm now emits during the squat. A new dip during recovery can jump. A jump during the roll plays on that frame instead of waiting. The synthetic sequence emits squat, lean_right, jump, in that order, once each, with about 150–300ms between them. Jump, then lean_left, then squat does the same. Left then right, and right then left, each emit 33ms after the hand is past the line. A hold does not repeat.
+
+The ten small hops still peak at 16.67. The ten varied hops (small, deep, bent knees, covered legs) peaked at 16.36. `vitest` on the movement, indoor-sequence, phone-command, and framing files: 114 passed, 0 failed (movement 76, indoor 9, phone-command 10, framing 19). The course-body slide check was 2 passed. No phone was attached.
+
 ## Phone checklist
 
 Run this on a phone against the TV, with the player in a saree. A green unit test is not a pass. No phone was used to write this list, and no saree was filmed. Nothing here claims the phone will pass.
