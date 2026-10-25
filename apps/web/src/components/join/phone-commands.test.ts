@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHandsFree, type HandsFreeSample } from "../../lib/vision/hands-free";
-import { armDiagnosticLabel, canSendMovement, framingStatusCue, gameplaySendAllowed, leanOverlayText, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
+import { armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, canSendMovement, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, leanOverlayText, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, readMotionDiagFlag, shouldRetryMovement, trackingStatusLine } from "./phone-commands";
 
 const live = {
   controllerOn: true,
@@ -50,8 +50,11 @@ describe("phone command gate", () => {
     expect(lines.join(" ")).not.toMatch(/token|session|name/i);
   });
 
-  it("hides motion diagnostics in production", () => {
+  it("hides motion diagnostics in production unless the tester flag is set", () => {
     expect(motionDiagnosticsEnabled("production")).toBe(false);
+    expect(motionDiagnosticsEnabled("production", "?motiondiag=1")).toBe(true);
+    expect(readMotionDiagFlag("?motiondiag=1")).toBe(true);
+    expect(readMotionDiagFlag("")).toBe(false);
     expect(motionDiagnosticsEnabled("development")).toBe(true);
     const line = leanOverlayText({
       neutral: 0.012,
@@ -68,6 +71,33 @@ describe("phone command gate", () => {
     expect(line).toContain("sent lean_left");
     expect(line).toContain("lane left");
     expect(line).not.toContain("MOVE LEFT");
+  });
+
+  it("sends a fresh command after reconnect and does not replay a sent or stale one", () => {
+    const queued = enqueueMovement([], { eventId: "mv-jump-1", queuedAt: 1_000, sent: false, body: "jump" });
+    const again = enqueueMovement(queued, { eventId: "mv-jump-1", queuedAt: 1_050, sent: false, body: "jump" });
+    expect(again).toHaveLength(1);
+
+    const offline = flushMovementQueue(again, 1_200, false, 800);
+    expect(offline.send).toHaveLength(0);
+    expect(offline.dropped).toHaveLength(0);
+    expect(offline.keep).toHaveLength(1);
+
+    const back = flushMovementQueue(offline.keep, 1_300, true, 800);
+    expect(back.send.map((item) => item.body)).toEqual(["jump"]);
+    expect(back.keep).toHaveLength(0);
+
+    const replay = flushMovementQueue(back.keep, 1_400, true, 800);
+    expect(replay.send).toHaveLength(0);
+
+    const stale = flushMovementQueue(offline.keep, 1_000 + 801, true, 800);
+    expect(stale.send).toHaveLength(0);
+    expect(stale.dropped.map((item) => item.eventId)).toEqual(["mv-jump-1"]);
+    expect(shouldRetryMovement("stale", 801, 800)).toBe(false);
+    expect(candidateLabel({ squatPhase: "CANDIDATE", leanPhase: "NEUTRAL" })).toBe("squat");
+    expect(authoritativeMoveLabel({ tvState: "", serverAck: "" })).toBe("not reported");
+    expect(authoritativeMoveLabel({ tvState: "applied jump", serverAck: "accepted" })).toBe("applied jump");
+    expect(authoritativeMoveLabel({ tvState: "", serverAck: "MOVEMENT_REJECTED" })).toBe("server MOVEMENT_REJECTED");
   });
 
   it("names the arm phases and the live gesture without covering them in a status line", () => {

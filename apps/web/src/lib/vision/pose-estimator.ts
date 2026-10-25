@@ -132,6 +132,10 @@ export class PoseEstimator {
   } | null = null;
   private detector: DetectorState = createDetector({ mirror: true });
   private raf = 0;
+  private videoFrameHandle = 0;
+  private lastDetectAt = 0;
+  private presentedFrames = -1;
+  private lastMediaTime = Number.NaN;
   private running = false;
   private mode: "idle" | "calibrate" | "play" = "idle";
   private recent: PoseFrame[] = [];
@@ -167,6 +171,14 @@ export class PoseEstimator {
   private motion: MotionCalibration = createMotionCalibration();
   private coaching = true;
   private squatFitted = false;
+  /** Console lines only when the phone URL has ?motiondiag=1. */
+  private diagLog = false;
+  private diagKey = "";
+
+  setDiagnosticsLog(on: boolean) {
+    this.diagLog = on;
+    if (!on) this.diagKey = "";
+  }
 
   async load() {
     if (this.landmarker) return;
@@ -205,13 +217,7 @@ export class PoseEstimator {
     this.actionsOpen = true;
     if (this.running) return;
     this.running = true;
-    this.armCameraClock(video);
-    const loop = () => {
-      if (!this.running) return;
-      this.raf = requestAnimationFrame(loop);
-      this.tick();
-    };
-    this.raf = requestAnimationFrame(loop);
+    this.armDetectClock(video);
   }
 
   setMode(mode: "idle" | "calibrate" | "play") {
@@ -309,6 +315,9 @@ export class PoseEstimator {
     this.running = false;
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    const video = this.video as (HTMLVideoElement & { cancelVideoFrameCallback?: (handle: number) => void }) | null;
+    if (video?.cancelVideoFrameCallback && this.videoFrameHandle) video.cancelVideoFrameCallback(this.videoFrameHandle);
+    this.videoFrameHandle = 0;
   }
 
   private streamEnded() {
@@ -318,7 +327,16 @@ export class PoseEstimator {
     return tracks.length === 0 || tracks.every((track) => track.readyState === "ended");
   }
 
-  private tick() {
+  /**
+   * One sample per presented camera frame.
+   * `frameNow` is the presentation clock (`performance.now` domain), so
+   * velocity, the 1ms same-sample guard, recovery, and neutral drift use the
+   * real gap. A 15fps camera is about 66ms. A 30fps camera is about 33ms.
+   * Animation frames that repeat the same picture are not extra samples.
+   * The socket command uses `Date.now` when it is sent. The TV stale clock
+   * starts when the TV receives it. Those are different clocks.
+   */
+  private tick(frameNow = performance.now()) {
     if (this.streamEnded()) {
       this.suspend(CAMERA_LOST_MESSAGE);
       return;
@@ -326,7 +344,8 @@ export class PoseEstimator {
     const video = this.video;
     const landmarker = this.landmarker;
     if (!video || !landmarker || video.readyState < 2 || this.mode === "idle") return;
-    const now = performance.now();
+    const now = Math.max(frameNow, this.lastDetectAt + 1);
+    this.lastDetectAt = now;
     const inferenceStarted = performance.now();
     let result: {
       landmarks?: Array<Array<{ x: number; y: number; z?: number; visibility?: number }>>;
@@ -436,6 +455,7 @@ export class PoseEstimator {
     }
     const update = pushPose(this.detector, frame);
     this.detector = update.state;
+    this.noteDiag(update);
     this.observeCoach(update, now, view.code === "good" && !view.pause);
     const allowed = view.suppressAll ? [] : update.events.filter((event) => gestureAllowed(event.movementType, view.blocks));
     const movement = allowed[0]?.movementType ?? null;
@@ -515,19 +535,66 @@ export class PoseEstimator {
     }
   }
 
-  private armCameraClock(video: HTMLVideoElement) {
+  /**
+   * Prefer the camera's presented-frame callback. Falling back to animation
+   * frames skips a repeated `currentTime`, so the same picture is not classified
+   * again. A capture stream whose `currentTime` stays 0 still samples on the
+   * animation clock; phones that support the frame callback do not take that path.
+   */
+  private armDetectClock(video: HTMLVideoElement) {
     const withFrames = video as HTMLVideoElement & {
-      requestVideoFrameCallback?: (callback: () => void) => number;
+      requestVideoFrameCallback?: (
+        callback: (now: number, metadata: { presentedFrames?: number; mediaTime?: number }) => void,
+      ) => number;
     };
-    if (!withFrames.requestVideoFrameCallback) return;
-    const tick = () => {
+    if (withFrames.requestVideoFrameCallback) {
+      const onFrame = (now: number, metadata: { presentedFrames?: number }) => {
+        if (!this.running) return;
+        const presented = typeof metadata.presentedFrames === "number" ? metadata.presentedFrames : -1;
+        if (presented >= 0 && presented === this.presentedFrames) {
+          this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
+          return;
+        }
+        if (presented >= 0) this.presentedFrames = presented;
+        this.cameraClock = true;
+        this.cameraFrames += 1;
+        this.sampleRates(now, null);
+        this.tick(now);
+        this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
+      };
+      this.videoFrameHandle = withFrames.requestVideoFrameCallback(onFrame);
+      return;
+    }
+    const loop = () => {
       if (!this.running) return;
+      this.raf = requestAnimationFrame(loop);
+      const mediaTime = video.currentTime;
+      if (Number.isFinite(this.lastMediaTime) && mediaTime === this.lastMediaTime && mediaTime > 0) return;
+      this.lastMediaTime = mediaTime;
+      const now = performance.now();
       this.cameraClock = true;
       this.cameraFrames += 1;
-      this.sampleRates(performance.now(), null);
-      withFrames.requestVideoFrameCallback?.(tick);
+      this.sampleRates(now, null);
+      this.tick(now);
     };
-    withFrames.requestVideoFrameCallback(tick);
+    this.raf = requestAnimationFrame(loop);
+  }
+
+  private noteDiag(update: { events: Array<{ movementType: string }>; state: { recognition: string; lastReject: { reason: string } | null; squat: { phase: string }; jump: { phase: string }; torso: { phase: string }; left: { phase: string }; right: { phase: string } } }) {
+    if (!this.diagLog) return;
+    const confirmed = update.events.map((event) => event.movementType).join(",") || "none";
+    const candidate = [
+      update.state.squat.phase === "CANDIDATE" ? "squat" : "",
+      update.state.jump.phase === "CANDIDATE" ? "jump" : "",
+      update.state.torso.phase === "CANDIDATE" ? "lean" : "",
+      update.state.left.phase === "ARM_RISING" ? "left" : "",
+      update.state.right.phase === "ARM_RISING" ? "right" : "",
+    ].filter(Boolean).join("+") || "none";
+    const reject = update.state.lastReject?.reason ?? "none";
+    const key = `${update.state.recognition}|${candidate}|${confirmed}|${reject}`;
+    if (key === this.diagKey) return;
+    this.diagKey = key;
+    console.info(`[motiondiag] state ${update.state.recognition} candidate ${candidate} confirmed ${confirmed} reject ${reject}`);
   }
 
   private sampleRates(now: number, inferenceMs: number | null) {

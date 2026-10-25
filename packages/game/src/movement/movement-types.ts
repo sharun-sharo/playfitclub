@@ -71,9 +71,10 @@ export interface MovementThresholds {
    */
   torsoLeanNeutral: number;
   /**
-   * The first frame past the lean line does not send a lane change. The next frame that is still past it does.
-   * At 30fps that is about 33ms once the lean is clearly past the line, which is under 70ms.
-   * Raising this waits longer and ignores a short wobble. Zero would lane-change on a one-frame wobble.
+   * The first sample past the lean line does not send a lane change. The next presented
+   * camera frame that is still past it does. The value is real milliseconds, not a frame count.
+   * At 30fps that next frame is about 33ms. At 15fps it is about 66ms. Both are under 70ms
+   * after the lean is already past the line. Zero would lane-change on a one-sample wobble.
    */
   torsoLeanHoldMs: number;
   squatEnterDrop: number;
@@ -177,7 +178,12 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   leanExit: 0.22,
   torsoLeanEnter: 0.16,
   torsoLeanNeutral: 0.07,
-  /** Next 30fps frame. Zero would change lanes on the same sample as a one-frame wobble. */
+  /**
+   * Same-sample guard, in real milliseconds. Zero would lane-change on the
+   * sample that first crosses the line. 1ms is not "one 30fps frame".
+   * The phone feeds one sample per presented camera frame, so the next
+   * sample is ~33ms later at 30fps and ~66ms later at 15fps.
+   */
   torsoLeanHoldMs: 1,
   /**
    * Hip drop that counts as a squat, in standing-torso lengths.
@@ -236,7 +242,11 @@ export const DEFAULT_THRESHOLDS: MovementThresholds = {
   sidewaysElbowExit: 85,
   neutralDrift: 0.02,
   armHoldMs: 1,
-  /** Next 30fps frame. Zero would duck on the same sample as a one-frame bob. */
+  /**
+   * Same-sample guard, in real milliseconds. The first down sample does not
+   * emit. The next presented camera frame that is still down does.
+   * 1ms is not one frame of a 30fps clock.
+   */
   squatHoldMs: 1,
   recoverMs: 180,
   cooldownMs: 240,

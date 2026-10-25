@@ -1,5 +1,6 @@
 "use client";
 
+import { COMMAND_STALE_MS } from "@fitplay/game";
 import { CLIENT_EVENTS, PLAYER_STATUSES, PROTOCOL_VERSION, RUN_LIVES, resolvePublicAppUrl, SERVER_EVENTS, type PlayerStatusName } from "@fitplay/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
@@ -123,7 +124,7 @@ export function useTvSession(
 ) {
   const commandRef = useRef(onCommand);
   const diagnosticsRef = useRef(onDiagnostics);
-  const pending = useRef<PoseCommand | null>(null);
+  const pending = useRef<{ event: PoseCommand; receivedAt: number } | null>(null);
   const started = useRef("");
   const socketRef = useRef<Socket | null>(null);
   const wantKeyboard = useRef(false);
@@ -203,7 +204,7 @@ export function useTvSession(
 
     const deliver = (event: PoseCommand) => {
       const report = commandRef.current(event);
-      pending.current = report ? null : event;
+      pending.current = report ? null : { event, receivedAt: Date.now() };
     };
 
     const applyState = (payload: {
@@ -412,7 +413,11 @@ export function useTvSession(
 
   useEffect(() => {
     if (!ready || !pending.current) return;
-    const report = commandRef.current(pending.current);
+    if (Date.now() - pending.current.receivedAt > COMMAND_STALE_MS) {
+      pending.current = null;
+      return;
+    }
+    const report = commandRef.current(pending.current.event);
     if (report) pending.current = null;
   }, [ready]);
 

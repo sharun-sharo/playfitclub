@@ -36,15 +36,83 @@ export function gameplaySendAllowed(input: {
 }
 
 /** A gesture is sent once. A stale, duplicate, or rejected command is not sent again. */
-export function shouldRetryMovement(reason: string | null, ageMs: number, staleMs = 400) {
+export function shouldRetryMovement(reason: string | null, ageMs: number, staleMs = 800) {
   void reason;
   void ageMs;
   void staleMs;
   return false;
 }
 
-export function motionDiagnosticsEnabled(nodeEnv: string | undefined = process.env.NODE_ENV) {
+/** Tester overlay on the production phone page. The query is `?motiondiag=1`. */
+export function readMotionDiagFlag(search: string) {
+  const query = search.startsWith("?") ? search.slice(1) : search;
+  return new URLSearchParams(query).get("motiondiag") === "1";
+}
+
+export function motionDiagnosticsEnabled(nodeEnv: string | undefined = process.env.NODE_ENV, search = "") {
+  if (readMotionDiagFlag(search)) return true;
   return nodeEnv !== "production";
+}
+
+export interface QueuedMovement<T> {
+  eventId: string;
+  queuedAt: number;
+  sent: boolean;
+  body: T;
+}
+
+/** The same event id is not queued twice and is not sent again after it leaves. */
+export function enqueueMovement<T>(queue: QueuedMovement<T>[], item: QueuedMovement<T>) {
+  if (queue.some((entry) => entry.eventId === item.eventId)) return queue;
+  return [...queue, item];
+}
+
+/**
+ * Sends each unsent command once, and only while the socket can deliver it.
+ * A command that is still waiting through a disconnect stays queued until it
+ * is older than the stale bound. It is not replayed after that, and a command
+ * that was already handed to the socket is not sent again.
+ */
+export function flushMovementQueue<T>(queue: QueuedMovement<T>[], now: number, canSend: boolean, staleMs: number) {
+  const send: QueuedMovement<T>[] = [];
+  const keep: QueuedMovement<T>[] = [];
+  const dropped: QueuedMovement<T>[] = [];
+  for (const item of queue) {
+    if (item.sent) continue;
+    if (now - item.queuedAt > staleMs) {
+      dropped.push(item);
+      continue;
+    }
+    if (!canSend) {
+      keep.push(item);
+      continue;
+    }
+    send.push({ ...item, sent: true });
+  }
+  return { send, keep, dropped };
+}
+
+export function candidateLabel(input: {
+  squatPhase?: string | null;
+  jumpPhase?: string | null;
+  leanPhase?: string | null;
+  leftPhase?: string | null;
+  rightPhase?: string | null;
+}) {
+  const parts: string[] = [];
+  if (input.squatPhase === "CANDIDATE") parts.push("squat");
+  if (input.jumpPhase === "CANDIDATE") parts.push("jump");
+  if (input.leanPhase === "CANDIDATE") parts.push("lean");
+  if (input.leftPhase === "ARM_RISING") parts.push("left arm");
+  if (input.rightPhase === "ARM_RISING") parts.push("right arm");
+  return parts.length ? parts.join(", ") : "none";
+}
+
+/** TV result when the server relayed one. Otherwise the server ack, or not reported. */
+export function authoritativeMoveLabel(input: { tvState: string; serverAck: string }) {
+  if (input.tvState) return input.tvState;
+  if (input.serverAck) return `server ${input.serverAck}`;
+  return "not reported";
 }
 
 /**

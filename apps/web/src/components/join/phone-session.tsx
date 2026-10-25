@@ -1,11 +1,11 @@
 "use client";
 
-import { armMappingVerdict, type MovementDraft } from "@fitplay/game";
+import { armMappingVerdict, COMMAND_STALE_MS, type MovementDraft } from "@fitplay/game";
 import { CLIENT_EVENTS, PROTOCOL_VERSION, SERVER_EVENTS } from "@fitplay/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { phoneBodyStatus, readinessInProgress } from "@/components/join/body-status";
-import { armDiagnosticLabel, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, trackingStatusLine } from "@/components/join/phone-commands";
+import { armDiagnosticLabel, authoritativeMoveLabel, candidateLabel, enqueueMovement, flushMovementQueue, framingStatusCue, gameplaySendAllowed, liveGestureName, motionDebugLines, motionDiagnosticsEnabled, readMotionDiagFlag, trackingStatusLine, type QueuedMovement } from "@/components/join/phone-commands";
 import {
   CameraSetup,
   connectionCopy,
@@ -76,7 +76,20 @@ interface MotionTrace {
   tvMs: number | null;
   phoneRoundTripMs: number | null;
   runnerReason: string;
+  serverAck: string;
+  tvState: string;
 }
+
+type MovementPacket = {
+  v: number;
+  eventId: string;
+  playerId: string;
+  sessionId: string;
+  movementType: MovementDraft["movementType"];
+  confidence: number;
+  clientTimestamp: number;
+  sequenceNumber: number;
+};
 
 const EMPTY_TRACE: MotionTrace = {
   lastGesture: "",
@@ -92,6 +105,8 @@ const EMPTY_TRACE: MotionTrace = {
   tvMs: null,
   phoneRoundTripMs: null,
   runnerReason: "",
+  serverAck: "",
+  tvState: "",
 };
 const EMPTY_UI: PoseUiState = {
   guidance: "",
@@ -137,6 +152,10 @@ export function PhoneSession({ code }: { code: string }) {
   const [ui, setUi] = useState<PoseUiState>(EMPTY_UI);
   const [trace, setTrace] = useState<MotionTrace>(EMPTY_TRACE);
   const sentAtRef = useRef<Map<string, number>>(new Map());
+  const motionDiagRef = useRef(false);
+  const [motionDiag, setMotionDiag] = useState(false);
+  const outboxRef = useRef<QueuedMovement<MovementPacket>[]>([]);
+  const flushMovesRef = useRef<() => void>(() => {});
   const [phase, setPhase] = useState("lobby");
   const [raceLive, setRaceLive] = useState<boolean | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraPermission>("off");
@@ -397,6 +416,8 @@ export function PhoneSession({ code }: { code: string }) {
     socket.on(SERVER_EVENTS.sessionState, (payload: { id: string; phase: string; status?: string; raceLive?: boolean | null; countdown?: number; countdownPurpose?: CountdownPurpose }) => {
       const previousPhase = phaseRef.current;
       phaseRef.current = payload.phase;
+      if (payload.phase === "lobby" || payload.phase === "countdown") outboxRef.current = [];
+      if (payload.phase === "running") flushMovesRef.current();
       if (previousPhase !== payload.phase && (payload.phase === "lobby" || payload.phase === "countdown" || payload.phase === "paused" || payload.phase === "running")) {
         estimatorRef.current?.readyForRound();
       }
@@ -427,9 +448,11 @@ export function PhoneSession({ code }: { code: string }) {
       const code = payload?.code ?? "";
       if (code === "DUPLICATE_EVENT" || code === "MOVEMENT_REJECTED" || code === "SCORE_REJECTED" || code === "GAME_OVER" || (code === "RATE_LIMITED" && joinedRef.current)) {
         noteEvent(`movement ${code}`);
+        if (motionDiagRef.current) console.info(`[motiondiag] ack ${code}`);
         setTrace((current) => ({
           ...current,
           lastAck: payload.message || code,
+          serverAck: code,
           serverMs: typeof payload.serverTimeMs === "number" ? payload.serverTimeMs : current.serverMs,
           runnerReason: code,
         }));
@@ -449,6 +472,8 @@ export function PhoneSession({ code }: { code: string }) {
       if (!payload || typeof payload.eventId !== "string") return;
       const sent = sentAtRef.current.get(payload.eventId);
       const phoneRoundTripMs = typeof sent === "number" ? Date.now() - sent : null;
+      const tvState = payload.accepted ? `applied ${payload.movementType ?? "move"}` : `rejected ${payload.reason || "unknown"}`;
+      if (motionDiagRef.current) console.info(`[motiondiag] tv ${tvState}`);
       noteEvent(payload.accepted ? "movement applied" : "movement declined");
       setTrace((current) => ({
         ...current,
@@ -456,6 +481,7 @@ export function PhoneSession({ code }: { code: string }) {
         phoneRoundTripMs: payload.accepted && phoneRoundTripMs !== null && phoneRoundTripMs >= 0 ? phoneRoundTripMs : current.phoneRoundTripMs,
         tvMs: typeof payload.executedAtMs === "number" ? payload.executedAtMs : current.tvMs,
         runnerReason: payload.accepted ? "" : payload.reason ?? "",
+        tvState,
       }));
     });
     socket.on("disconnect", () => {
@@ -464,7 +490,12 @@ export function PhoneSession({ code }: { code: string }) {
       noteEvent("disconnect");
       if (joinedRef.current) setNotice(phoneNotice());
       const token = window.sessionStorage.getItem(`fitplay.token.${code}`);
-      if (token) socket.emit("session:reconnect", { token });
+      if (token) {
+        socket.emit("session:reconnect", { token }, (response: { ok?: boolean }) => {
+          if (generation !== socketGen.current) return;
+          if (response?.ok) flushMovesRef.current();
+        });
+      }
     });
     const storedToken = window.sessionStorage.getItem(`fitplay.token.${code}`);
     const finishJoin = () => {
@@ -507,6 +538,7 @@ export function PhoneSession({ code }: { code: string }) {
         setJoining(false);
         noteEvent("reconnect accepted");
         joinedRef.current = true;
+        flushMovesRef.current();
         setNameError(null);
         setSubmitError(null);
         setPreviewError(null);
@@ -528,7 +560,11 @@ export function PhoneSession({ code }: { code: string }) {
     noteEvent("session:reconnect");
     if (socket.disconnected) socket.connect();
     const token = window.sessionStorage.getItem(`fitplay.token.${code}`);
-    if (token) socket.emit("session:reconnect", { token });
+    if (token) {
+      socket.emit("session:reconnect", { token }, (response: { ok?: boolean }) => {
+        if (response?.ok) flushMovesRef.current();
+      });
+    }
   }
 
   useEffect(() => {
@@ -538,6 +574,13 @@ export function PhoneSession({ code }: { code: string }) {
     };
     window.addEventListener("storage", apply);
     return () => window.removeEventListener("storage", apply);
+  }, []);
+
+  useEffect(() => {
+    const on = readMotionDiagFlag(window.location.search);
+    motionDiagRef.current = on;
+    setMotionDiag(on);
+    estimatorRef.current?.setDiagnosticsLog(on);
   }, []);
 
   function pushBodyStatus(
@@ -703,6 +746,7 @@ export function PhoneSession({ code }: { code: string }) {
       setCameraStatus("granted");
       const estimator = estimatorRef.current ?? new PoseEstimator();
       estimatorRef.current = estimator;
+      estimator.setDiagnosticsLog(motionDiagRef.current);
       try {
         await estimator.load();
       } catch {
@@ -796,6 +840,49 @@ export function PhoneSession({ code }: { code: string }) {
     }
   }
 
+  flushMovesRef.current = () => {
+    const socket = socketRef.current;
+    const player = identity.current;
+    const canSend = Boolean(socket?.connected && player && phaseRef.current === "running");
+    const now = Date.now();
+    const step = flushMovementQueue(outboxRef.current, now, canSend, COMMAND_STALE_MS);
+    outboxRef.current = step.keep;
+    for (const dropped of step.dropped) {
+      const label = gestureLabel(dropped.body.movementType);
+      if (motionDiagRef.current) console.info(`[motiondiag] dropped unsent ${label} age ${now - dropped.queuedAt}ms reason stale`);
+      setTrace((currentTrace) => ({
+        ...currentTrace,
+        lastAck: "Command was too old to apply",
+        runnerReason: "stale",
+        serverAck: "stale",
+      }));
+    }
+    if (!socket) return;
+    for (const item of step.send) {
+      const label = gestureLabel(item.body.movementType);
+      sentAtRef.current.set(item.eventId, now);
+      noteEvent(`movement ${label}`);
+      if (motionDiagRef.current) console.info(`[motiondiag] sent ${label}`);
+      socket.emit(
+        CLIENT_EVENTS.movement,
+        item.body,
+        (response: { ok?: boolean; message?: string; code?: string; serverTimeMs?: number }) => {
+          const code = response?.ok ? "accepted" : response?.code || "rejected";
+          if (motionDiagRef.current) console.info(`[motiondiag] ack ${label} ${code}`);
+          setTrace((currentTrace) => ({
+            ...currentTrace,
+            lastAck: response?.ok ? `${label} accepted` : response?.message || response?.code || "The server did not accept it.",
+            serverAck: code,
+            serverMs: typeof response?.serverTimeMs === "number" ? response.serverTimeMs : currentTrace.serverMs,
+            lastSent: label,
+            sentPhoneMs: now,
+          }));
+        },
+      );
+      setTrace((currentTrace) => ({ ...currentTrace, lastSent: label, sentPhoneMs: now, commandId: item.eventId }));
+    }
+  };
+
   function emitMovement(draft: MovementDraft) {
     const current = identity.current;
     if (!current) return;
@@ -809,32 +896,24 @@ export function PhoneSession({ code }: { code: string }) {
       framingPaused: framingPauseRef.current,
       cameraLive: bodyActionsRef.current,
     })) return;
-    const label = gestureLabel(draft.movementType);
     const eventId = draft.eventId.length >= 8 ? draft.eventId : draft.eventId.padEnd(8, "0");
-    const sentAt = Date.now();
-    sentAtRef.current.set(eventId, sentAt);
-    noteEvent(`movement ${label}`);
-    socketRef.current?.emit(
-      CLIENT_EVENTS.movement,
-      {
+    const queuedAt = Date.now();
+    outboxRef.current = enqueueMovement(outboxRef.current, {
+      eventId,
+      queuedAt,
+      sent: false,
+      body: {
         v: PROTOCOL_VERSION,
         eventId,
         playerId: current.playerId,
         sessionId: current.sessionId,
         movementType: draft.movementType,
         confidence: draft.confidence,
-        clientTimestamp: sentAt,
+        clientTimestamp: queuedAt,
         sequenceNumber: draft.sequenceNumber,
       },
-      (response: { ok?: boolean; message?: string; code?: string; serverTimeMs?: number }) => {
-        setTrace((currentTrace) => ({
-          ...currentTrace,
-          lastAck: response?.ok ? `${label} accepted` : response?.message || response?.code || "The server did not accept it.",
-          serverMs: typeof response?.serverTimeMs === "number" ? response.serverTimeMs : currentTrace.serverMs,
-        }));
-      },
-    );
-    setTrace((currentTrace) => ({ ...currentTrace, lastSent: label, sentPhoneMs: sentAt, commandId: eventId }));
+    });
+    flushMovesRef.current();
   }
 
   function commitReady(isReady: boolean, confidence: number) {
@@ -1062,7 +1141,7 @@ export function PhoneSession({ code }: { code: string }) {
       : handsView
         ? handsCue
         : cueFor(stage, cameraOn, ui);
-  const showDiagnostics = motionDiagnosticsEnabled();
+  const showDiagnostics = motionDiag || motionDiagnosticsEnabled();
   const personLine = trackingStatusLine(flow, ui.poseCount, handsView?.cue ?? cue?.line ?? null);
   const adjustment = framingStatusCue(ui.calibrationCue) || framingStatusCue(handsView?.cue) || framingStatusCue(cue?.line);
   const gesture = liveGestureName(lastMove);
@@ -1137,6 +1216,13 @@ export function PhoneSession({ code }: { code: string }) {
               }).map((line) => (
                 <p key={line}>{line}</p>
               ))}
+              <p>fps {ui.rates.cameraFps === null ? "—" : ui.rates.cameraFps.toFixed(1)}</p>
+              <p>candidate {candidateLabel(ui.diagnostics)}</p>
+              <p>confirmed {ui.diagnostics.lastGesture || trace.lastGesture || "none"}</p>
+              <p>sent {trace.lastSent || "none"}</p>
+              <p>ack {trace.lastAck || "none"}</p>
+              <p>rtt {trace.phoneRoundTripMs === null ? "—" : `${trace.phoneRoundTripMs}ms`}</p>
+              <p>{authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck })}</p>
             </aside>
           ) : null}
           {gesture ? (
@@ -1320,6 +1406,16 @@ function diagnosticRows(
     ["Cooldown", diagnostics ? `${Math.round(diagnostics.cooldownMs)} ms` : "—"],
     ["Left check", armCheckCopy("left", gesture)],
     ["Right check", armCheckCopy("right", gesture)],
+    ["Candidate", candidateLabel({
+      squatPhase: diagnostics?.squatPhase,
+      jumpPhase: diagnostics?.jumpPhase,
+      leanPhase: diagnostics?.leanPhase,
+      leftPhase: diagnostics?.leftPhase,
+      rightPhase: diagnostics?.rightPhase,
+    })],
+    ["Confirmed", diagnostics?.lastGesture || trace.lastGesture || "none"],
+    ["State", diagnostics?.recognition ?? "—"],
+    ["Last command sent", trace.lastSent || "none"],
     ["Gesture detected", clockLabel(trace.gestureAtMs ?? diagnostics?.gestureAtMs, "phone performance")],
     ["Command sent", clockLabel(trace.sentPhoneMs, "phone date")],
     ["Command accepted", clockLabel(trace.serverMs, "server date")],
@@ -1329,6 +1425,7 @@ function diagnosticRows(
     ["Last ack", trace.lastAck || "None yet"],
     ["Last applied", trace.lastApplied || "None yet"],
     ["Accept or reject", acceptOrReject(diagnostics?.reject, trace.runnerReason, gesture)],
+    ["Authoritative", authoritativeMoveLabel({ tvState: trace.tvState, serverAck: trace.serverAck })],
   ];
 }
 

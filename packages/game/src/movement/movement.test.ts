@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { adaptThresholds, calibrateNeutral, neutralFromLandmarks } from "./calibration";
 import { COMMAND_STALE_MS, holdCommand, releaseCommand } from "./command-buffer";
-import { claimMovementId, createDetector, pushPose, resetMovementReady, resetPhoneForRound, setNeutral, settleGestures } from "./movement-state-machine";
+import { claimMovementId, createDetector, MAX_VELOCITY_GAP_MS, neutralDriftForGap, pushPose, resetMovementReady, resetPhoneForRound, setNeutral, settleGestures } from "./movement-state-machine";
 import { DEFAULT_THRESHOLDS, type Landmark, type PoseFrame } from "./movement-types";
 
 function landmark(x: number, y: number, visibility = 1): Landmark {
@@ -606,10 +606,30 @@ describe("phone camera gestures", () => {
 
     held = holdCommand(null, { id: "mv-old" }, 1_000);
     held = holdCommand(held, { id: "mv-new" }, 1_100);
-    step = releaseCommand(held, 1_600, COMMAND_STALE_MS, true);
+    step = releaseCommand(held, 1_100 + COMMAND_STALE_MS + 1, COMMAND_STALE_MS, true);
     expect(step.dropped).toBe("stale");
     expect(step.apply).toBeNull();
-    expect(COMMAND_STALE_MS).toBe(400);
+    expect(COMMAND_STALE_MS).toBe(800);
+  });
+
+  it("keeps a command that is still inside the jump arc and drops one past the stale bound", () => {
+    const received = 10_000;
+    const arcMs = 622;
+    const oldBound = releaseCommand(holdCommand(null, { id: "squat-during-jump" }, received), received + arcMs, 400, false);
+    expect(oldBound.dropped).toBe("stale");
+    expect(oldBound.apply).toBeNull();
+
+    const kept = releaseCommand(holdCommand(null, { id: "squat-during-jump" }, received), received + arcMs, COMMAND_STALE_MS, true);
+    expect(kept.dropped).toBeNull();
+    expect(kept.apply).toEqual({ id: "squat-during-jump" });
+
+    const fresh = releaseCommand(holdCommand(null, { id: "fresh" }, received), received + 200, COMMAND_STALE_MS, true);
+    expect(fresh.apply).toEqual({ id: "fresh" });
+    expect(fresh.dropped).toBeNull();
+
+    const expired = releaseCommand(holdCommand(null, { id: "old" }, received), received + COMMAND_STALE_MS + 1, COMMAND_STALE_MS, true);
+    expect(expired.dropped).toBe("stale");
+    expect(expired.apply).toBeNull();
   });
 
   it("emits nothing when tracking is lost", () => {
@@ -1882,5 +1902,100 @@ describe("pre-jump knee bend versus squat", () => {
       { n: 2, rise: 0.06, hide: [27, 28] },
     ]);
     expect(noFeet.events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+  });
+});
+
+describe("synthetic gesture counts at variable frame intervals", () => {
+  const wobble = [0.72, 1.18, 0.86, 1.28, 0.94, 1.06];
+
+  function playSteps(steps: Array<Omit<Parameters<typeof pose>[0], "time"> & { n?: number }>, frameMs: number) {
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false }), neutral);
+    const events = [];
+    let time = 0;
+    let tick = 0;
+    for (const step of steps) {
+      const count = step.n ?? 1;
+      for (let index = 0; index < count; index += 1) {
+        const update = pushPose(state, pose({ ...step, time }));
+        state = update.state;
+        events.push(...update.events);
+        tick += 1;
+        time += Math.max(8, Math.round(frameMs * wobble[tick % wobble.length]!));
+      }
+    }
+    return events;
+  }
+
+  function countKind(frameMs: number, kind: "jump" | "squat" | "lean_left" | "lean_right") {
+    const repeats = 20;
+    const steps: Array<Omit<Parameters<typeof pose>[0], "time"> & { n?: number }> = [];
+    for (let index = 0; index < repeats; index += 1) {
+      if (kind === "jump") {
+        steps.push({ n: 3 }, { hipDrop: 0.012, kneeForward: 0.02 }, { n: 2, rise: 0.05, kneeForward: 0.02 }, { n: 6 });
+      } else if (kind === "squat") {
+        steps.push({ n: 2 }, { n: 8, hipDrop: 0.22, kneeForward: 0.1 }, { n: 6 });
+      } else if (kind === "lean_left") {
+        steps.push({ n: 2 }, { n: 4, shoulderLean: -0.045 }, { n: 5 });
+      } else {
+        steps.push({ n: 2 }, { n: 4, shoulderLean: 0.045 }, { n: 5 });
+      }
+    }
+    const events = playSteps(steps, frameMs);
+    return events.filter((event) => event.movementType === kind).length;
+  }
+
+  it("logs synthetic emit counts at 30fps and 15fps", () => {
+    const rates = [33, 66];
+    const kinds = ["jump", "squat", "lean_left", "lean_right"] as const;
+    const rows = rates.flatMap((frameMs) => kinds.map((kind) => ({ frameMs, kind, emitted: countKind(frameMs, kind) })));
+    console.log(JSON.stringify({ synthetic: true, rows }));
+    for (const row of rows) expect(row.emitted).toBe(20);
+  });
+
+  it("chains squat, jump, and lane at 30fps and at 15fps", () => {
+    for (const frameMs of [33, 66]) {
+      const squatThenJump = playSteps(
+        [{ n: 2 }, { n: 8, hipDrop: 0.22, kneeForward: 0.1 }, { n: 8 }, { hipDrop: 0.012, kneeForward: 0.02 }, { n: 2, rise: 0.05, kneeForward: 0.02 }, { n: 4 }],
+        frameMs,
+      );
+      expect(squatThenJump.map((event) => event.movementType)).toEqual(["squat", "jump"]);
+
+      const jumpThenSquat = playSteps(
+        [{ n: 3 }, { hipDrop: 0.012, kneeForward: 0.02 }, { n: 2, rise: 0.05, kneeForward: 0.02 }, { n: 8 }, { n: 8, hipDrop: 0.22, kneeForward: 0.1 }, { n: 6 }],
+        frameMs,
+      );
+      expect(jumpThenSquat.map((event) => event.movementType)).toEqual(["jump", "squat"]);
+
+      const laneThenJump = playSteps(
+        [{ n: 2 }, { n: 4, shoulderLean: -0.045 }, { n: 6 }, { hipDrop: 0.012, kneeForward: 0.02 }, { n: 2, rise: 0.05, kneeForward: 0.02 }, { n: 4 }],
+        frameMs,
+      );
+      expect(laneThenJump.map((event) => event.movementType)).toEqual(["lean_left", "jump"]);
+
+      const jumpThenLane = playSteps(
+        [{ n: 3 }, { hipDrop: 0.012, kneeForward: 0.02 }, { n: 2, rise: 0.05, kneeForward: 0.02 }, { n: 8 }, { n: 4, shoulderLean: 0.045 }, { n: 3 }],
+        frameMs,
+      );
+      expect(jumpThenLane.map((event) => event.movementType)).toEqual(["jump", "lean_right"]);
+    }
+  });
+
+  it("keeps a rise that arrives on a slow camera gap", () => {
+    expect(MAX_VELOCITY_GAP_MS).toBe(1200);
+    expect(neutralDriftForGap(0.02, 0)).toBe(0);
+    expect(neutralDriftForGap(0.02, 1000 / 30)).toBeCloseTo(0.02, 5);
+    expect(neutralDriftForGap(0.02, 2000 / 30)).toBeGreaterThan(0.03);
+    const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+    if (!neutral) throw new Error("Failed to build a neutral pose");
+    let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1 }), neutral);
+    const events = [];
+    for (const frame of [{ time: 0 }, { time: 40 }, { time: 740, rise: 0.06, kneeForward: 0.02 }]) {
+      const update = pushPose(state, pose(frame));
+      state = update.state;
+      events.push(...update.events);
+    }
+    expect(events.map((event) => event.movementType)).toEqual(["jump"]);
   });
 });

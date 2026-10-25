@@ -20,6 +20,24 @@ import {
 /** A single dropped frame must not wipe a gesture that is still forming. */
 export const TRACK_GRACE_MS = 160;
 
+/**
+ * Speed is the hip move divided by the real gap between samples.
+ * A gap of 500ms used to force that speed to 0, so one slow camera frame
+ * missed a real rise. Above this the sample is a pause, not a hop.
+ */
+export const MAX_VELOCITY_GAP_MS = 1200;
+
+/**
+ * `neutralDrift` is the blend for one 30fps sample. A 15fps gap is two of
+ * those samples in elapsed time, not one assumed frame and not four
+ * animation frames of the same picture.
+ */
+export function neutralDriftForGap(perFrame: number, dtMs: number) {
+  if (dtMs <= 0 || perFrame <= 0) return 0;
+  const frames = dtMs / (1000 / 30);
+  return 1 - (1 - Math.min(0.95, perFrame)) ** frames;
+}
+
 export interface DetectorUpdate {
   state: DetectorState;
   events: MovementDraft[];
@@ -209,7 +227,7 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   const ankle = midY(smoothed.landmarks, 27, 28, minVisibility);
   const seconds = dt / 1000;
   const torso = state.neutral?.torso ?? 0.2;
-  if (seconds > 0 && seconds < 0.5) {
+  if (seconds > 0 && dt < MAX_VELOCITY_GAP_MS) {
     if (rawHip !== null && state.lastRawHipY !== null) rawRise = (state.lastRawHipY - rawHip) / seconds / torso;
     if (shoulder !== null && state.lastShoulderY !== null) shoulderSpeed = (state.lastShoulderY - shoulder) / seconds / torso;
     if (ankle !== null && state.lastAnkleY !== null) ankleSpeed = (state.lastAnkleY - ankle) / seconds / torso;
@@ -329,7 +347,12 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   let settled = enteredJump ? { ...transition.state, riseWindow: [] } : transition.state;
   if (settled.neutral && stanceIsQuiet(settled, signals)) {
     const sample = neutralFromLandmarks(smoothed.landmarks);
-    if (sample) settled = { ...settled, neutral: driftNeutral(settled.neutral, sample, settled.thresholds.neutralDrift) };
+    if (sample) {
+      settled = {
+        ...settled,
+        neutral: driftNeutral(settled.neutral, sample, neutralDriftForGap(settled.thresholds.neutralDrift, dt)),
+      };
+    }
   }
   return {
     state: settled,

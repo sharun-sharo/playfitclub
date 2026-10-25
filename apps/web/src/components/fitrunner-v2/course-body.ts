@@ -10,7 +10,7 @@ export function verticalCommandReady(motion: string): boolean {
 
 /**
  * A jump that arrives while the duck clip is still playing.
- * The roll must not hold that jump until the 400ms stale window drops it.
+ * The roll must not hold that jump until the stale window drops it.
  */
 export function jumpDuringRoll(motion: string, movementType: string): boolean {
   return motion === "roll" && movementType === "jump";

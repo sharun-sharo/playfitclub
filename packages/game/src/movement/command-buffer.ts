@@ -1,5 +1,21 @@
-/** A pose command waits at most this long for the current slide or clip to finish. */
-export const COMMAND_STALE_MS = 400;
+/**
+ * How long the TV keeps one jump or squat that arrived while the runner
+ * cannot take it yet. The clock starts when the TV receives the command
+ * (`Date.now` on the TV), not on the phone.
+ *
+ * The old bound was 400ms. The jump arc is 622ms (takeoff 5.6 m/s, gravity
+ * 18), and a side-step is 300ms. The phone marks a hop as landed on the next
+ * camera sample unless the hips are clearly off the ground, then waits 180ms.
+ * It can send the next squat or jump while the TV is still in that 622ms arc.
+ * At 400ms the TV deleted the command about 222ms before landing and the phone
+ * does not send the same event id again, so the move never played. That is the
+ * production miss: the Railway hop is extra delay, and local keyboard play
+ * never enters this wait.
+ *
+ * 800ms covers the full arc plus the landing frame. A command older than
+ * 800ms is still dropped. A reconnect must not replay it.
+ */
+export const COMMAND_STALE_MS = 800;
 
 export interface HeldCommand<T> {
   value: T;

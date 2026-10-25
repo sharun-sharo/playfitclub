@@ -55,7 +55,9 @@ export const LANE_SLIDE_S = 0.1;
  * - A clear jump emits on the rise frame (0 ms) or the next frame (33 ms). Budget the next frame.
  * - A squat emits within 66 ms of the down pose.
  * - A lane emits on the frame after the hand is past the line (33 ms).
- * Commands older than 400 ms are dropped (COMMAND_STALE_MS).
+ * Commands older than 800 ms are dropped (COMMAND_STALE_MS).
+ * 400 ms was shorter than the 622 ms jump arc, so a squat or jump
+ * that arrived while the runner was still in the air was deleted.
  *
  * socketHopS is not a measured phone round trip. The server relays one
  * movement event from the phone to the TV. 150 ms is the allowance for
@@ -68,7 +70,7 @@ export const LATENCY_BUDGET_S = {
   detectorLane: 0.033,
   socketHop: 0.15,
   renderFrame: 1 / 60,
-  commandStale: 0.4,
+  commandStale: 0.8,
 } as const;
 
 /** Human preparation before the action window. The latency budget fits inside these. */
