@@ -42,7 +42,7 @@ export function PlayScoreCard({
           {note}
         </p>
       ) : null}
-      {keyboard ? (
+      {keyboard && process.env.NODE_ENV !== "production" ? (
         <p className="mt-3 text-[10px] leading-relaxed text-[#9aa8bd]" data-keyboard-hint="">
           Keyboard · A D lanes · Space jump · S roll
         </p>

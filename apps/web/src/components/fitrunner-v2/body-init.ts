@@ -94,7 +94,9 @@ function calibrationTrouble(key: BodyInitKey, message: string) {
 function cameraRetry(message: string) {
   if (/denied|blocked|notallowed/i.test(message)) return "Allow the camera on your phone, then try again.";
   if (/disconnect|lost|turned off/i.test(message)) return "The phone camera turned off. Turn it back on to try again.";
-  if (/no camera/i.test(message)) return "This phone has no camera. You can play with the keyboard.";
+  if (/no camera/i.test(message)) {
+    return process.env.NODE_ENV === "production" ? "This phone has no camera." : "This phone has no camera. You can play with the keyboard.";
+  }
   return "Body tracking didn't start. Try again on your phone.";
 }
 

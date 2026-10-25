@@ -7,7 +7,7 @@ import { noIndex } from "@/lib/site-metadata";
 
 export const metadata = noIndex(
   "Play Fit Run",
-  "Play Fit Run on this screen. Pair a phone with the on-screen code, or use the keyboard here.",
+  "Play Fit Run on this screen. Pair a phone with the on-screen code.",
 );
 
 export default function FitRunPlayPage() {

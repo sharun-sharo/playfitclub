@@ -42,6 +42,8 @@ type SessionView = {
 const primary = "rounded-full bg-[#BEFF39] px-7 py-3 text-base font-semibold text-[#1c1f24] disabled:cursor-not-allowed disabled:opacity-40";
 const ghost = "rounded-full border border-white/20 px-5 py-3 text-sm text-white";
 const panel = "pointer-events-auto w-full max-w-xl rounded-3xl border border-white/10 bg-[#1c1f24] p-6 text-white shadow-2xl";
+/** Local development can start from this screen. Production players scan the QR with a phone. */
+const offerKeyboardPlay = process.env.NODE_ENV !== "production";
 
 function livePhone(players: TvPlayer[]) {
   return players.find((player) => player.connected && player.control === "camera") ?? null;
@@ -91,8 +93,12 @@ function cameraCoach(tracking: TvTracking | null, phoneConnected: boolean) {
   if (tracking?.status === "camera_error" || /denied|blocked/i.test(message)) {
     return "The phone blocked the camera. Allow the camera, then try again.";
   }
-  if (/no camera was found|no camera track/i.test(message)) return "This phone has no camera. You can play with the keyboard.";
-  if (/disconnected|camera lost/i.test(message)) return "The phone camera turned off. Turn it back on, or play with the keyboard.";
+  if (/no camera was found|no camera track/i.test(message)) {
+    return offerKeyboardPlay ? "This phone has no camera. You can play with the keyboard." : "This phone has no camera.";
+  }
+  if (/disconnected|camera lost/i.test(message)) {
+    return offerKeyboardPlay ? "The phone camera turned off. Turn it back on, or play with the keyboard." : "The phone camera turned off. Turn it back on.";
+  }
   if (/in use by another app/i.test(message)) return "The phone camera is busy. Close the other app, then try again.";
   if (/https|secure page|insecure/i.test(message)) return "The phone needs a secure page before the camera can turn on.";
   if (upper.includes("MOVE FORWARD") || upper.includes("MOVE CLOSER")) return "Move a little closer to the phone.";
@@ -334,7 +340,7 @@ export function FitRunnerTutorial({
   useEffect(() => {
     if (step !== "camera" || keyboardOn || bodyFresh || !phone) return;
     const timer = window.setTimeout(() => {
-      setNotice("Still getting you in view. Show your whole body, or play with the keyboard.");
+      setNotice(offerKeyboardPlay ? "Still getting you in view. Show your whole body, or play with the keyboard." : "Still getting you in view. Show your whole body.");
     }, 20_000);
     return () => window.clearTimeout(timer);
   }, [bodyFresh, calibrateTry, keyboardOn, phone, step]);
@@ -342,7 +348,7 @@ export function FitRunnerTutorial({
   useEffect(() => {
     if (step !== "gesture") return;
     const timer = window.setTimeout(() => {
-      setNotice("We didn't see that move. Try again, or play with the keyboard.");
+      setNotice(offerKeyboardPlay ? "We didn't see that move. Try again, or play with the keyboard." : "We didn't see that move. Try again.");
     }, 12_000);
     return () => window.clearTimeout(timer);
   }, [gestureIndex, gestureTry, step]);
@@ -542,18 +548,24 @@ export function FitRunnerTutorial({
                 ) : null}
                 {session.joinUrl ? <p className="mt-3 max-w-md break-all text-sm text-white/45">{session.joinUrl}</p> : null}
                 {!session.connected && !session.error ? <p className="mt-4 text-base text-white/70">Getting your code ready…</p> : null}
-                <div className="mt-6 flex flex-wrap gap-3">
-                  {session.error ? (
-                    <button type="button" className={ghost} onClick={retryConnection}>
-                      Try again
-                    </button>
-                  ) : null}
-                  <button type="button" className={ghost} onMouseDown={(event) => event.preventDefault()} onClick={enableKeyboard}>
-                    Play with keyboard
-                  </button>
-                </div>
-                {keyboardOn ? <p className="mt-4 text-base text-white/80">Keyboard play is on. This uses the keys on this screen, not a camera.</p> : null}
-                {keyboardOn ? (
+                {session.error || offerKeyboardPlay ? (
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    {session.error ? (
+                      <button type="button" className={ghost} onClick={retryConnection}>
+                        Try again
+                      </button>
+                    ) : null}
+                    {offerKeyboardPlay ? (
+                      <button type="button" className={ghost} onMouseDown={(event) => event.preventDefault()} onClick={enableKeyboard}>
+                        Play with keyboard
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {offerKeyboardPlay && keyboardOn ? (
+                  <p className="mt-4 text-base text-white/80">Keyboard play is on. This uses the keys on this screen, not a camera.</p>
+                ) : null}
+                {offerKeyboardPlay && keyboardOn ? (
                   <button type="button" className={`${primary} mt-4`} onClick={() => session.startKeyboardRound()}>
                     Start with keyboard
                   </button>
@@ -570,17 +582,20 @@ export function FitRunnerTutorial({
                 {phone ? (calibrationLine || (canStart ? "Hold still. The run starts when you stay in position." : coach)) : "Scan the code with your phone. This step opens when the phone connects."}
               </p>
               {narrowHint ? <p className="mt-4 text-lg text-[#BEFF39]">{narrowHint}</p> : null}
-              {keyboardOn ? <p className="mt-4 text-base text-white/80">Keyboard play is on. This uses the keys on this screen, not your body.</p> : null}
+              {offerKeyboardPlay && keyboardOn ? (
+                <p className="mt-4 text-base text-white/80">Keyboard play is on. This uses the keys on this screen, not your body.</p>
+              ) : null}
               <div className="mt-10 flex flex-wrap gap-3">
-                {keyboardOn ? (
+                {offerKeyboardPlay && keyboardOn ? (
                   <button type="button" className={primary} onClick={() => session.startKeyboardRound()}>
                     Start with keyboard
                   </button>
-                ) : (
+                ) : null}
+                {offerKeyboardPlay && !keyboardOn ? (
                   <button type="button" className={ghost} onMouseDown={(event) => event.preventDefault()} onClick={enableKeyboard}>
                     Play with keyboard
                   </button>
-                )}
+                ) : null}
                 {practiceMoves ? (
                   <button type="button" className={ghost} disabled={!canStart} onClick={() => { setNotice(""); setStep("gesture"); }}>
                     Practice the moves
@@ -660,8 +675,8 @@ export function FitRunnerTutorial({
               {checked ? (
                 <p className="mt-2 text-2xl text-[#BEFF39]" role="status">Check</p>
               ) : (
-                <p className="mt-2 text-sm text-[#d5deea]" data-keyboard={keyboardOn ? "on" : "off"}>
-                  {keyboardOn ? "Keyboard is on. Press the key for this move." : "Waiting for your move."}
+                <p className="mt-2 text-sm text-[#d5deea]" data-keyboard={offerKeyboardPlay && keyboardOn ? "on" : "off"}>
+                  {offerKeyboardPlay && keyboardOn ? "Keyboard is on. Press the key for this move." : "Waiting for your move."}
                 </p>
               )}
             </div>
@@ -676,9 +691,11 @@ export function FitRunnerTutorial({
             <button type="button" className={ghost} onClick={() => { setGestureTry((value) => value + 1); setNotice(""); }}>
               Retry
             </button>
-            <button type="button" className={ghost} onMouseDown={(event) => event.preventDefault()} onClick={enableKeyboard}>
-              Play with keyboard
-            </button>
+            {offerKeyboardPlay ? (
+              <button type="button" className={ghost} onMouseDown={(event) => event.preventDefault()} onClick={enableKeyboard}>
+                Play with keyboard
+              </button>
+            ) : null}
           </div>
           {notice || trouble ? <p className="mt-4 text-sm text-rose-200">{notice || trouble}</p> : null}
         </section>

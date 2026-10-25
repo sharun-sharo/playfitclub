@@ -37,6 +37,8 @@ export function BodyInitScreen({
   const lit = view.joints === "lit";
   const bone = lit ? "#9aa394" : "#4e564f";
   const joint = lit ? "#BEFF39" : "#2c332e";
+  const offerKeyboardPlay = process.env.NODE_ENV !== "production";
+  const showActions = view.key === "retry" || Boolean(view.retry) || offerKeyboardPlay;
   return (
     <div
       className="pointer-events-none absolute inset-0 z-30 flex flex-col bg-[#16181d] px-6 text-white sm:px-12"
@@ -114,21 +116,25 @@ export function BodyInitScreen({
         ) : null}
         {view.retry ? <p className="max-w-xl text-center text-lg text-white/80">{view.retry}</p> : null}
       </div>
-      <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 pb-6 sm:pb-8">
-        {view.key === "retry" || view.retry ? (
-          <button type="button" className="rounded-full border border-white/25 px-5 py-3 text-sm text-white" onClick={onRetry}>
-            Try again
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="rounded-full border border-white/25 px-5 py-3 text-sm text-white"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onKeyboard}
-        >
-          Play with keyboard
-        </button>
-      </div>
+      {showActions ? (
+        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 pb-6 sm:pb-8">
+          {view.key === "retry" || view.retry ? (
+            <button type="button" className="rounded-full border border-white/25 px-5 py-3 text-sm text-white" onClick={onRetry}>
+              Try again
+            </button>
+          ) : null}
+          {offerKeyboardPlay ? (
+            <button
+              type="button"
+              className="rounded-full border border-white/25 px-5 py-3 text-sm text-white"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onKeyboard}
+            >
+              Play with keyboard
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
