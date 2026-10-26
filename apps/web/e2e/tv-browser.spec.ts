@@ -17,8 +17,8 @@ test.describe("television browser compatibility", () => {
     expect(overflow).toBeLessThanOrEqual(1);
 
     await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Play Now" })).toHaveAttribute("href", "/games");
-    await page.getByRole("link", { name: "Play at home" }).click();
-    await expect(page).toHaveURL(/\/play\/fit-run/);
+    await expect(page.getByRole("link", { name: "Play at home", exact: true })).toHaveCount(0);
+    await page.goto("/play/fit-run");
     await expect(page.getByRole("heading", { name: "Play on a big screen" })).toBeVisible();
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByRole("heading", { name: "Scan with your phone" })).toBeVisible();
