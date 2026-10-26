@@ -70,7 +70,7 @@ function LoginForm() {
       <p className="fp-lead">The free demo runs on your phone and does not need an account. Sign in to keep personal bests.</p>
       <p>
         <Link className="fp-text-link" href="/play/phone">
-          Play Demo
+          Play Free
         </Link>
       </p>
       <form className="fp-form fp-form-narrow" onSubmit={(event) => void onSubmit(event)}>

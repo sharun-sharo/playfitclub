@@ -3,11 +3,11 @@ import type { Metadata } from "next";
 /** Production origin. Hard-coded so metadata never falls back to localhost. */
 export const SITE_ORIGIN = "https://playfitclub.com";
 
-export const HOME_TITLE = "PlayFit Club — You Move. The Game Moves.";
+export const HOME_TITLE = "PlayFit Club — Your Body. Your Controller. Your Game.";
 
-/** Uses the live hero signature and how the game is actually played. */
+/** Uses the live hero and how the game is actually played. */
 export const HOME_DESCRIPTION =
-  "No buttons. No controllers. Just your body in action. Fit Run plays on your phone. Mirror that phone to a TV or laptop if you want.";
+  "Turn real movement into a game with your phone camera. Play Fit Run on your phone, and mirror to a TV when you want a bigger screen.";
 
 export const OG_IMAGE = {
   url: "/marketing/hero-run.jpg",
@@ -17,7 +17,7 @@ export const OG_IMAGE = {
   type: "image/jpeg",
 };
 
-export const PUBLIC_PATHS = ["/", "/games", "/pricing", "/gyms", "/privacy", "/terms"] as const;
+export const PUBLIC_PATHS = ["/", "/games", "/pricing", "/for-gyms", "/privacy", "/terms"] as const;
 
 export const organizationJsonLd = {
   "@context": "https://schema.org",
@@ -61,21 +61,21 @@ export const homeMetadata: Metadata = {
 export const gamesMetadata: Metadata = {
   title: segmentTitle("Games"),
   description:
-    "Fit Run plays on your phone. The camera tracks your body. Fit Fight and Fit Dance are coming soon and do not launch.",
+    "Fit Run is available. Run, jump, squat, and dodge with your body. Fit Fight and Fit Dance are coming soon and do not launch.",
   robots: INDEXABLE,
 };
 
 export const pricingMetadata: Metadata = {
   title: segmentTitle("Pricing"),
   description:
-    "Yearly list prices: free demo ₹0, Individual Pro ₹999, Gym Starter ₹19,999 for up to 49 accounts, Gym Pro ₹39,999 for 50 to 99. WhatsApp does not take payment.",
+    "Free demo ₹0, Individual Pro ₹999, Gym Starter ₹19,999 for up to 49 accounts, Gym Pro ₹39,999 for 50 to 99. This page does not take payment.",
   robots: INDEXABLE,
 };
 
 export const gymsMetadata: Metadata = {
   title: segmentTitle("For gyms"),
   description:
-    "Gym accounts for home play: Gym Starter ₹19,999 per year for up to 49 accounts, Gym Pro ₹39,999 per year for 50 to 99. WhatsApp does not start a subscription.",
+    "Motion-powered games for gyms. Gym Starter ₹19,999 for up to 49 accounts. Gym Pro ₹39,999 for 50 to 99. A demo message does not start a subscription.",
   robots: INDEXABLE,
 };
 
@@ -89,6 +89,6 @@ export const privacyMetadata: Metadata = {
 export const termsMetadata: Metadata = {
   title: segmentTitle("Terms"),
   description:
-    "PlayFit Club has not published terms of service yet. This page is not a contract. Listed prices are on the pricing page. The game does not give medical advice.",
+    "PlayFit Club has not published terms of service yet. This page is not a contract. Listed subscriptions are on the pricing page. The game does not give medical advice.",
   robots: INDEXABLE,
 };

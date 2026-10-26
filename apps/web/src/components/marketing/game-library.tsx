@@ -5,11 +5,12 @@ import { Reveal } from "@/components/marketing/reveal";
 const games = [
   {
     title: "Fit Run",
-    description: "A 3D run on your phone. Lean, jump, and squat.",
+    description: "Run, jump, squat, and dodge obstacles using your real body movements.",
     status: "Available",
     href: PHONE_PLAY_PATH,
     image: "/marketing/fit-run.jpg",
     alt: "Illustration of a woman running in a living room. A phone shows a body outline and a television shows a running game.",
+    action: "Play Fit Run",
   },
   {
     title: "Fit Fight",
@@ -18,6 +19,7 @@ const games = [
     href: null,
     image: "/marketing/fit-fight.jpg",
     alt: "Illustration of a man hitting a heavy bag in a living room, with a television showing a boxing game.",
+    action: "Coming soon",
   },
   {
     title: "Fit Dance",
@@ -26,6 +28,7 @@ const games = [
     href: null,
     image: "/marketing/fit-dance.jpg",
     alt: "Illustration of a woman dancing in a living room, with a television showing a dance game.",
+    action: "Coming soon",
   },
 ] as const;
 
@@ -45,10 +48,10 @@ export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
                   { name: "fit_run_selected", params: { surface: "library" } },
                 ]}
               >
-                <img src={game.image} alt={game.alt} width={960} height={890} />
+                <img src={game.image} alt={game.alt} width={960} height={890} loading="lazy" decoding="async" />
               </TrackedLink>
             ) : (
-              <img src={game.image} alt={game.alt} width={960} height={890} />
+              <img src={game.image} alt={game.alt} width={960} height={890} loading="lazy" decoding="async" />
             )}
             <span className={game.status === "Coming soon" ? "fp-library-soon" : undefined}>{game.status}</span>
           </div>
@@ -64,7 +67,7 @@ export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
                   { name: "fit_run_selected", params: { surface: "library" } },
                 ]}
               >
-                Play Demo
+                {game.action}
               </TrackedLink>
             ) : (
               <button className="fp-btn fp-btn-ghost" type="button" disabled>

@@ -8,9 +8,9 @@ import { BrandLogo } from "@/components/marketing/brand-logo";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/games", label: "Experience" },
+  { href: "/games", label: "Games" },
   { href: "/#how-it-works", label: "How It Works" },
-  { href: "/gyms", label: "For Gyms" },
+  { href: "/for-gyms", label: "For Gyms" },
   { href: "/pricing", label: "Pricing" },
   { href: "/login", label: "Login" },
 ];
@@ -76,7 +76,7 @@ export function SiteNav({ prefix = "" }: { prefix?: "" | "/" }) {
 
   return (
     <header className="fp-nav">
-      <BrandLogo href={prefix || "/"} />
+      <BrandLogo href={prefix || "/"} variant="footer" />
       <nav className="fp-nav-desktop" aria-label="Primary">
         {links.map((link) => {
           const href = hrefFor(link.href, prefix);
@@ -86,8 +86,8 @@ export function SiteNav({ prefix = "" }: { prefix?: "" | "/" }) {
             </NavLink>
           );
         })}
-        <Link className="fp-btn fp-btn-primary" href="/games" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
-          Play Now
+        <Link className="fp-btn fp-btn-primary" href="/play/phone" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
+          Play Free
         </Link>
       </nav>
       <button
@@ -118,13 +118,13 @@ export function SiteNav({ prefix = "" }: { prefix?: "" | "/" }) {
             })}
             <Link
               className="fp-btn fp-btn-primary"
-              href="/games"
+              href="/play/phone"
               onClick={() => {
                 trackEvent("play_clicked", { surface: "nav" });
                 close();
               }}
             >
-              Play Now
+              Play Free
             </Link>
           </nav>
           <button type="button" className="fp-btn fp-btn-ghost" onClick={close}>

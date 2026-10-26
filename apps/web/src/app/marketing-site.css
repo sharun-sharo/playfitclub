@@ -1,0 +1,348 @@
+html:has(.fp-site),
+html:has(.fp-site) body {
+  background: #070b09;
+  color: #f3f7f4;
+}
+
+.fp-site {
+  --fp-line: rgba(244, 251, 246, 0.14);
+  background:
+    radial-gradient(720px 320px at 100% -10%, rgba(198, 245, 49, 0.16), transparent 55%),
+    radial-gradient(640px 360px at -10% 0%, rgba(94, 206, 232, 0.12), transparent 50%),
+    #070b09;
+  color: #f3f7f4;
+}
+
+.fp-site .fp-nav::before {
+  background: rgba(7, 11, 9, 0.88);
+  border-bottom: 1px solid rgba(244, 251, 246, 0.08);
+}
+
+.fp-site .fp-nav-desktop a {
+  color: #d7e6dc;
+}
+
+.fp-site .fp-nav-desktop a:hover,
+.fp-site .fp-nav-desktop a[aria-current="page"],
+.fp-site .fp-nav-desktop a[aria-current="page"]:not(.fp-btn),
+.fp-site .fp-nav-desktop a[aria-current="page"]:not(.fp-btn):hover,
+.fp-site .fp-menu a[aria-current="page"]:not(.fp-btn) {
+  color: #c6f531;
+  background: transparent;
+}
+
+.fp-site .fp-nav-desktop a.fp-btn,
+.fp-site .fp-nav-desktop a.fp-btn:hover,
+.fp-site .fp-menu a.fp-btn-primary,
+.fp-site .fp-menu a.fp-btn-primary:hover {
+  color: #142018;
+}
+
+.fp-site .fp-menu-toggle {
+  border-color: rgba(244, 251, 246, 0.2);
+  background: #101612;
+  color: #f4fbf6;
+}
+
+.fp-site .fp-burger span {
+  background: #f4fbf6;
+}
+
+.fp-site .fp-menu {
+  background:
+    radial-gradient(420px 180px at 100% 0%, rgba(198, 245, 49, 0.12), transparent 70%),
+    #0c1210;
+  color: #f4fbf6;
+}
+
+.fp-site .fp-menu a,
+.fp-site .fp-menu button.fp-btn-ghost {
+  color: #f4fbf6;
+  border-bottom-color: rgba(244, 251, 246, 0.12);
+}
+
+.fp-site .fp-kicker,
+.fp-site .fp-faq-icon {
+  color: #c6f531;
+}
+
+.fp-site .fp-hero-copy h1,
+.fp-site .fp-section h2,
+.fp-site .fp-page h1,
+.fp-site .fp-card h3,
+.fp-site .fp-step-grid h3,
+.fp-site .fp-library-copy h2,
+.fp-site .fp-library-copy h3,
+.fp-site .fp-group-title,
+.fp-site .fp-faq button {
+  color: #f4fbf6;
+}
+
+.fp-site .fp-hero-copy .fp-hero-lead,
+.fp-site .fp-lead,
+.fp-site .fp-card p,
+.fp-site .fp-card li,
+.fp-site .fp-step-grid p,
+.fp-site .fp-library-copy p,
+.fp-site .fp-legal p,
+.fp-site .fp-ordered,
+.fp-site .fp-faq p,
+.fp-site .fp-footer .fp-muted,
+.fp-site .fp-muted {
+  color: #c9d7ce;
+}
+
+.fp-site h1.fp-wide,
+.fp-site h2.fp-wide {
+  max-width: 14em;
+}
+
+.fp-site .fp-hero-copy h1 {
+  font-size: clamp(2rem, 8.4vw, 4.4rem);
+}
+
+.fp-site .fp-hero-copy h1 span {
+  white-space: normal;
+}
+
+.fp-site #how-it-works,
+.fp-site #faq,
+.fp-site .fp-section {
+  background: transparent;
+}
+
+.fp-site .fp-btn-ghost {
+  border-color: rgba(244, 251, 246, 0.35);
+  background: transparent;
+  color: #f4fbf6;
+}
+
+.fp-site .fp-btn-ghost:hover {
+  border-color: #c6f531;
+  background: rgba(198, 245, 49, 0.1);
+  color: #c6f531;
+}
+
+.fp-site .fp-hero a.fp-btn-ghost,
+.fp-site .fp-hero a.fp-btn-ghost:hover {
+  background: transparent;
+  color: #f4fbf6;
+  border-color: rgba(244, 251, 246, 0.45);
+}
+
+.fp-site .fp-duo,
+.fp-site .fp-step-grid,
+.fp-site .fp-ideal {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.6rem;
+}
+
+.fp-site .fp-card,
+.fp-site .fp-step-grid article {
+  min-width: 0;
+  padding: 1.3rem;
+  border: 1px solid rgba(198, 245, 49, 0.2);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.fp-site .fp-card h3,
+.fp-site .fp-step-grid h3 {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.55rem, 3vw, 2.15rem);
+  line-height: 0.95;
+  text-transform: none;
+}
+
+.fp-site .fp-btn:disabled,
+.fp-site .fp-btn[aria-disabled="true"] {
+  background: #24302a;
+  color: #d5e0d8;
+  border-color: #3d4d45;
+}
+
+.fp-site .fp-card p,
+.fp-site .fp-step-grid p {
+  margin: 0.75rem 0 0;
+  line-height: 1.6;
+}
+
+.fp-site .fp-card ul,
+.fp-site .fp-ordered {
+  margin: 0.9rem 0 0;
+  padding-left: 1.15rem;
+  line-height: 1.55;
+}
+
+.fp-site .fp-card li + li,
+.fp-site .fp-ordered li + li {
+  margin-top: 0.35rem;
+}
+
+.fp-site .fp-card .fp-btn {
+  margin-top: 1.1rem;
+}
+
+.fp-site .fp-card .fp-price {
+  color: #c6f531;
+}
+
+.fp-site .fp-mirror-note {
+  margin-top: 1rem;
+}
+
+.fp-site .fp-library-card {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(198, 245, 49, 0.2);
+}
+
+.fp-site .fp-poster {
+  position: relative;
+  margin: 1.5rem 0 0;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(198, 245, 49, 0.22);
+  background: #101612;
+}
+
+.fp-site .fp-poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fp-site .fp-poster figcaption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  background: rgba(7, 11, 9, 0.82);
+  color: #f4fbf6;
+  line-height: 1.45;
+}
+
+.fp-site .fp-places {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fp-site .fp-places li {
+  min-height: 4.5rem;
+  display: grid;
+  place-items: center;
+  padding: 0.8rem;
+  border: 1px solid rgba(198, 245, 49, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4fbf6;
+  font-family: var(--font-fp-display), "Arial Narrow", Impact, sans-serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.fp-site .fp-group-title {
+  margin: 2.4rem 0 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 0.95;
+}
+
+.fp-site .fp-compare {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.fp-site .fp-compare-row {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 1.3fr) repeat(4, minmax(6.5rem, 1fr));
+  gap: 0.35rem 0.75rem;
+  min-width: 40rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(244, 251, 246, 0.12);
+  color: #d7e6dc;
+}
+
+.fp-site .fp-compare-head {
+  color: #c6f531;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fp-site .fp-compare-row span:first-child {
+  color: #f4fbf6;
+  font-weight: 700;
+}
+
+.fp-site .fp-field label {
+  color: #f4fbf6;
+}
+
+.fp-site .fp-field input,
+.fp-site .fp-field textarea {
+  background: #f7fbf8;
+  color: #142018;
+}
+
+.fp-site .fp-enquiry {
+  min-width: 0;
+}
+
+.fp-site .fp-text-link {
+  color: #c6f531;
+}
+
+@media (max-width: 720px) {
+  .fp-site .fp-hero .fp-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .fp-site .fp-hero .fp-actions .fp-btn,
+  .fp-site .fp-hero .fp-actions .fp-hero-cta,
+  .fp-site .fp-hero .fp-actions .fp-hero-cta .fp-btn {
+    width: 100%;
+    white-space: normal;
+  }
+}
+
+@media (min-width: 720px) {
+  .fp-site .fp-places {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fp-site .fp-step-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 800px) {
+  .fp-site .fp-duo {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1000px) {
+  .fp-site .fp-step-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .fp-site .fp-ideal {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fp-site .fp-places {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

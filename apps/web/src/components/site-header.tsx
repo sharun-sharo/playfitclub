@@ -12,9 +12,9 @@ interface Me {
 
 const baseLinks = [
   { href: "/", label: "Home" },
-  { href: "/games", label: "Experience" },
+  { href: "/games", label: "Games" },
   { href: "/#how-it-works", label: "How It Works" },
-  { href: "/gyms", label: "For Gyms" },
+  { href: "/for-gyms", label: "For Gyms" },
   { href: "/pricing", label: "Pricing" },
 ];
 
@@ -78,9 +78,7 @@ export function SiteHeader() {
         ...(isSuperAdminRole(me.user.role) ? [{ href: "/admin", label: "Admin" }] : []),
       ]
     : [...baseLinks, { href: "/login", label: "Login" }];
-  const cta = me?.user
-    ? { href: "/play/phone", label: "Play", external: false }
-    : { href: "/games", label: "Play Now", external: false };
+  const cta = { href: "/play/phone", label: "Play Free", external: false };
 
   function close() {
     setOpen(false);

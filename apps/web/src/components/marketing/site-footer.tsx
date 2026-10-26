@@ -6,9 +6,9 @@ import { whatsappUrl } from "@/lib/whatsapp";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/games", label: "Experience" },
+  { href: "/games", label: "Games" },
   { href: "/#how-it-works", label: "How It Works" },
-  { href: "/gyms", label: "For Gyms" },
+  { href: "/for-gyms", label: "For Gyms" },
   { href: "/pricing", label: "Pricing" },
   { href: "/login", label: "Login" },
 ];
@@ -34,8 +34,8 @@ export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
               </Link>
             );
           })}
-          <TrackedLink href="/games" events={[{ name: "play_clicked", params: { surface: "footer" } }]}>
-            Play Now
+          <TrackedLink href="/play/phone" events={[{ name: "play_clicked", params: { surface: "footer" } }]}>
+            Play Free
           </TrackedLink>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

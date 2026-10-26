@@ -12,10 +12,10 @@ export default function GamesPage() {
     <MarketingFrame>
       <SiteNav prefix="/" />
       <main className="fp-wrap fp-page">
-        <p className="fp-kicker">Experience</p>
-        <h1>Pick a game.</h1>
+        <p className="fp-kicker">Games</p>
+        <h1 className="fp-wide">FITNESS HAS NEVER BEEN THIS FUN.</h1>
         <p className="fp-lead">
-          Fit Run plays on your phone. Tap Play Demo, allow the camera, turn sideways, and stand in frame. Fit Fight and Fit Dance are coming soon and cannot be started.
+          Fit Run is available. Run, jump, squat, and dodge obstacles using your real body movements. Fit Fight and Fit Dance are coming soon and cannot be started.
         </p>
         <GameLibrary heading="h2" />
       </main>

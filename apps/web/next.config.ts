@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/tv", destination: "/", permanent: true },
       { source: "/tv/:path*", destination: "/", permanent: true },
+      { source: "/gyms", destination: "/for-gyms", permanent: true },
     ];
   },
   async rewrites() {
