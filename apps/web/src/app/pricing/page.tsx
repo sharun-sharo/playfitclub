@@ -61,7 +61,7 @@ export default function PricingPage() {
               <li>10 minutes of play</li>
               <li>No paid features</li>
             </ul>
-            <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
+            <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
               Play free demo
             </TrackedLink>
           </article>

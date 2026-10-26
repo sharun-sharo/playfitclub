@@ -86,6 +86,9 @@ export function SiteNav({ prefix = "" }: { prefix?: "" | "/" }) {
             </NavLink>
           );
         })}
+        <Link className="fp-btn fp-btn-ghost" href="/play/phone" onClick={() => trackEvent("play_clicked", { surface: "nav-phone" })}>
+          Play Game
+        </Link>
         <Link className="fp-btn fp-btn-primary" href="/games" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
           Play Now
         </Link>
@@ -116,6 +119,16 @@ export function SiteNav({ prefix = "" }: { prefix?: "" | "/" }) {
                 </NavLink>
               );
             })}
+            <Link
+              className="fp-btn fp-btn-ghost"
+              href="/play/phone"
+              onClick={() => {
+                trackEvent("play_clicked", { surface: "nav-phone" });
+                close();
+              }}
+            >
+              Play Game
+            </Link>
             <Link
               className="fp-btn fp-btn-primary"
               href="/games"

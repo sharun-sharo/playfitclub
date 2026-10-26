@@ -79,7 +79,7 @@ export function SiteHeader() {
       ]
     : [...baseLinks, { href: "/login", label: "Login" }];
   const cta = me?.user
-    ? { href: "/play", label: "Play", external: false }
+    ? { href: "/play/phone", label: "Play", external: false }
     : { href: "/games", label: "Play Now", external: false };
 
   function close() {

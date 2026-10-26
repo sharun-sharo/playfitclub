@@ -4,7 +4,7 @@ import { CirclePlay, Play, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
-import { PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
+import { homePlayHref, PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
@@ -44,6 +44,7 @@ export function HeroShowcase() {
   const [animate, setAnimate] = useState(false);
   const [autoplay, setAutoplay] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [atHomeHref, setAtHomeHref] = useState("/play/fit-run");
   const indexRef = useRef(0);
   const goRef = useRef<(next: number) => void>(() => {});
   const leaveTimer = useRef<number | null>(null);
@@ -78,6 +79,16 @@ export function HeroShowcase() {
     return () => {
       if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    setAtHomeHref(
+      homePlayHref({
+        userAgent: navigator.userAgent,
+        coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+        viewportWidth: window.innerWidth,
+      }),
+    );
   }, []);
 
   useEffect(() => {
@@ -240,7 +251,7 @@ export function HeroShowcase() {
           <span className="fp-hero-cta fp-hero-rise">
             <Link
               className="fp-btn fp-btn-ghost"
-              href="/play/fit-run"
+              href={atHomeHref}
               onClick={() => {
                 trackEvent("play_clicked", { surface: "home" });
                 trackEvent("fit_run_selected", { surface: "home" });

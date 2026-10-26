@@ -211,6 +211,8 @@ export class PoseEstimator {
   private delegate: "GPU" | "CPU" | null = null;
   /** One skeleton draw for this inference, after the command is handed off. */
   private pendingDraw: { points: Array<{ x: number; y: number }> | undefined } | null = null;
+  /** Latest single-person landmarks. The phone start gate reads this. No second model. */
+  private bodyMarks: Array<{ x: number; y: number; visibility?: number }> | null = null;
   private framing = createFramingMonitor();
   private lastFramingKey = "";
   /** Play-profile pause is armed only after the race has started. */
@@ -324,6 +326,11 @@ export class PoseEstimator {
     this.raceLive = live;
   }
 
+  /** Landmarks from the pose already running. Null when nobody, or more than one person, is in frame. */
+  latestLandmarks() {
+    return this.bodyMarks;
+  }
+
   /** Clears a tracking pause and drops any gesture that was in flight. */
   resumeTracking() {
     this.framing.resume();
@@ -348,6 +355,7 @@ export class PoseEstimator {
     this.lost = true;
     this.actionsOpen = false;
     this.landmarkSample = null;
+    this.bodyMarks = null;
     this.stopLoop();
     this.handlers?.onUi({
       guidance: message,
@@ -420,6 +428,7 @@ export class PoseEstimator {
     this.sampleRates(inferenceEnded, inferenceEnded - inferenceStarted);
     this.poseCount = result.landmarks?.length ?? 0;
     const raw = result.landmarks?.[0];
+    this.bodyMarks = this.poseCount === 1 && raw ? raw : null;
     this.pendingDraw = now - this.lastDraw > 50 ? { points: raw } : null;
     if (this.pendingDraw !== null) this.lastDraw = now;
     if (this.poseCount > 1) {

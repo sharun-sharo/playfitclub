@@ -5,25 +5,28 @@ import { applyObstacleHit, beginRun, emptyRun, HIT_INVULNERABILITY_MS, RUN_LIVES
 import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
 import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import {
+  createPhoneCalibration,
+  phoneBodyReading,
+  phoneStageCaps,
+  requestPhoneStage,
+  stepPhoneCalibration,
+  PHONE_PLAYER_READY,
+  type PhoneCalibState,
+} from "@/components/fitrunner-v2/phone-calibration";
+import {
   applyLocalPose,
   confirmToGameMs,
   phoneAsksForLandscape,
-  phoneBodyPhase,
   phoneCameraFailure,
-  phoneFrameWarning,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
   phonePlayCalories,
-  phoneSetupLine,
-  phoneTrackingStatus,
-  PHONE_BODY_LABEL,
   PHONE_MIRROR_GUIDE,
+  PHONE_MIRROR_NOTE,
   PHONE_PLAY_URL,
-  PHONE_ROTATE_LINE,
   PHONE_TEST_CONTROLS,
   PHONE_TEST_CONTROLS_LABEL,
   renderLoopFps,
-  type PhoneBodyPhase,
   type PhoneMotionDiag,
 } from "@/components/fitrunner-v2/phone-local-play";
 import { PlayScoreCard } from "@/components/fitrunner-v2/play-score-card";
@@ -31,9 +34,29 @@ import type { FitRunnerHandle } from "@/components/fitrunner-v2/create-fitrunner
 import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
 import { cameraActiveStep } from "@/lib/fitrunner-v2/play-calories";
 import { whatsappUrl } from "@/lib/whatsapp";
-import { MODEL_FAILED_MESSAGE } from "@/lib/vision/camera-status";
+import { BODY_LEFT_MESSAGE, MODEL_FAILED_MESSAGE } from "@/lib/vision/camera-status";
+import type { FramingCode } from "@/lib/vision/framing";
 import { openCamera, PoseEstimator, releaseCamera } from "@/lib/vision/pose-estimator";
 import "./phone-hud.css";
+
+function sameCalib(current: PhoneCalibState, next: PhoneCalibState) {
+  return (
+    current.phase === next.phase &&
+    current.status === next.status &&
+    current.guidance === next.guidance &&
+    current.countdown === next.countdown &&
+    current.coursePaused === next.coursePaused
+  );
+}
+
+function CalibGuide() {
+  return (
+    <svg className="phone-calib-guide" viewBox="0 0 120 220" aria-hidden="true">
+      <ellipse cx="60" cy="28" rx="16" ry="18" fill="none" stroke="white" strokeWidth="3" />
+      <path d="M60 46v74M28 78l32-8 32 8M36 188l24-68 24 68" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 const emptyDiag = (): PhoneMotionDiag => ({
   renderFps: null,
@@ -55,40 +78,44 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const distanceRef = useRef<HTMLElement>(null);
   const timeRef = useRef<HTMLElement>(null);
   const playingRef = useRef(false);
-  const startedRef = useRef(false);
   const seenRef = useRef(new Set<string>());
   const runRef = useRef<RunLives>(emptyRun());
   const hitsRef = useRef(0);
-  const previewRef = useRef(true);
   const motionDiagRef = useRef(false);
   const frameTimesRef = useRef<number[]>([]);
   const diagRef = useRef<PhoneMotionDiag>(emptyDiag());
   const weightRef = useRef<number | null | undefined>(undefined);
   const cameraActiveRef = useRef(0);
+  const calibRef = useRef<PhoneCalibState>(createPhoneCalibration());
+  const courseBegunRef = useRef(false);
+  const pendingCourseRef = useRef<"start" | "resume" | null>(null);
+  const trackingPauseRef = useRef(false);
+  const movesRef = useRef(false);
+  const startingRef = useRef(false);
+  const poseRef = useRef<{ poseCount: number; framingCode: FramingCode | null; framingPause: boolean }>({
+    poseCount: 0,
+    framingCode: null,
+    framingPause: false,
+  });
   const [runId, setRunId] = useState(0);
-  const [runnerReady, setRunnerReady] = useState(false);
-  const [phase, setPhase] = useState<PhoneBodyPhase>("looking");
-  const [setupGuidance, setSetupGuidance] = useState<string | null>(null);
-  const [tracking, setTracking] = useState(() => phoneTrackingStatus({ playing: false, poseCount: 0, calibrated: false }));
-  const [frameWarning, setFrameWarning] = useState<string | null>(null);
+  const [calib, setCalib] = useState<PhoneCalibState>(() => createPhoneCalibration());
+  const [streamToken, setStreamToken] = useState(0);
+  const [stageNote, setStageNote] = useState<string | null>(null);
+  const [poseCount, setPoseCount] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [lives, setLives] = useState(RUN_LIVES);
   const [cameraError, setCameraError] = useState("");
   const [graphicsError, setGraphicsError] = useState("");
   const [startError, setStartError] = useState("");
-  const [cameraTry, setCameraTry] = useState(0);
   const [gameOver, setGameOver] = useState<{ score: number; coins: number; distanceM: number; obstaclesHit: number } | null>(null);
   const [demoOver, setDemoOver] = useState(false);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [previewOn, setPreviewOn] = useState(true);
-  const [mirrorOpen, setMirrorOpen] = useState(false);
   const [weightKg, setWeightKg] = useState<number | null | undefined>(undefined);
   const [calorieText, setCalorieText] = useState("—");
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
   const [motionDiag, setMotionDiag] = useState(false);
   const [diagLines, setDiagLines] = useState<string[]>(() => phoneMotionDiagLines(emptyDiag()));
-  previewRef.current = previewOn;
   weightRef.current = weightKg;
 
   function cameraStreamLive() {
@@ -130,11 +157,20 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     let cancelled = false;
     let handle: FitRunnerHandle | null = null;
     playingRef.current = false;
-    startedRef.current = false;
+    movesRef.current = false;
+    courseBegunRef.current = false;
+    pendingCourseRef.current = null;
+    trackingPauseRef.current = false;
+    poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
+    calibRef.current = createPhoneCalibration();
+    setCalib(calibRef.current);
+    setPoseCount(0);
+    estimatorRef.current?.setMode("calibrate");
+    estimatorRef.current?.setRaceLive(false);
+    estimatorRef.current?.setCoaching(false);
     seenRef.current.clear();
     runRef.current = emptyRun();
     hitsRef.current = 0;
-    setRunnerReady(false);
     setPlaying(false);
     setGameOver(null);
     setDemoOver(false);
@@ -220,7 +256,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
         }
         handle = next;
         handleRef.current = next;
-        setRunnerReady(true);
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
@@ -238,113 +273,145 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }, [demoLimitSeconds, runId]);
 
   useEffect(() => {
+    if (streamToken === 0) return;
     const video = videoRef.current;
     const poseCanvas = poseCanvasRef.current;
-    if (!video || !poseCanvas) return;
+    const stream = streamRef.current;
+    if (!video || !poseCanvas || !stream) return;
     let cancelled = false;
     const estimator = new PoseEstimator();
     estimatorRef.current = estimator;
     estimator.setCoaching(false);
     estimator.setRaceLive(false);
-    setCameraError("");
-    setPhase("looking");
-    setSetupGuidance(null);
-    setFrameWarning(null);
 
     void (async () => {
       try {
-        const stream = await openCamera(video);
-        if (cancelled) {
-          releaseCamera(stream, video);
-          return;
-        }
-        streamRef.current = stream;
-        try {
-          await estimator.load();
-        } catch {
-          if (!cancelled) setCameraError(MODEL_FAILED_MESSAGE);
-          return;
-        }
-        if (cancelled) return;
-        estimator.setFacing("user");
-        estimator.start(
-          video,
-          poseCanvas,
-          {
-            onUi: (state) => {
-              if (cancelled) return;
-              const playingNow = playingRef.current;
-              if (!playingNow) {
-                setPhase(phoneBodyPhase({ poseCount: state.poseCount, calibrated: state.calibrated }));
-                setSetupGuidance(state.guidance);
-              }
-              setTracking(
-                phoneTrackingStatus({
-                  playing: playingNow,
-                  poseCount: state.poseCount,
-                  calibrated: state.calibrated,
-                }),
-              );
-              setFrameWarning(
-                phoneFrameWarning({
-                  playing: playingNow,
-                  banner: state.framing?.banner === true,
-                  pause: state.framing?.pause === true,
-                }),
-              );
-              if (!motionDiagRef.current) return;
-              diagRef.current.inferenceMs = state.rates.lastInferenceMs;
-              diagRef.current.confidence = state.confidence;
-            },
-            onMovement: (draft) => {
-              const current = handleRef.current;
-              if (!current) return;
-              const note = (action: string) => {
-                if (!motionDiagRef.current) return;
-                diagRef.current.lastAction = action;
-                diagRef.current.confirmToCallMs = confirmToGameMs(draft.clientTimestamp, performance.now());
-              };
-              applyLocalPose({
-                playing: playingRef.current,
-                previewVisible: previewRef.current,
-                movementType: draft.movementType,
-                eventId: draft.eventId,
-                seen: seenRef.current,
-                game: {
-                  jump: () => {
-                    note("jump");
-                    current.localJump(draft.confidence, draft.eventId);
-                  },
-                  roll: () => {
-                    note("squat");
-                    current.localRoll(draft.confidence, draft.eventId);
-                  },
-                  stepLane: (direction) => {
-                    note(direction < 0 ? "lean_left" : "lean_right");
-                    current.localStep(direction, draft.confidence, draft.eventId);
-                  },
-                },
-              });
-            },
-            onCameraLost: () => {
-              if (!cancelled) setCameraError("The camera disconnected. Turn it back on to keep playing.");
-            },
-          },
-          "calibrate",
-        );
-      } catch (error) {
-        if (!cancelled) setCameraError(phoneCameraFailure(error));
+        await estimator.load();
+      } catch {
+        if (!cancelled) setCameraError(MODEL_FAILED_MESSAGE);
+        return;
       }
+      if (cancelled) return;
+      estimator.setFacing("user");
+      estimator.start(
+        video,
+        poseCanvas,
+        {
+          onUi: (state) => {
+            if (cancelled) return;
+            poseRef.current = {
+              poseCount: state.poseCount,
+              framingCode: state.framing?.code ?? null,
+              framingPause: state.framing?.pause === true,
+            };
+            setPoseCount((current) => (current === state.poseCount ? current : state.poseCount));
+            if (!motionDiagRef.current) return;
+            diagRef.current.inferenceMs = state.rates.lastInferenceMs;
+            diagRef.current.confidence = state.confidence;
+          },
+          onMovement: (draft) => {
+            const current = handleRef.current;
+            if (!current) return;
+            const note = (action: string) => {
+              if (!motionDiagRef.current) return;
+              diagRef.current.lastAction = action;
+              diagRef.current.confirmToCallMs = confirmToGameMs(draft.clientTimestamp, performance.now());
+            };
+            applyLocalPose({
+              playing: movesRef.current,
+              previewVisible: true,
+              movementType: draft.movementType,
+              eventId: draft.eventId,
+              seen: seenRef.current,
+              game: {
+                jump: () => {
+                  note("jump");
+                  current.localJump(draft.confidence, draft.eventId);
+                },
+                roll: () => {
+                  note("squat");
+                  current.localRoll(draft.confidence, draft.eventId);
+                },
+                stepLane: (direction) => {
+                  note(direction < 0 ? "lean_left" : "lean_right");
+                  current.localStep(direction, draft.confidence, draft.eventId);
+                },
+              },
+            });
+          },
+          onCameraLost: () => {
+            if (!cancelled) setCameraError("The camera disconnected. Turn it back on to keep playing.");
+          },
+        },
+        "calibrate",
+      );
     })();
 
     return () => {
       cancelled = true;
       estimator.stop();
-      releaseCamera(streamRef.current, video);
-      streamRef.current = null;
-      estimatorRef.current = null;
+      if (estimatorRef.current === estimator) estimatorRef.current = null;
     };
-  }, [cameraTry, runId]);
+  }, [streamToken]);
+
+  useEffect(() => {
+    if (streamToken === 0) return;
+    let frame = 0;
+    const tick = () => {
+      frame = window.requestAnimationFrame(tick);
+      const pose = poseRef.current;
+      const reading = phoneBodyReading({
+        poseCount: pose.poseCount,
+        landmarks: estimatorRef.current?.latestLandmarks() ?? null,
+        framingCode: pose.framingCode,
+      });
+      const next = stepPhoneCalibration(calibRef.current, {
+        now: performance.now(),
+        signal: reading.signal,
+        guidance: reading.guidance,
+        framingPause: pose.framingPause,
+      });
+      calibRef.current = next;
+      const handle = handleRef.current;
+      if (next.startCourse) pendingCourseRef.current = "start";
+      if (next.resumeCourse) pendingCourseRef.current = "resume";
+      if (pendingCourseRef.current === "start" && handle && !courseBegunRef.current) {
+        courseBegunRef.current = true;
+        pendingCourseRef.current = null;
+        handle.beginCourse();
+        const estimator = estimatorRef.current;
+        estimator?.setMode("play");
+        estimator?.setCoaching(false);
+        estimator?.setRaceLive(true);
+        playingRef.current = true;
+        setPlaying(true);
+      } else if (pendingCourseRef.current === "resume" && handle && courseBegunRef.current) {
+        pendingCourseRef.current = null;
+        estimatorRef.current?.resumeTracking();
+        estimatorRef.current?.setRaceLive(true);
+        handle.setPaused(false);
+        trackingPauseRef.current = false;
+        playingRef.current = true;
+      }
+      if (courseBegunRef.current && handle && next.coursePaused !== trackingPauseRef.current) {
+        trackingPauseRef.current = next.coursePaused;
+        handle.setPaused(next.coursePaused);
+      }
+      movesRef.current = (next.phase === "running" || next.phase === "warning") && !next.coursePaused;
+      setCalib((current) => (sameCalib(current, next) ? current : next));
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [streamToken]);
+
+  useEffect(() => {
+    return () => {
+      estimatorRef.current?.stop();
+      estimatorRef.current = null;
+      releaseCamera(streamRef.current, videoRef.current);
+      streamRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -356,24 +423,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     resume();
     video.addEventListener("pause", resume);
     return () => video.removeEventListener("pause", resume);
-  }, [previewOn, cameraTry, runId]);
-
-  useEffect(() => {
-    if (phase !== "ready" || !runnerReady || playing || cameraError || graphicsError || startedRef.current) return;
-    const timer = window.setTimeout(() => {
-      const handle = handleRef.current;
-      const estimator = estimatorRef.current;
-      if (!handle || startedRef.current) return;
-      startedRef.current = true;
-      playingRef.current = true;
-      handle.beginCourse();
-      estimator?.setMode("play");
-      estimator?.setCoaching(false);
-      estimator?.setRaceLive(true);
-      setPlaying(true);
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [cameraError, graphicsError, phase, playing, runnerReady]);
+  }, [streamToken, runId]);
 
   useEffect(() => {
     let cancel = false;
@@ -458,6 +508,31 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     return () => window.removeEventListener("keydown", onKey);
   }, [motionDiag]);
 
+  async function startFromTap() {
+    const video = videoRef.current;
+    const root = rootRef.current;
+    if (!video || !root || startingRef.current) return;
+    startingRef.current = true;
+    setCameraError("");
+    try {
+      const stream = await openCamera(video);
+      const previous = streamRef.current;
+      streamRef.current = stream;
+      if (previous && previous !== stream) releaseCamera(previous, null);
+      const stage = await requestPhoneStage(phoneStageCaps(root));
+      setStageNote(stage.note);
+      poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
+      calibRef.current = createPhoneCalibration();
+      setCalib(calibRef.current);
+      setPoseCount(0);
+      setStreamToken((value) => value + 1);
+    } catch (error) {
+      setCameraError(phoneCameraFailure(error));
+    } finally {
+      startingRef.current = false;
+    }
+  }
+
   function runTest(movementType: (typeof PHONE_TEST_CONTROLS)[number]["movementType"]) {
     const handle = handleRef.current;
     if (!handle || !motionDiagRef.current) return;
@@ -467,134 +542,117 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     else handle.localStep(movementType === "lean_left" ? -1 : 1);
   }
 
-  const bodyLabel = PHONE_BODY_LABEL[phase];
-  const setupLine = phoneSetupLine(phase, setupGuidance);
+  const cameraLarge = streamToken > 0 && calib.phase !== "running" && calib.phase !== "warning";
+  const guidanceLine = poseCount > 1 ? "One person at a time" : calib.guidance;
+  const showCourseHud = playing && calib.phase !== "reposition" && calib.phase !== "countdown" && calib.phase !== "ready" && calib.phase !== "finding" && calib.phase !== "adjust" && calib.phase !== "calibrating";
 
   return (
-    <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape">
+    <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape" data-phone-phase={calib.phase}>
       <canvas ref={canvasRef} data-fitrunner-v2="" aria-label="Fit Run" className="h-full w-full" hidden={Boolean(graphicsError)} />
-      <div className="phone-hud-layer">
-        <div className="phone-hud-top">
-          <div className="phone-banners">
-            <p data-phone-rotate="" className="phone-rotate">
-              {PHONE_ROTATE_LINE}
-            </p>
-            {frameWarning ? (
-              <p data-phone-frame="" role="status" className="phone-frame">
-                {frameWarning}
-              </p>
-            ) : null}
-          </div>
-          <div className="phone-score-row">
-            <PlayScoreCard
-              hidden={!playing || Boolean(gameOver)}
-              scoreRef={playScoreRef}
-              distanceRef={distanceRef}
-              timeRef={timeRef}
-              calories={calorieText}
-              note={calorieNote}
-              keyboard={false}
-              className="phone-score"
-            />
-          </div>
+      <div className={cameraLarge ? "phone-cal-stage" : "phone-camera-park"} data-phone-preview={cameraLarge ? "shown" : "hidden"}>
+        <div className="phone-cal-flip">
+          <video ref={videoRef} className="phone-cal-media" muted playsInline aria-label="Camera preview" />
+          <canvas ref={poseCanvasRef} className="phone-cal-media" aria-hidden="true" />
         </div>
-        <div className="phone-hud-spacer" />
-        <div className="phone-hud-bottom">
-          <div className="phone-lower-pre">
-            <div className="phone-preview-col">
-              {playing && !gameOver && !demoOver ? (
-                <button type="button" className="phone-mirror-btn" aria-expanded={mirrorOpen} onClick={() => setMirrorOpen((open) => !open)}>
-                  Mirror
+        {cameraLarge ? (
+          <>
+            <CalibGuide />
+            <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} role="status">
+              {calib.status && calib.phase !== "countdown" ? (
+                <p className="phone-calib-status" data-phone-status="">
+                  {calib.status}
+                </p>
+              ) : null}
+              {calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
+              {calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
+                <p className="phone-calib-count" data-phone-countdown="">
+                  {calib.countdown}
+                </p>
+              ) : null}
+              {guidanceLine ? (
+                <p className="phone-calib-guidance" data-phone-guidance="">
+                  {guidanceLine}
+                </p>
+              ) : null}
+              {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
+              {cameraError ? <p className="phone-calib-note">{cameraError}</p> : null}
+              {startError ? <p className="phone-calib-note">{startError}</p> : null}
+              {cameraError ? (
+                <button type="button" className="phone-start" onClick={() => void startFromTap()}>
+                  Try again
                 </button>
               ) : null}
-              <div className="phone-preview-slot">
-                <div data-phone-preview={previewOn ? "shown" : "hidden"} className="phone-preview-frame">
-                  <video
-                    ref={videoRef}
-                    className="phone-preview-video"
-                    style={{ transform: "scaleX(-1)" }}
-                    muted
-                    playsInline
-                    aria-label="Camera preview"
-                    aria-hidden={previewOn ? undefined : true}
-                  />
-                  <canvas ref={poseCanvasRef} className="phone-preview-pose" aria-hidden="true" />
-                  {previewOn ? (
-                    <button type="button" className="phone-preview-toggle" aria-pressed="true" onClick={() => setPreviewOn(false)}>
-                      Hide camera
-                    </button>
-                  ) : null}
-                </div>
-                {previewOn ? null : (
-                  <button type="button" className="phone-preview-show" aria-pressed="false" onClick={() => setPreviewOn(true)}>
-                    Show camera
-                  </button>
-                )}
-              </div>
             </div>
-            <p data-phone-tracking="" className="phone-tracking">
-              {tracking}
-            </p>
-          </div>
-          <div className="phone-controls">
-            <LivesHearts hidden={!playing || Boolean(gameOver)} lives={lives} />
-            {playing && !gameOver && !demoOver ? (
-              <div className="phone-actions">
-                <button type="button" aria-pressed={paused} onClick={() => handleRef.current?.setPaused(!paused)}>
-                  {paused ? "Resume" : "Pause"}
-                </button>
-                <button type="button" aria-pressed={!muted} onClick={() => handleRef.current?.setMuted(!muted)}>
-                  {muted ? "Sound off" : "Sound on"}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
+          </>
+        ) : null}
       </div>
-      {mirrorOpen && playing && !gameOver && !demoOver ? (
-        <div className="phone-mirror-panel" data-phone-mirror="" role="dialog" aria-label="Mirror this phone">
-          <div className="phone-mirror-head">
-            <p>Mirror this phone</p>
-            <button type="button" onClick={() => setMirrorOpen(false)}>
-              Close
-            </button>
-          </div>
-          <ul>
-            {PHONE_MIRROR_GUIDE.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </div>
+      {calib.countdown === "GO" ? (
+        <p className="phone-go" data-phone-countdown="">
+          GO
+        </p>
       ) : null}
-      {!playing && !graphicsError && !gameOver && !demoOver ? (
-        <div
-          className="phone-setup absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-[#16181d] text-center portrait:justify-center"
-          data-phone-body={phase}
-          role="status"
-        >
+      <div className="phone-hud-layer" hidden={!showCourseHud}>
+          <div className="phone-hud-top">
+            <div className="phone-banners">
+              {calib.phase === "warning" ? (
+                <p data-phone-frame="" role="status" className="phone-frame">
+                  {BODY_LEFT_MESSAGE}
+                </p>
+              ) : null}
+            </div>
+            <div className="phone-score-row">
+              <PlayScoreCard
+                hidden={Boolean(gameOver)}
+                scoreRef={playScoreRef}
+                distanceRef={distanceRef}
+                timeRef={timeRef}
+                calories={calorieText}
+                note={calorieNote}
+                keyboard={false}
+                className="phone-score"
+              />
+            </div>
+          </div>
+          <div className="phone-hud-spacer" />
+          <div className="phone-hud-bottom">
+            <div className="phone-controls">
+              <LivesHearts hidden={Boolean(gameOver)} lives={lives} />
+              {!gameOver && !demoOver ? (
+                <div className="phone-actions">
+                  <button
+                    type="button"
+                    aria-pressed={paused}
+                    onClick={() => {
+                      if (calib.coursePaused) return;
+                      handleRef.current?.setPaused(!paused);
+                    }}
+                  >
+                    {paused ? "Resume" : "Pause"}
+                  </button>
+                  <button type="button" aria-pressed={!muted} onClick={() => handleRef.current?.setMuted(!muted)}>
+                    {muted ? "Sound off" : "Sound on"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      {streamToken === 0 && !graphicsError && !gameOver && !demoOver ? (
+        <div className="phone-mirror-screen" data-phone-mirror="">
           <p className="text-xs tracking-[0.16em] text-[#d6ff4a]">Fit Run</p>
-          <h1 className="mt-3 font-display text-4xl text-[#BEFF39]">{bodyLabel}</h1>
-          <p className="mt-3 max-w-md text-lg text-white/80">{setupLine}</p>
-          <p className="mt-2 text-sm text-[#d6ff4a]" data-phone-setup-tracking="">
-            {tracking}
-          </p>
-          <ul className="mt-5 max-w-md space-y-1 text-left text-sm leading-relaxed text-[#d6ff4a]">
+          <h1 className="mt-3 font-display text-4xl text-white">Play on this phone</h1>
+          <p className="mt-3 max-w-md text-base text-white/80">{PHONE_MIRROR_NOTE}</p>
+          <ul className="mt-4 space-y-1 text-sm text-[#d6ff4a]">
             {PHONE_MIRROR_GUIDE.map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-white/70">{PHONE_PLAY_URL}</p>
+          <p className="mt-3 max-w-md text-sm text-white/70">{PHONE_PLAY_URL}</p>
           {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}
           {startError ? <p className="mt-4 max-w-md text-base text-white">{startError}</p> : null}
-          {cameraError ? (
-            <button
-              type="button"
-              className="pointer-events-auto mt-6 rounded-full border border-white/25 px-5 py-3 text-sm"
-              onClick={() => setCameraTry((value) => value + 1)}
-            >
-              Try again
-            </button>
-          ) : null}
+          <button type="button" className="phone-start" onClick={() => void startFromTap()}>
+            {cameraError ? "Try again" : "Play"}
+          </button>
         </div>
       ) : null}
       {motionDiag ? (

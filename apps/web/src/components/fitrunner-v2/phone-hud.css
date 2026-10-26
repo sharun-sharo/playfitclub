@@ -357,3 +357,130 @@
     max-height: min(42vh, 11rem);
   }
 }
+
+.phone-camera-park {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.phone-cal-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: #000;
+}
+
+.phone-cal-flip {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(-1);
+}
+
+.phone-cal-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.phone-calib-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(28vh, 34vw);
+  height: auto;
+  transform: translate(-50%, -52%);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.phone-calib-copy {
+  position: absolute;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+  z-index: 1;
+  color: #fff;
+  text-align: center;
+  pointer-events: none;
+}
+
+.phone-calib-copy[data-phone-ready="1"] {
+  color: #39e07a;
+}
+
+.phone-calib-status,
+.phone-calib-ready,
+.phone-calib-guidance,
+.phone-calib-note {
+  margin: 0.2rem 0 0;
+}
+
+.phone-calib-status {
+  font-size: clamp(1.4rem, 4vw, 2.4rem);
+  letter-spacing: 0.04em;
+}
+
+.phone-calib-ready {
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-weight: 700;
+}
+
+.phone-calib-count,
+.phone-go {
+  margin: 0;
+  font-size: clamp(4rem, 16vw, 8rem);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.phone-go {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 32;
+  color: #39e07a;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.phone-calib-guidance,
+.phone-calib-note {
+  font-size: 1rem;
+}
+
+.phone-mirror-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: max(1.5rem, env(safe-area-inset-top, 0px)) max(1.25rem, env(safe-area-inset-right, 0px))
+    max(1.5rem, env(safe-area-inset-bottom, 0px)) max(1.25rem, env(safe-area-inset-left, 0px));
+  background: #16181d;
+  text-align: center;
+}
+
+.phone-start {
+  margin-top: 1.4rem;
+  padding: 0.8rem 1.4rem;
+  border: 0;
+  border-radius: 999px;
+  background: #beff39;
+  color: #1c1f24;
+  font-size: 1rem;
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+.phone-calib-copy .phone-start {
+  pointer-events: auto;
+}

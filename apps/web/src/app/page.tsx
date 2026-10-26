@@ -88,7 +88,7 @@ export default function HomePage() {
                 ))}
               </ul>
               <div className="fp-actions">
-                <Link className="fp-btn fp-btn-primary" href="/play">
+                <Link className="fp-btn fp-btn-primary" href="/play/phone">
                   Experience PlayFit Club
                 </Link>
               </div>
@@ -195,7 +195,7 @@ export default function HomePage() {
               <article className="fp-panel">
                 <h3>Turn your space into a playground.</h3>
                 <p>Bring movement-driven gaming into your home and make play a more active experience. Home play does not need an account.</p>
-                <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
+                <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
                   Start Playing
                 </TrackedLink>
               </article>
@@ -239,7 +239,7 @@ export default function HomePage() {
               <h2 id="final-title">Your next workout won&apos;t feel like a workout.</h2>
               <p className="fp-lead">Step into the game. Move with purpose. Make every session an experience.</p>
               <div className="fp-actions">
-                <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
+                <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
                   Play PlayFit Club
                 </TrackedLink>
                 <Link className="fp-btn fp-btn-ghost" href="/gyms">

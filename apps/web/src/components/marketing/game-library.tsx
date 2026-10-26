@@ -7,7 +7,7 @@ const games = [
     title: "Fit Run",
     description: "Motion-controlled running adventure",
     status: "Available",
-    href: "/play/fit-run",
+    href: PHONE_PLAY_PATH,
     image: "/marketing/fit-run.jpg",
     alt: "A woman runs in a living room toward a television showing a motion-controlled running game, with a phone tracking her pose.",
   },
@@ -64,7 +64,7 @@ export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
                   { name: "fit_run_selected", params: { surface: "library" } },
                 ]}
               >
-                Play
+                Play Game
               </TrackedLink>
             ) : null}
             {game.href ? (

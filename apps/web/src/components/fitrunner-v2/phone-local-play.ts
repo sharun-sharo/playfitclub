@@ -1,24 +1,35 @@
 import { readMotionDiagFlag, trackingStatusLine } from "../join/phone-commands";
 import { playCalories, type PlayCalorieView } from "../../lib/fitrunner-v2/play-calories";
 import { BODY_LEFT_MESSAGE } from "../../lib/vision/camera-status";
+import { isTelevisionUserAgent } from "./tv-graphics";
 
 /** Phone runs Fit Run here. A TV or laptop shows this screen through the phone's own mirror. */
 export const PHONE_PLAY_PATH = "/play/phone";
 export const PHONE_PLAY_URL = "https://playfitclub.com/play/phone";
 
-/** Short guide. The picture on a TV or laptop is this phone's own screen mirror. */
-export const PHONE_MIRROR_GUIDE = [
-  "Mirror this phone. The game stays on this phone. A TV or laptop shows this screen through the phone's own mirror.",
-  "Samsung: Smart View.",
-  "Android: Cast.",
-  "iPhone: Screen Mirroring.",
-  "HDMI: from a laptop only while that laptop is displaying this mirrored phone.",
-] as const;
+/** The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror. */
+export const PHONE_MIRROR_NOTE =
+  "The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror.";
+
+/** Phone mirror controls. This site does not cast the game. */
+export const PHONE_MIRROR_GUIDE = ["Samsung Smart View", "Android Cast", "iPhone Screen Mirroring"] as const;
 
 export const PHONE_MIRROR_LINE = PHONE_MIRROR_GUIDE.join(" ");
 
-/** Shown in portrait. The page does not call screen.orientation.lock. */
+/** Shown in portrait when landscape lock is unavailable. */
 export const PHONE_ROTATE_LINE = "Turn your phone sideways.";
+
+/** Phone visitors open the phone game. A laptop or television keeps the laptop Fit Run page. */
+export function homePlayHref(input: { userAgent: string; coarsePointer: boolean; viewportWidth: number }) {
+  if (isPhonePlayVisitor(input)) return PHONE_PLAY_PATH;
+  return "/play/fit-run";
+}
+
+export function isPhonePlayVisitor(input: { userAgent: string; coarsePointer: boolean; viewportWidth: number }) {
+  if (isTelevisionUserAgent(input.userAgent)) return false;
+  if (/iPhone|iPod|Android.+Mobile|webOS|BlackBerry|IEMobile|Windows Phone/i.test(input.userAgent)) return true;
+  return input.coarsePointer && input.viewportWidth > 0 && input.viewportWidth < 900;
+}
 
 export const PHONE_STAND_LINE = "Stand where the camera sees you.";
 

@@ -16,7 +16,9 @@ import {
   phonePlayCalories,
   phoneSetupLine,
   phoneTrackingStatus,
+  homePlayHref,
   PHONE_MIRROR_GUIDE,
+  PHONE_MIRROR_NOTE,
   PHONE_PIXEL_RATIO_CAP,
   PHONE_ROTATE_LINE,
   PHONE_STAND_LINE,
@@ -136,12 +138,12 @@ describe("phone local gestures", () => {
     expect(phoneFrameWarning({ playing: true, banner: false, pause: false })).toBeNull();
     expect(phoneFrameWarning({ playing: false, banner: true, pause: true })).toBeNull();
     expect(phoneFrameWarning({ playing: true, banner: true, pause: false })).toMatch(/left the frame/i);
-    const guide = PHONE_MIRROR_GUIDE.join(" ");
-    expect(guide).toMatch(/Samsung: Smart View/);
-    expect(guide).toMatch(/Android: Cast/);
-    expect(guide).toMatch(/iPhone: Screen Mirroring/);
-    expect(guide).toMatch(/HDMI: from a laptop only while that laptop is displaying this mirrored phone/);
-    expect(guide).not.toMatch(/\/tv\/play|WebRTC|every TV/i);
+    expect(PHONE_MIRROR_GUIDE).toEqual(["Samsung Smart View", "Android Cast", "iPhone Screen Mirroring"]);
+    expect(PHONE_MIRROR_NOTE).toMatch(/phone's own mirror/);
+    expect(`${PHONE_MIRROR_NOTE} ${PHONE_MIRROR_GUIDE.join(" ")}`).not.toMatch(/\/tv\/play|WebRTC|every TV|TV browser/i);
+    expect(homePlayHref({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", coarsePointer: true, viewportWidth: 390 })).toBe("/play/phone");
+    expect(homePlayHref({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", coarsePointer: false, viewportWidth: 1440 })).toBe("/play/fit-run");
+    expect(homePlayHref({ userAgent: "Mozilla/5.0 (SMART-TV; Tizen 6.0)", coarsePointer: true, viewportWidth: 1920 })).toBe("/play/fit-run");
     expect(phonePlayCalories({ weightKg: null, cameraActiveMs: 60_000, cameraLive: true }).text).toBe("—");
     expect(phonePlayCalories({ weightKg: 70, cameraActiveMs: 60_000, cameraLive: false }).text).toBe("—");
     expect(phonePlayCalories({ weightKg: undefined, cameraActiveMs: 60_000, cameraLive: true }).text).toBe("—");
