@@ -9,10 +9,14 @@ import {
   PHONE_CALIB_CONFIG,
   PHONE_LOSS_GRACE_MS,
   PHONE_PLAYER_READY,
+  PHONE_PLAY_STARTED_KEY,
   PHONE_STAGE_NOTE,
   PHONE_START_LANDMARKS,
   PHONE_VISIBILITY_FLOOR,
+  readPhonePlayStarted,
+  rememberPhonePlayStarted,
   requestPhoneStage,
+  startPhonePlay,
   stepPhoneCalibration,
   type PhoneCalibSample,
   type PhoneCalibState,
@@ -230,5 +234,81 @@ describe("phone calibration", () => {
         },
       }),
     ).resolves.toEqual({ fullscreen: true, orientationLocked: true, note: null });
+  });
+
+  it("requests the camera and leaves the intro when orientation lock and fullscreen reject", async () => {
+    const events: string[] = [];
+    let releaseLock: () => void = () => undefined;
+    const lock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const started = startPhonePlay({
+      requestCamera: () => {
+        events.push("camera");
+        return Promise.resolve("front-camera");
+      },
+      stage: {
+        fullscreen: async () => {
+          events.push("fullscreen");
+          throw new Error("fullscreen rejected");
+        },
+        orientationLock: () => {
+          events.push("lock");
+          return lock;
+        },
+      },
+      onLeaveIntro: () => events.push("intro"),
+    });
+    expect(started.leftIntro).toBe(true);
+    expect(events).toEqual(["intro", "camera", "fullscreen"]);
+    await expect(started.camera).resolves.toBe("front-camera");
+    expect(events).toEqual(["intro", "camera", "fullscreen", "lock"]);
+    releaseLock();
+    await lock;
+    await Promise.resolve();
+    expect(events).toEqual(["intro", "camera", "fullscreen", "lock"]);
+  });
+
+  it("leaves the intro when the camera throws before fullscreen and orientation lock reject", async () => {
+    const events: string[] = [];
+    const started = startPhonePlay({
+      requestCamera: () => {
+        events.push("camera");
+        throw new Error("blocked");
+      },
+      stage: {
+        fullscreen: async () => {
+          events.push("fullscreen");
+          throw new Error("fullscreen rejected");
+        },
+        orientationLock: async () => {
+          events.push("lock");
+          throw new Error("orientation rejected");
+        },
+      },
+      onLeaveIntro: () => events.push("intro"),
+      onStage: () => events.push("stage"),
+    });
+    expect(started.leftIntro).toBe(true);
+    expect(events.slice(0, 3)).toEqual(["intro", "camera", "fullscreen"]);
+    await expect(started.camera).rejects.toThrow("blocked");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(events).toContain("lock");
+    expect(events).toContain("stage");
+  });
+
+  it("remembers a started phone session for the next read", () => {
+    const bag = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => bag.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        bag.set(key, value);
+      },
+    };
+    expect(readPhonePlayStarted(storage)).toBe(false);
+    rememberPhonePlayStarted(storage);
+    expect(readPhonePlayStarted(storage)).toBe(true);
+    expect(bag.get(PHONE_PLAY_STARTED_KEY)).toBe("1");
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { applyObstacleHit, beginRun, emptyRun, HIT_INVULNERABILITY_MS, RUN_LIVES, type RunLives } from "@fitplay/shared";
 import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
 import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
@@ -8,9 +8,13 @@ import {
   createPhoneCalibration,
   phoneBodyReading,
   phoneStageCaps,
-  requestPhoneStage,
+  readPhonePlayStarted,
+  rememberPhonePlayStarted,
+  startPhonePlay,
   stepPhoneCalibration,
   PHONE_PLAYER_READY,
+  PHONE_PLAY_STARTED_KEY,
+  PHONE_STAGE_NOTE,
   type PhoneCalibState,
 } from "@/components/fitrunner-v2/phone-calibration";
 import {
@@ -58,6 +62,30 @@ function CalibGuide() {
   );
 }
 
+let phonePlayEngaged = false;
+
+function phoneSessionEngaged() {
+  if (phonePlayEngaged) return true;
+  if (typeof window === "undefined") return false;
+  return readPhonePlayStarted(window.sessionStorage);
+}
+
+function engagePhoneSession() {
+  phonePlayEngaged = true;
+  if (typeof window === "undefined") return;
+  rememberPhonePlayStarted(window.sessionStorage);
+}
+
+function clearPhoneSession() {
+  phonePlayEngaged = false;
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(PHONE_PLAY_STARTED_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
 const emptyDiag = (): PhoneMotionDiag => ({
   renderFps: null,
   inferenceMs: null,
@@ -92,6 +120,8 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const trackingPauseRef = useRef(false);
   const movesRef = useRef(false);
   const startingRef = useRef(false);
+  const aliveRef = useRef(true);
+  const startFromTapRef = useRef<() => Promise<void>>(async () => undefined);
   const poseRef = useRef<{ poseCount: number; framingCode: FramingCode | null; framingPause: boolean }>({
     poseCount: 0,
     framingCode: null,
@@ -100,6 +130,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const [runId, setRunId] = useState(0);
   const [calib, setCalib] = useState<PhoneCalibState>(() => createPhoneCalibration());
   const [streamToken, setStreamToken] = useState(0);
+  const [started, setStarted] = useState(false);
   const [stageNote, setStageNote] = useState<string | null>(null);
   const [poseCount, setPoseCount] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -134,6 +165,14 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     const on = phoneMotionDiagEnabled(window.location.search);
     motionDiagRef.current = on;
     setMotionDiag(on);
+  }, []);
+
+  useLayoutEffect(() => {
+    aliveRef.current = true;
+    if (phoneSessionEngaged() && !streamRef.current && !startingRef.current) void startFromTapRef.current();
+    return () => {
+      aliveRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -513,25 +552,44 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     const root = rootRef.current;
     if (!video || !root || startingRef.current) return;
     startingRef.current = true;
-    setCameraError("");
+    const repeat = phoneSessionEngaged();
+    const play = startPhonePlay({
+      requestCamera: () => openCamera(video),
+      stage: repeat ? null : phoneStageCaps(root),
+      onLeaveIntro: () => {
+        engagePhoneSession();
+        setCameraError("");
+        setStarted(true);
+        if (phoneAsksForLandscape(window.innerWidth, window.innerHeight)) setStageNote(PHONE_STAGE_NOTE);
+      },
+      onStage: (stage) => {
+        if (!aliveRef.current || repeat) return;
+        setStageNote(stage.note);
+      },
+    });
     try {
-      const stream = await openCamera(video);
+      const stream = await play.camera;
+      if (!aliveRef.current) {
+        releaseCamera(stream, null);
+        return;
+      }
       const previous = streamRef.current;
       streamRef.current = stream;
       if (previous && previous !== stream) releaseCamera(previous, null);
-      const stage = await requestPhoneStage(phoneStageCaps(root));
-      setStageNote(stage.note);
       poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
       calibRef.current = createPhoneCalibration();
       setCalib(calibRef.current);
       setPoseCount(0);
       setStreamToken((value) => value + 1);
     } catch (error) {
+      if (!aliveRef.current) return;
       setCameraError(phoneCameraFailure(error));
     } finally {
       startingRef.current = false;
     }
   }
+
+  startFromTapRef.current = startFromTap;
 
   function runTest(movementType: (typeof PHONE_TEST_CONTROLS)[number]["movementType"]) {
     const handle = handleRef.current;
@@ -542,7 +600,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     else handle.localStep(movementType === "lean_left" ? -1 : 1);
   }
 
-  const cameraLarge = streamToken > 0 && calib.phase !== "running" && calib.phase !== "warning";
+  const cameraLarge = started && calib.phase !== "running" && calib.phase !== "warning";
   const guidanceLine = poseCount > 1 ? "One person at a time" : calib.guidance;
   const showCourseHud = playing && calib.phase !== "reposition" && calib.phase !== "countdown" && calib.phase !== "ready" && calib.phase !== "finding" && calib.phase !== "adjust" && calib.phase !== "calibrating";
 
@@ -575,7 +633,11 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
                 </p>
               ) : null}
               {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
-              {cameraError ? <p className="phone-calib-note">{cameraError}</p> : null}
+              {cameraError ? (
+                <p className="phone-calib-note" role="alert">
+                  {cameraError}
+                </p>
+              ) : null}
               {startError ? <p className="phone-calib-note">{startError}</p> : null}
               {cameraError ? (
                 <button type="button" className="phone-start" onClick={() => void startFromTap()}>
@@ -637,7 +699,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             </div>
           </div>
         </div>
-      {streamToken === 0 && !graphicsError && !gameOver && !demoOver ? (
+      {!started && !graphicsError && !gameOver && !demoOver ? (
         <div className="phone-mirror-screen" data-phone-mirror="">
           <p className="text-xs tracking-[0.16em] text-[#d6ff4a]">Fit Run</p>
           <h1 className="mt-3 font-display text-4xl text-white">Play on this phone</h1>
@@ -700,6 +762,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
           saved={null}
           onAgain={() => setRunId((value) => value + 1)}
           onExit={() => {
+            clearPhoneSession();
             window.location.assign("/games");
           }}
         />

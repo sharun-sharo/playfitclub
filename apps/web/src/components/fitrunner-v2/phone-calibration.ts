@@ -450,6 +450,56 @@ export function stepPhoneCalibration(state: PhoneCalibState, sample: PhoneCalibS
   return stepPosition(base, sample, config);
 }
 
+export const PHONE_PLAY_STARTED_KEY = "fitplay.phone.playStarted";
+
+type PhonePlayStore = {
+  getItem?(key: string): string | null;
+  setItem?(key: string, value: string): void;
+};
+
+/** Survives an orientation reload. A React remount reads this and must not return to Play. */
+export function rememberPhonePlayStarted(storage: PhonePlayStore | null | undefined) {
+  try {
+    storage?.setItem?.(PHONE_PLAY_STARTED_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
+export function readPhonePlayStarted(storage: PhonePlayStore | null | undefined) {
+  try {
+    return storage?.getItem?.(PHONE_PLAY_STARTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Play tap. Leaves the intro in this turn and requests the camera before any
+ * await. Fullscreen and landscape lock run beside that. A rejection or a hung
+ * lock must not skip the camera and must not keep the caller on the intro.
+ */
+export function startPhonePlay<T>(input: {
+  requestCamera: () => Promise<T> | T;
+  /** null skips a second fullscreen or orientation request after this session already asked. */
+  stage?: PhoneStageCaps | null;
+  onLeaveIntro: () => void;
+  onStage?: (result: { fullscreen: boolean; orientationLocked: boolean; note: string | null }) => void;
+}): { camera: Promise<T>; leftIntro: true } {
+  input.onLeaveIntro();
+  let camera: Promise<T>;
+  try {
+    camera = Promise.resolve(input.requestCamera());
+  } catch (error) {
+    camera = Promise.reject(error);
+  }
+  if (input.stage !== null) {
+    const stage = requestPhoneStage(input.stage ?? {});
+    if (input.onStage) void stage.then((result) => input.onStage?.(result));
+  }
+  return { camera, leftIntro: true };
+}
+
 /** Fullscreen and landscape lock only when the browser offers them. A failure is one honest line. */
 export async function requestPhoneStage(caps: PhoneStageCaps): Promise<{ fullscreen: boolean; orientationLocked: boolean; note: string | null }> {
   let fullscreen = false;
