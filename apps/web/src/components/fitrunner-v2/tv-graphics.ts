@@ -63,9 +63,13 @@ export function fitRunnerPixelRatio(devicePixelRatio: number, television: boolea
   return Math.min(ratio, television ? 1 : 2);
 }
 
-/** CSS pixels passed to setSize. The canvas element stays full-viewport; only the bitmap is capped. */
-export const TV_DRAW_WIDTH = 1280;
-export const TV_DRAW_HEIGHT = 720;
+/**
+ * CSS pixels passed to setSize. The canvas element stays full-viewport; only the bitmap is capped.
+ * 1280×720 still filled a Tizen GPU. 960×540 is the television drawing buffer.
+ * Pixel ratio stays 1, so the bitmap is not scaled back up. Shadows and antialias are off on this path.
+ */
+export const TV_DRAW_WIDTH = 960;
+export const TV_DRAW_HEIGHT = 540;
 
 export function fitRunnerDrawingSize(viewportWidth: number, viewportHeight: number, television: boolean) {
   const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 0;

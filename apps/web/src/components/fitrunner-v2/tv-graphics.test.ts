@@ -46,22 +46,22 @@ describe("television graphics limits", () => {
     })).toBe(false);
   });
 
-  it("caps a 4K television drawing buffer at 1280×720 and leaves a 1440×900 laptop uncapped", () => {
+  it("caps a 4K television drawing buffer at 960×540 and leaves a 1440×900 laptop uncapped", () => {
     const television = fitRunnerDrawingBuffer(3840, 2160, 2, true);
-    expect(television.width).toBeLessThanOrEqual(1280);
-    expect(television.height).toBeLessThanOrEqual(720);
-    expect(television).toEqual({ width: 1280, height: 720, pixelRatio: 1 });
+    expect(television.width).toBeLessThanOrEqual(960);
+    expect(television.height).toBeLessThanOrEqual(540);
+    expect(television).toEqual({ width: 960, height: 540, pixelRatio: 1 });
     expect(television.width / television.height).toBeCloseTo(3840 / 2160, 5);
 
     const wide = fitRunnerDrawingBuffer(2560, 1080, 1, true);
-    expect(wide.width).toBeLessThanOrEqual(1280);
-    expect(wide.height).toBeLessThanOrEqual(720);
+    expect(wide.width).toBeLessThanOrEqual(960);
+    expect(wide.height).toBeLessThanOrEqual(540);
     expect(wide.width / wide.height).toBeCloseTo(2560 / 1080, 2);
 
     const laptop = fitRunnerDrawingBuffer(1440, 900, 1, false);
     expect(laptop).toEqual({ width: 1440, height: 900, pixelRatio: 1 });
-    expect(laptop.width).toBeGreaterThan(1280);
-    expect(laptop.height).toBeGreaterThan(720);
+    expect(laptop.width).toBeGreaterThan(960);
+    expect(laptop.height).toBeGreaterThan(540);
 
     const laptopRetina = fitRunnerDrawingBuffer(1440, 900, 2, false);
     expect(laptopRetina).toEqual({ width: 2880, height: 1800, pixelRatio: 2 });

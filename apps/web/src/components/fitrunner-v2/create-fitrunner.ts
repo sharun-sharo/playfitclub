@@ -14,12 +14,13 @@ import { coastModule, createTropical, type SegmentDressing } from "@/components/
 import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
+import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices } from "@/components/fitrunner-v2/runner-clock";
 import { fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
 import { createRunRecorder } from "@/lib/fitrunner-v2/run-recorder";
 import { MIN_FITNESS_CONFIDENCE, type WorkoutEventDraft } from "@/lib/fitrunner-v2/workout";
-import { COMMAND_STALE_MS, holdCommand, releaseCommand, type HeldCommand } from "@fitplay/game";
+import { COMMAND_STALE_MS, holdCommand, type HeldCommand } from "@fitplay/game";
 import {
   courseDebugSnapshot,
   scheduleCourse,
@@ -813,6 +814,8 @@ export async function startFitRunner(
     let lastPoseSequence = -1;
     const seenPose = new Set<string>();
     let poseBuffer: HeldCommand<PoseCommand> | null = null;
+    /** Wall time a television spent inside slow frames since this command was received. */
+    let poseFrameDebtMs = 0;
     let statsAt = 0;
     let finished = false;
     const wallStart = performance.now();
@@ -1181,14 +1184,19 @@ export async function startFitRunner(
       const event = poseBuffer.value;
       const receivedAt = poseBuffer.receivedAt;
       const timing = poseTiming(event);
-      const step = releaseCommand(poseBuffer, performance.now(), COMMAND_STALE_MS, timing === "now");
+      // Age starts when this TV accepted the socket event. A long frame's wall time
+      // is not part of that age, so the latest jump, squat, or lane is not dropped
+      // while the runner can still perform it. The phone timestamp is not used.
+      const step = releaseLiveCommand(poseBuffer, performance.now(), COMMAND_STALE_MS, timing === "now", television, poseFrameDebtMs);
       if (step.dropped === "stale") {
         poseBuffer = null;
+        poseFrameDebtMs = 0;
         reportPose(event, false, "stale");
         return;
       }
       if (timing === "never") {
         poseBuffer = null;
+        poseFrameDebtMs = 0;
         reportPose(event, false, "not_ready");
         return;
       }
@@ -1197,6 +1205,7 @@ export async function startFitRunner(
         return;
       }
       poseBuffer = null;
+      poseFrameDebtMs = 0;
       fx.prime();
       const acted = actPose(event);
       if (acted) showCommand(event.movementType);
@@ -1219,6 +1228,7 @@ export async function startFitRunner(
       if (timing === "later") {
         if (poseBuffer && poseBuffer.value.eventId !== event.eventId) reportPose(poseBuffer.value, false, "replaced");
         poseBuffer = holdCommand(poseBuffer, event, opened);
+        poseFrameDebtMs = 0;
         return reportPose(event, false, "buffered");
       }
       if (timing === "never") return reportPose(event, false, "not_ready");
@@ -1692,6 +1702,7 @@ export async function startFitRunner(
       if (poseBuffer) {
         const held = poseBuffer.value;
         poseBuffer = null;
+        poseFrameDebtMs = 0;
         reportPose(held, false, "paused");
       }
       runner.position.y = 0;
@@ -1794,20 +1805,25 @@ export async function startFitRunner(
         return;
       }
       unstickClip();
-      const dt = Math.min(0.05, clock.getDelta());
+      const rawDelta = clock.getDelta();
+      if (television && poseBuffer) poseFrameDebtMs = noteLongFrame(poseFrameDebtMs, rawDelta * 1000);
+      const slices = runnerFrameSlices(rawDelta, television);
+      const steps = slices.length > 0 ? slices : [0];
+      inTick = true;
+      try {
+      let demoEnded = false;
+      for (const dt of steps) {
       elapsed += dt;
       if (demoLimit !== null && elapsed >= demoLimit) {
         elapsed = demoLimit;
         endDemo();
-        renderer.render(scene, camera);
-        return;
+        demoEnded = true;
+        break;
       }
       if ((motion === "roll" || motion === "celebrate" || motion === "stand" || motion === "longJump") && elapsed >= motionEndsAt) {
         playRun();
       }
 
-      inTick = true;
-      try {
       flushPoseBuffer();
       advanceVisualLane(dt);
       visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, sideLeanTarget(), tuning.leanDamp, dt);
@@ -1820,7 +1836,7 @@ export async function startFitRunner(
       invuln = Math.max(0, invuln - dt);
       flash = Math.max(0, flash - dt * 2.2);
 
-      const speed = Math.min(tuning.maxSpeed, tuning.forwardSpeed + elapsed * tuning.speedGain) * speedMul;
+      const speed = runPace(elapsed, tuning, speedMul);
       liveSpeed = speed;
       if (motion === "roll") {
         if (actions.ForwardRoll.time > rollEndTime) {
@@ -1835,7 +1851,7 @@ export async function startFitRunner(
         rollCursor = traveled;
         frameStep = Math.max(0, step);
       } else {
-        const step = speed * dt;
+        const step = runStepMeters(elapsed, dt, tuning, speedMul);
         runner.position.z -= step;
         distance += step;
         frameStep = step;
@@ -1911,7 +1927,8 @@ export async function startFitRunner(
       sun.target.position.set(runner.position.x, 0.4, runner.position.z - 4);
       tropical.update(runner.position, camera, elapsed);
       fx.update(dt);
-      publish(speed);
+      }
+      if (!demoEnded) publish(liveSpeed);
       renderer.render(scene, camera);
       } finally {
         inTick = false;
