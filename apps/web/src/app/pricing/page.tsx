@@ -14,7 +14,7 @@ export const metadata: Metadata = pricingMetadata;
 const pricingQuestions = [
   {
     q: "Does this page take payment?",
-    a: "No. Play Free opens the demo. Asking about Premium opens WhatsApp. Book a Demo opens the gym form. None of these grant paid access or start a subscription.",
+    a: "No. Play Demo opens the demo. Asking about Individual Pro opens WhatsApp. Book a Demo opens the gym form. None of these grant paid access or start a subscription.",
   },
   {
     q: "What is included in the free demo?",
@@ -40,7 +40,7 @@ const compare = [
 
 export default function PricingPage() {
   return (
-    <MarketingFrame>
+    <MarketingFrame classic>
       <SiteNav prefix="/" />
       <PricingViewed />
       <main className="fp-wrap fp-page">
@@ -64,14 +64,14 @@ export default function PricingPage() {
               <li>No paid features</li>
             </ul>
             <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
-              Play Free
+              Play Demo
             </TrackedLink>
           </article>
           <article className="fp-card" id="individual-pro">
             <p className="fp-kicker">Listed subscription</p>
-            <h3>Premium</h3>
+            <h3>Individual Pro</h3>
             <p className="fp-price">₹999</p>
-            <p>Individual Pro. Game access for one person at home.</p>
+            <p>Game access for one person at home.</p>
             <ul>
               <li>Fit Run on your phone</li>
               <li>Personal scores and achievements when signed in</li>
@@ -85,7 +85,7 @@ export default function PricingPage() {
                 { name: "whatsapp_enquiry_clicked", params: { audience: "player" } },
               ]}
             >
-              Ask about Premium
+              Ask about Individual Pro
             </TrackedExternal>
           </article>
         </div>
@@ -126,14 +126,14 @@ export default function PricingPage() {
           <div className="fp-compare-row fp-compare-head" role="row">
             <span role="columnheader"> </span>
             <span role="columnheader">Free</span>
-            <span role="columnheader">Premium</span>
+            <span role="columnheader">Individual Pro</span>
             <span role="columnheader">Gym Starter</span>
             <span role="columnheader">Gym Pro</span>
           </div>
           {compare.map((row) => (
             <div className="fp-compare-row" role="row" key={row[0]}>
               {row.map((cell, index) => (
-                <span key={`${row[0]}-${cell}`} role={index === 0 ? "rowheader" : "cell"}>
+                <span key={`${row[0]}-${index}`} role={index === 0 ? "rowheader" : "cell"}>
                   {cell}
                 </span>
               ))}
