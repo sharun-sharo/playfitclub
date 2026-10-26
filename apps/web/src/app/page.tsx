@@ -59,7 +59,7 @@ export default function HomePage() {
           <div className="fp-wrap">
             <Reveal>
               <p className="fp-kicker">Worlds</p>
-              <h2 id="games-title">Pick your world. Make your move.</h2>
+              <h2 id="games-title">FITNESS HAS NEVER BEEN THIS FUN.</h2>
               <p className="fp-lead">Fit Run is playable now on your phone. Fit Fight and Fit Dance are coming soon.</p>
             </Reveal>
             <GameLibrary variant="home" />
