@@ -41,7 +41,7 @@ const compare = [
 export default function PricingPage() {
   return (
     <MarketingFrame classic>
-      <SiteNav prefix="/" />
+      <SiteNav prefix="/" logo="default" />
       <PricingViewed />
       <main className="fp-wrap fp-page">
         <p className="fp-kicker">Listed subscriptions</p>

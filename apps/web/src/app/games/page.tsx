@@ -10,7 +10,7 @@ export const metadata: Metadata = gamesMetadata;
 export default function GamesPage() {
   return (
     <MarketingFrame classic>
-      <SiteNav prefix="/" />
+      <SiteNav prefix="/" logo="default" />
       <main className="fp-wrap fp-page">
         <p className="fp-kicker">Experience</p>
         <h1>Pick a game.</h1>
