@@ -15,7 +15,7 @@ export default function GamesPage() {
         <p className="fp-kicker">Experience</p>
         <h1>Pick a game.</h1>
         <p className="fp-lead">
-          Fit Run is available. Play opens the existing lobby on a television or laptop, with a phone camera as the controller. Fit Fight and Fit Dance are coming soon and do not launch.
+          Fit Run plays on your phone. Open https://playfitclub.com/play/phone, then mirror that phone screen to a TV or laptop. Fit Fight and Fit Dance are coming soon.
         </p>
         <GameLibrary heading="h2" />
       </main>

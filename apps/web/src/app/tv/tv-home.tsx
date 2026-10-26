@@ -4,14 +4,15 @@ import { CirclePlay, Play, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
+import { PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 
 const games = [
   {
     title: "Fit Run",
-    description: "Motion-controlled running adventure",
+    description: "Play on your phone, then mirror that phone screen",
     status: "Available",
-    href: "/tv/play",
+    href: PHONE_PLAY_PATH,
     image: "/marketing/fit-run.jpg",
     alt: "A woman runs in a living room toward a television showing a motion-controlled running game, with a phone tracking her pose.",
   },
@@ -36,7 +37,7 @@ const games = [
 const statements = [
   { title: "Your body. Your controls.", copy: "The phone camera is the controller. No console and no extra sensor." },
   { title: "Every move matters.", copy: "A lean changes lanes. A jump clears a low barrier. A squat slides under a high one." },
-  { title: "Play your way.", copy: "One phone is the controller. The TV or laptop is the screen." },
+  { title: "Play your way.", copy: "Play on your phone, then mirror that phone screen to the TV or laptop." },
 ] as const;
 
 const slides = [
@@ -75,7 +76,7 @@ export function TvHome() {
     <div className="tv-site">
       <header className="tv-bar">
         <img src="/marketing/playfit-club-logo.png" alt="PlayFit Club" width={220} height={48} />
-        <Link className="tv-login" href="/login?next=/tv/play">
+        <Link className="tv-login" href="/login?next=/tv">
           Login
         </Link>
       </header>
@@ -88,15 +89,14 @@ export function TvHome() {
           <p className="tv-lead">No buttons. No controllers. Just your body in action.</p>
           <p className="tv-sub">Turn your workout into an adventure.</p>
           <p className="tv-body">
-            Run, fight, dance and play exciting fitness games using your body movements. Your phone camera is the controller — your TV or laptop is the playground.
+            Run, fight, dance and play exciting fitness games using your body movements. Play on your phone, then mirror that phone screen to the TV or laptop.
           </p>
-          <p className="tv-note">Play at home or through your gym membership.</p>
-          <p className="tv-note">On a TV, open https://playfitclub.com/tv</p>
-          <p className="tv-note">On a laptop, open https://playfitclub.com</p>
+          <p className="tv-note">The game is on your phone. {PHONE_PLAY_URL}</p>
+          <p className="tv-note">Smart View, Cast, or Screen Mirroring shows this phone screen. The game is on the phone.</p>
           <div className="tv-actions">
             <Link
               className="tv-btn tv-btn-primary"
-              href="/tv/play"
+              href={PHONE_PLAY_PATH}
               autoFocus
               onClick={() => {
                 trackEvent("play_clicked", { surface: "tv" });
@@ -104,7 +104,7 @@ export function TvHome() {
               }}
             >
               <Play aria-hidden="true" />
-              Play at home
+              Play on your phone
             </Link>
             <Link className="tv-btn tv-btn-dark" href="/gyms">
               <Users aria-hidden="true" />

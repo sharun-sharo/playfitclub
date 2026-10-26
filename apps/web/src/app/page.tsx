@@ -18,7 +18,7 @@ export const metadata: Metadata = homeMetadata;
 const statements = [
   { title: "Your body. Your controls.", copy: "The phone camera is the controller. No console and no extra sensor." },
   { title: "Every move matters.", copy: "A lean changes lanes. A jump clears a low barrier. A squat slides under a high one." },
-  { title: "Play your way.", copy: "One phone is the controller. The TV or laptop is the screen." },
+  { title: "Play your way.", copy: "Play on your phone, then mirror that phone screen to the TV or laptop." },
 ];
 
 const moves = ["Run", "Jump", "Dodge", "Move"];
@@ -128,14 +128,9 @@ export default function HomePage() {
                 <StepIcon name="setup" />
                 <p className="fp-step-no">Step 01</p>
                 <h3>Set up</h3>
+                <p>Play on your phone, then mirror that phone screen to the TV or laptop.</p>
                 <p>
-                  On a TV, open <a className="fp-text-link" href="https://playfitclub.com/tv">https://playfitclub.com/tv</a>.
-                </p>
-                <p>
-                  On a laptop, open <a className="fp-text-link" href="https://playfitclub.com">https://playfitclub.com</a>.
-                </p>
-                <p>
-                  A join code and QR code appear. The phone joins by scanning the QR code. Place the camera so your full body fits. A phone away from the computer needs an HTTPS page before the camera will start.
+                  Open <a className="fp-text-link" href="/play/phone">https://playfitclub.com/play/phone</a> on your phone. The game is on that phone. Smart View, Cast, or Screen Mirroring shows this phone screen on a TV or laptop.
                 </p>
               </article>
               <article>
@@ -143,7 +138,7 @@ export default function HomePage() {
                 <p className="fp-step-no">Step 02</p>
                 <h3>Move</h3>
                 <p>
-                  The phone tracks pose locally and sends movement events, not video. Fit Run uses lean left, lean right, jump, and squat. Punch and hold can be detected, and they do not score in this game. Return toward a neutral stance between leans and squats.
+                  The phone camera tracks your pose on that page. A lean changes lanes. A jump clears a low barrier. A squat slides under a high one. The character moves on the phone when the gesture is confirmed.
                 </p>
               </article>
               <article>
@@ -151,7 +146,7 @@ export default function HomePage() {
                 <p className="fp-step-no">Step 03</p>
                 <h3>Play</h3>
                 <p>
-                  A round runs for about three minutes and ends after three hits. Coins and clean dodges build the score. If the camera is unavailable, the keyboard on that screen is the fallback, not another player.
+                  Mirror this phone to your TV or laptop. The game is on this phone. Coins and clean dodges build the score. The picture on the TV or laptop is your phone’s own screen mirror.
                 </p>
               </article>
             </Reveal>
@@ -180,11 +175,11 @@ export default function HomePage() {
               </article>
               <article>
                 <h3>Bring the screen to life</h3>
-                <p>Play on a compatible television or laptop browser, with the phone joined to that screen. The world today is Fit Run’s procedural city.</p>
+                <p>Play Fit Run on your phone, then mirror that phone screen. The world today is Fit Run’s procedural city.</p>
               </article>
               <article>
                 <h3>One phone, one screen</h3>
-                <p>One phone is the controller. The TV or laptop is the screen. The keyboard on that screen is a fallback, not another player.</p>
+                <p>One phone runs the game. Smart View, Cast, or Screen Mirroring puts that screen on a TV or laptop.</p>
               </article>
             </Reveal>
           </div>

@@ -4,6 +4,7 @@ import { CirclePlay, Play, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
+import { PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
@@ -216,14 +217,29 @@ export function HeroShowcase() {
         <div className="fp-hero-story">
           <p className="fp-hero-sub fp-hero-rise">Turn your workout into an adventure.</p>
           <p className="fp-hero-body fp-hero-rise">
-            Run, fight, dance and play exciting fitness games using your body movements. Your phone camera is the controller — your TV or laptop is the playground.
+            Run, fight, dance and play exciting fitness games using your body movements. Play on your phone, then mirror that phone screen to a TV or laptop.
           </p>
-          <p className="fp-hero-note fp-hero-rise">Play at home or through your gym membership.</p>
+          <p className="fp-hero-note fp-hero-rise">
+            The game is on your phone. <a className="fp-text-link" href={PHONE_PLAY_PATH}>{PHONE_PLAY_URL}</a>
+          </p>
         </div>
         <div className="fp-actions">
           <span className="fp-hero-cta fp-hero-rise">
             <Link
               className="fp-btn fp-btn-primary"
+              href={PHONE_PLAY_PATH}
+              onClick={() => {
+                trackEvent("play_clicked", { surface: "home" });
+                trackEvent("fit_run_selected", { surface: "home-phone" });
+              }}
+            >
+              <Play aria-hidden="true" />
+              Play on your phone
+            </Link>
+          </span>
+          <span className="fp-hero-cta fp-hero-rise">
+            <Link
+              className="fp-btn fp-btn-ghost"
               href="/play/fit-run"
               onClick={() => {
                 trackEvent("play_clicked", { surface: "home" });

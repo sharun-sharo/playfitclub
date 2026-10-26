@@ -1,4 +1,5 @@
 import { TrackedLink } from "@/components/analytics/tracked-link";
+import { PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
 import { Reveal } from "@/components/marketing/reveal";
 
 const games = [
@@ -65,6 +66,13 @@ export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
               >
                 Play
               </TrackedLink>
+            ) : null}
+            {game.href ? (
+              <p>
+                <a className="fp-text-link" href={PHONE_PLAY_PATH}>
+                  Play on your phone at {PHONE_PLAY_URL}
+                </a>
+              </p>
             ) : (
               <button className="fp-btn fp-btn-ghost" type="button" disabled>
                 Coming soon

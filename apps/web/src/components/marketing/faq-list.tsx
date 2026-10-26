@@ -5,7 +5,7 @@ import { useId, useState } from "react";
 const questions = [
   {
     q: "What is PlayFit Club?",
-    a: "PlayFit Club is a fitness arcade in the browser. A screen runs the game, and a phone joins that session so body movement becomes the control. The game you can play now is FitRunner, a three-lane endless run.",
+    a: "PlayFit Club is a fitness arcade in the browser. Fit Run, a three-lane endless run, plays on your phone. Mirror that phone screen to a TV or laptop with Smart View, Cast, or Screen Mirroring.",
   },
   {
     q: "How does camera-based gameplay work?",
@@ -13,11 +13,11 @@ const questions = [
   },
   {
     q: "Do I need a special controller?",
-    a: "No. There is no console and no extra sensor. The phone is the controller. If the camera cannot be used, the TV offers a keyboard fallback. That fallback is labeled as a test control, not as camera tracking.",
+    a: "No. There is no console and no extra sensor. The phone runs Fit Run. Open https://playfitclub.com/play/phone, allow the front camera, and mirror that phone screen to a TV or laptop.",
   },
   {
     q: "Can I play using my phone and a TV?",
-    a: "Yes. On a TV, open https://playfitclub.com/tv. On a laptop, open https://playfitclub.com. The lobby shows a QR code and a join code. The phone joins by scanning the QR code. The camera needs a secure page. https://localhost works on the same computer. A phone on another device needs HTTPS, or the browser blocks the camera.",
+    a: "Yes. Play on your phone at https://playfitclub.com/play/phone, then mirror that phone screen to the TV or laptop with Smart View, Cast, or Screen Mirroring. The game is on the phone. The camera needs a secure page.",
   },
   {
     q: "What devices are supported?",
@@ -25,7 +25,7 @@ const questions = [
   },
   {
     q: "Can I play with friends?",
-    a: "These games are single player. One phone is the controller, and the TV or laptop is the screen. A second phone cannot join the same session. If the camera cannot be used, the keyboard on that screen is a fallback, not another player.",
+    a: "These games are single player. One phone runs Fit Run. Mirror that phone screen to a TV or laptop. A second phone does not join the same run.",
   },
   {
     q: "Is PlayFit Club suitable for gyms?",

@@ -15,6 +15,7 @@ import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, relea
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
 import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices } from "@/components/fitrunner-v2/runner-clock";
+import { phonePixelRatio } from "@/components/fitrunner-v2/phone-local-play";
 import { fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -146,6 +147,12 @@ export type FitRunnerHandle = {
   setLives: (lives: number) => void;
   /** Places meshes from the server seed. The browser does not roll its own obstacles. */
   applyCourse: (plan: { seed: number; ceiling: CourseLevel }) => void;
+  /** Same jump the keyboard calls. Runs in this turn. No socket. */
+  localJump: (confidence?: number, eventId?: string) => boolean;
+  /** Same roll the keyboard calls for a squat. Runs in this turn. No socket. */
+  localRoll: (confidence?: number, eventId?: string) => boolean;
+  /** Same stepLane the keyboard calls. Runs in this turn. No socket. */
+  localStep: (direction: -1 | 1, confidence?: number, eventId?: string) => boolean;
 };
 
 type Placed = {
@@ -313,19 +320,29 @@ async function loadRunner() {
 export async function startFitRunner(
   canvas: HTMLCanvasElement,
   hud: FitRunnerHud,
-  options?: { holdCourse?: boolean; demoLimitSeconds?: number | null },
+  options?: { holdCourse?: boolean; demoLimitSeconds?: number | null; drawProfile?: "phone" },
 ): Promise<FitRunnerHandle> {
   const holdCourse = options?.holdCourse === true;
   const rawLimit = options?.demoLimitSeconds;
   const demoLimit = typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : null;
-  const television = isTelevisionBrowser({
-    userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
-    pointerCoarse:
-      typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches,
-    screenWidth: typeof window === "undefined" ? 0 : Math.max(window.screen?.width || 0, window.innerWidth || 0),
-    screenHeight: typeof window === "undefined" ? 0 : Math.max(window.screen?.height || 0, window.innerHeight || 0),
-  });
+  const phoneDraw = options?.drawProfile === "phone";
+  const television =
+    phoneDraw
+      ? false
+      : isTelevisionBrowser({
+          userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+          pointerCoarse:
+            typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches,
+          screenWidth: typeof window === "undefined" ? 0 : Math.max(window.screen?.width || 0, window.innerWidth || 0),
+          screenHeight: typeof window === "undefined" ? 0 : Math.max(window.screen?.height || 0, window.innerHeight || 0),
+        });
   if (television) tuning.quality = fitRunnerQuality(true);
+  const sceneQuality: GraphicsQuality = phoneDraw ? "low" : tuning.quality;
+  let activeQuality = sceneQuality;
+  function drawingPixelRatio() {
+    const ratio = window.devicePixelRatio || 1;
+    return phoneDraw ? phonePixelRatio(ratio) : fitRunnerPixelRatio(ratio, television);
+  }
   const gl = canvas.getContext("webgl2", {
     alpha: false,
     antialias: !television,
@@ -353,9 +370,13 @@ export async function startFitRunner(
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = television ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = television ? 1 : 1.05;
-  renderer.shadowMap.enabled = tuning.quality !== "low";
+  renderer.shadowMap.enabled = sceneQuality !== "low";
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(fitRunnerPixelRatio(window.devicePixelRatio || 1, television));
+  renderer.setPixelRatio(drawingPixelRatio());
+  if (phoneDraw) {
+    canvas.dataset.draw = "phone";
+    canvas.dataset.shadows = "off";
+  }
   renderer.setClearColor("#8ec8ea");
 
   const scene = new THREE.Scene();
@@ -368,8 +389,8 @@ export async function startFitRunner(
   scene.add(new THREE.HemisphereLight("#e7f6ff", "#e4c48a", 0.92));
   if (!television) scene.add(new THREE.AmbientLight("#fff8ee", 0.2));
   const sun = new THREE.DirectionalLight("#fff1d2", 2.45);
-  const shadowSize = tuning.quality === "high" ? 2048 : tuning.quality === "medium" ? 1024 : 1;
-  sun.castShadow = tuning.quality !== "low";
+  const shadowSize = sceneQuality === "high" ? 2048 : sceneQuality === "medium" ? 1024 : 1;
+  sun.castShadow = sceneQuality !== "low";
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.near = 0.5;
   sun.shadow.camera.far = 46;
@@ -622,9 +643,9 @@ export async function startFitRunner(
       },
       renderer,
       sun,
-      tuning.quality,
+      sceneQuality,
     );
-    const fx = createCourseFx(scene, tuning.quality);
+    const fx = createCourseFx(scene, sceneQuality);
 
     const shadowMap = shadowTexture();
     const blob = new THREE.Mesh(
@@ -894,8 +915,9 @@ export async function startFitRunner(
     }
 
     function setQuality(next: GraphicsQuality) {
-      const applied = television ? fitRunnerQuality(true) : next;
-      tuning.quality = applied;
+      const applied = phoneDraw ? "low" : television ? fitRunnerQuality(true) : next;
+      if (!phoneDraw) tuning.quality = applied;
+      activeQuality = applied;
       tropical.setQuality(applied);
       canvas.dataset.quality = applied;
     }
@@ -1312,7 +1334,7 @@ export async function startFitRunner(
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       if (width < 2 || height < 2) return;
-      const ratio = fitRunnerPixelRatio(window.devicePixelRatio || 1, television);
+      const ratio = drawingPixelRatio();
       const layout = fitRunnerDrawingSize(width, height, television);
       const bufferWidth = Math.floor(layout.width * ratio);
       const bufferHeight = Math.floor(layout.height * ratio);
@@ -1350,7 +1372,7 @@ export async function startFitRunner(
       canvas.dataset.combo = String(snap.multiplier);
       canvas.dataset.distance = distance.toFixed(1);
       canvas.dataset.paused = paused ? "1" : "0";
-      canvas.dataset.quality = tuning.quality;
+      canvas.dataset.quality = activeQuality;
       canvas.dataset.ahead = nearestAhead;
       canvas.dataset.module = coastModule(Math.max(0, Math.round(-runner.position.z / tuning.tileSize)));
       canvas.dataset.jumpTime = `${jumpAction.time.toFixed(2)}/${jumpAction.getClip().duration.toFixed(2)}/${runner.position.y.toFixed(2)}`;
@@ -1935,6 +1957,30 @@ export async function startFitRunner(
       }
     }
 
+    function localJump(confidence?: number, eventId?: string) {
+      if (finished || demoOver || livesHold || courseMode !== "live") return false;
+      fx.prime();
+      const acted = jump("camera", confidence, eventId);
+      if (acted) showCommand("jump");
+      return acted;
+    }
+
+    function localRoll(confidence?: number, eventId?: string) {
+      if (finished || demoOver || livesHold || courseMode !== "live") return false;
+      fx.prime();
+      const acted = roll("camera", confidence, eventId);
+      if (acted) showCommand("squat");
+      return acted;
+    }
+
+    function localStep(direction: -1 | 1, confidence?: number, eventId?: string) {
+      if (finished || demoOver || livesHold || courseMode !== "live") return false;
+      fx.prime();
+      const acted = stepLane(direction, "camera", confidence, eventId);
+      if (acted) showCommand(direction < 0 ? "lean_left" : "lean_right");
+      return acted;
+    }
+
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", resize);
     window.addEventListener("pointerdown", onPointer);
@@ -1967,6 +2013,9 @@ export async function startFitRunner(
       releaseLivesHold,
       setLives,
       applyCourse,
+      localJump,
+      localRoll,
+      localStep,
       dispose() {
         stopped = true;
         canvas.removeEventListener("webglcontextlost", onContextLost);

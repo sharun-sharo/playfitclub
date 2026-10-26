@@ -7,7 +7,7 @@ export const HOME_TITLE = "PlayFit Club — You Move. The Game Moves.";
 
 /** 150 characters. Uses the live hero signature and how the game is actually played. */
 export const HOME_DESCRIPTION =
-  "No buttons. No controllers. Just your body in action. Play single-player fitness games at home with your phone camera. The TV or laptop is the screen.";
+  "No buttons. No controllers. Just your body in action. Play Fit Run on your phone, then mirror that phone screen to a TV or laptop.";
 
 export const OG_IMAGE = {
   url: "/marketing/hero-run.jpg",
