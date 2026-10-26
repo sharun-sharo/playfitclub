@@ -6,6 +6,22 @@ import { isTelevisionUserAgent } from "./tv-graphics";
 /** Phone runs Fit Run here. A TV or laptop shows this screen through the phone's own mirror. */
 export const PHONE_PLAY_PATH = "/play/phone";
 
+/** Shown beside the intro QR. The address itself stays inside the code. */
+export const PHONE_LAPTOP_QR_LINE = "If you opened this on a laptop, scan this with your phone.";
+
+/** Accessible name for the intro QR. It does not include the page address. */
+export const PHONE_LAPTOP_QR_NAME = "QR code to open this game on your phone";
+
+/**
+ * Absolute address encoded by the intro QR.
+ * Uses the page origin so each host, including a non-production one, encodes its own page.
+ */
+export function phonePlayQrPayload(origin: string) {
+  const base = origin.trim().replace(/\/+$/, "");
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(base)) return "";
+  return `${base}${PHONE_PLAY_PATH}`;
+}
+
 /** The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror. */
 export const PHONE_MIRROR_NOTE =
   "The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror.";

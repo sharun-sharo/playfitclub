@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import QRCode from "qrcode";
 import { applyObstacleHit, beginRun, emptyRun, HIT_INVULNERABILITY_MS, RUN_LIVES, type RunLives } from "@fitplay/shared";
 import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
 import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
@@ -27,8 +28,11 @@ import {
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
   phonePlayCalories,
+  PHONE_LAPTOP_QR_LINE,
+  PHONE_LAPTOP_QR_NAME,
   PHONE_MIRROR_GUIDE,
   PHONE_MIRROR_NOTE,
+  phonePlayQrPayload,
   PHONE_TEST_CONTROLS,
   PHONE_TEST_CONTROLS_LABEL,
   renderLoopFps,
@@ -60,6 +64,40 @@ function CalibGuide() {
       <ellipse cx="60" cy="28" rx="16" ry="18" fill="none" stroke="white" strokeWidth="3" />
       <path d="M60 46v74M28 78l32-8 32 8M36 188l24-68 24 68" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function PhoneLaptopQr() {
+  const [qr, setQr] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const payload = phonePlayQrPayload(window.location.origin);
+    if (!payload) return;
+    let cancel = false;
+    void QRCode.toDataURL(payload, { margin: 1, width: 480, color: { dark: "#1c1f24", light: "#ffffff" } })
+      .then((url) => {
+        if (!cancel) setQr(url);
+      })
+      .catch(() => {
+        if (!cancel) setFailed(true);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  if (failed) return null;
+
+  return (
+    <figure className="phone-laptop-qr" data-phone-laptop-qr="">
+      {qr ? (
+        <img className="phone-laptop-qr-image" src={qr} alt={PHONE_LAPTOP_QR_NAME} width={180} height={180} />
+      ) : (
+        <div className="phone-laptop-qr-image" aria-hidden="true" />
+      )}
+      <figcaption>{PHONE_LAPTOP_QR_LINE}</figcaption>
+    </figure>
   );
 }
 
@@ -722,19 +760,22 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
         </div>
       {!started && !graphicsError && !gameOver && !demoOver ? (
         <div className="phone-mirror-screen" data-phone-mirror="">
-          <p className="text-xs tracking-[0.16em] text-[#d6ff4a]">Fit Run</p>
-          <h1 className="mt-3 font-display text-4xl text-white">Play on this phone</h1>
-          <p className="mt-3 max-w-md text-base text-white/80">{PHONE_MIRROR_NOTE}</p>
-          <ul className="mt-4 space-y-1 text-sm text-[#d6ff4a]">
-            {PHONE_MIRROR_GUIDE.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}
-          {startError ? <p className="mt-4 max-w-md text-base text-white">{startError}</p> : null}
-          <button type="button" className="phone-start" onClick={() => void startFromTap()}>
-            {cameraError ? "Try again" : "Play"}
-          </button>
+          <div className="phone-mirror-copy">
+            <p className="text-xs tracking-[0.16em] text-[#d6ff4a]">Fit Run</p>
+            <h1 className="mt-3 font-display text-4xl text-white">Play on this phone</h1>
+            <p className="mt-3 max-w-md text-base text-white/80">{PHONE_MIRROR_NOTE}</p>
+            <ul className="mt-4 space-y-1 text-sm text-[#d6ff4a]">
+              {PHONE_MIRROR_GUIDE.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <PhoneLaptopQr />
+            {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}
+            {startError ? <p className="mt-4 max-w-md text-base text-white">{startError}</p> : null}
+            <button type="button" className="phone-start" onClick={() => void startFromTap()}>
+              {cameraError ? "Try again" : "Play"}
+            </button>
+          </div>
         </div>
       ) : null}
       {motionDiag ? (

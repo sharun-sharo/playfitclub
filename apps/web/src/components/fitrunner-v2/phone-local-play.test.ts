@@ -18,8 +18,12 @@ import {
   phoneSetupLine,
   phoneTrackingStatus,
   homePlayHref,
+  phonePlayQrPayload,
+  PHONE_LAPTOP_QR_LINE,
+  PHONE_LAPTOP_QR_NAME,
   PHONE_MIRROR_GUIDE,
   PHONE_MIRROR_NOTE,
+  PHONE_PLAY_PATH,
   PHONE_PIXEL_RATIO_CAP,
   PHONE_ROTATE_LINE,
   PHONE_STAND_LINE,
@@ -145,6 +149,16 @@ describe("phone local gestures", () => {
     expect(homePlayHref({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", coarsePointer: true, viewportWidth: 390 })).toBe("/play/phone");
     expect(homePlayHref({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", coarsePointer: false, viewportWidth: 1440 })).toBe("/play/fit-run");
     expect(homePlayHref({ userAgent: "Mozilla/5.0 (SMART-TV; Tizen 6.0)", coarsePointer: true, viewportWidth: 1920 })).toBe("/play/fit-run");
+    expect(phonePlayQrPayload("https://playfitclub.com")).toBe(`https://playfitclub.com${PHONE_PLAY_PATH}`);
+    expect(phonePlayQrPayload("https://playfitclub.com/")).toBe(`https://playfitclub.com${PHONE_PLAY_PATH}`);
+    expect(phonePlayQrPayload("https://preview.example")).toBe(`https://preview.example${PHONE_PLAY_PATH}`);
+    expect(phonePlayQrPayload("http://127.0.0.1:3000")).toBe(`http://127.0.0.1:3000${PHONE_PLAY_PATH}`);
+    expect(phonePlayQrPayload("")).toBe("");
+    expect(phonePlayQrPayload("playfitclub.com")).toBe("");
+    expect(PHONE_LAPTOP_QR_LINE).toBe("If you opened this on a laptop, scan this with your phone.");
+    expect(PHONE_LAPTOP_QR_NAME).toBe("QR code to open this game on your phone");
+    expect(`${PHONE_LAPTOP_QR_LINE} ${PHONE_LAPTOP_QR_NAME}`).not.toContain(PHONE_PLAY_PATH);
+    expect(`${PHONE_LAPTOP_QR_LINE} ${PHONE_LAPTOP_QR_NAME}`).not.toMatch(/https?:\/\//);
     expect(phonePlayCalories({ weightKg: null, cameraActiveMs: 60_000, cameraLive: true }).text).toBe("—");
     expect(phonePlayCalories({ weightKg: 70, cameraActiveMs: 60_000, cameraLive: false }).text).toBe("—");
     expect(phonePlayCalories({ weightKg: undefined, cameraActiveMs: 60_000, cameraLive: true }).text).toBe("—");
