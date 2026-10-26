@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_THRESHOLDS } from "@fitplay/game";
+import { distanceAt, scheduleCourse } from "@fitplay/shared";
 import { describe, expect, it } from "vitest";
 import { fitRunnerPixelRatio } from "./tv-graphics";
 import {
@@ -26,6 +27,8 @@ import {
   PHONE_LAPTOP_QR_NAME,
   PHONE_LIVE_CAMERA,
   phoneLiveCameraKeepsFrames,
+  phoneObstacleCounts,
+  phoneRunSeed,
   PHONE_MIRROR_GUIDE,
   PHONE_MIRROR_NOTE,
   PHONE_PLAY_PATH,
@@ -211,6 +214,19 @@ describe("phone local gestures", () => {
     expect(park).toContain("opacity: 1");
     expect(park).not.toContain("width: 1px");
     expect(park).not.toContain("opacity: 0");
+    expect(park).toContain("z-index: 2");
+    const canvasRule = css.slice(css.indexOf(".phone-play > canvas"), css.indexOf(".phone-play > canvas") + 220);
+    expect(canvasRule).toContain("z-index: 1");
+    expect(phoneRunSeed(0)).toBe(1);
+    expect(phoneRunSeed(0x100000000)).toBe(1);
+    expect(phoneRunSeed(42)).toBe(42);
+    const course = scheduleCourse({ seed: 42, ceiling: "beginner", untilTimeS: 90 });
+    const distance = distanceAt(45);
+    const ahead = course.obstacles.find((item) => item.distanceM > distance + 1 && item.distanceM < distance + 50);
+    expect(ahead).toBeTruthy();
+    expect(phoneObstacleCounts(42, "beginner", ahead?.id ?? "")).toBe(true);
+    expect(phoneObstacleCounts(42, "beginner", "palm")).toBe(false);
+    expect(phoneObstacleCounts(0, "beginner", ahead?.id ?? "")).toBe(false);
     const calls: string[] = [];
     const game = {
       jump: () => calls.push("jump"),

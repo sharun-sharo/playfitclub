@@ -13,7 +13,7 @@ import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
 import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
-import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
+import { COURSE_CAMERA_FAR, obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
 import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices, runnerUsesCatchUp } from "@/components/fitrunner-v2/runner-clock";
 import { applyPhoneTextureClarity } from "@/components/fitrunner-v2/phone-clarity";
 import {
@@ -32,6 +32,7 @@ import { MIN_FITNESS_CONFIDENCE, type WorkoutEventDraft } from "@/lib/fitrunner-
 import { COMMAND_STALE_MS, holdCommand, type HeldCommand } from "@fitplay/game";
 import {
   courseDebugSnapshot,
+  courseHorizonFor,
   scheduleCourse,
   type CourseLevel,
   type ScheduledObstacle,
@@ -421,7 +422,7 @@ export async function startFitRunner(
   scene.background = new THREE.Color("#8ec8ea");
   scene.fog = new THREE.Fog("#d5eef8", 34, 74);
 
-  const camera = new THREE.PerspectiveCamera(tuning.camera.fov, 1, 0.1, 320);
+  const camera = new THREE.PerspectiveCamera(tuning.camera.fov, 1, 0.1, COURSE_CAMERA_FAR);
   camera.position.set(0, tuning.camera.height, tuning.camera.distance);
 
   scene.add(new THREE.HemisphereLight("#e7f6ff", "#e4c48a", 0.92));
@@ -770,6 +771,10 @@ export async function startFitRunner(
       for (const kind of obstacleKinds) {
         for (const obstacle of slots[kind]) {
           obstacle.visible = false;
+          obstacle.frustumCulled = false;
+          obstacle.traverse((child) => {
+            child.frustumCulled = false;
+          });
           group.add(obstacle);
         }
       }
@@ -827,9 +832,9 @@ export async function startFitRunner(
 
     function ensureCourse(distanceM: number) {
       if (!coursePlan) return;
-      const need = distanceM + 90;
+      const need = courseHorizonFor(distanceM);
       if (courseHorizonM >= need) return;
-      courseHorizonM = need + 40;
+      courseHorizonM = need;
       const next = scheduleCourse({
         seed: coursePlan.seed,
         ceiling: coursePlan.ceiling,

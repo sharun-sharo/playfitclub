@@ -21,8 +21,9 @@ import {
   type PoseFrame,
 } from "@fitplay/game";
 import {
-  cameraSampleSource,
+  cameraBoxKeepsFrames,
   classificationTimestamp,
+  paintedCameraSampleSource,
   emptyCameraGate,
   emptyVideoCursor,
   finishCameraFrame,
@@ -677,7 +678,9 @@ export class PoseEstimator {
     };
     const animationDue = () => {
       const now = performance.now();
-      return cameraSampleSource({
+      const rect = video.getBoundingClientRect();
+      return paintedCameraSampleSource({
+        boxKeepsFrames: cameraBoxKeepsFrames(rect),
         hasVideoFrameCallback,
         videoFrames: this.videoFramesAccepted,
         elapsedMs: now - this.clockStarted,

@@ -383,7 +383,8 @@ html:-webkit-full-screen .phone-play,
   position: absolute;
   top: 0;
   left: 0;
-  z-index: 0;
+  /* Painted above the canvas so the phone keeps delivering camera frames. */
+  z-index: 2;
   width: 320px;
   height: 180px;
   overflow: hidden;

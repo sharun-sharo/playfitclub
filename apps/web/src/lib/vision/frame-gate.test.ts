@@ -10,8 +10,10 @@ import {
   type PoseFrame,
 } from "@fitplay/game";
 import {
+  cameraBoxKeepsFrames,
   cameraSampleSource,
   classificationTimestamp,
+  paintedCameraSampleSource,
   emptyCameraGate,
   emptyVideoCursor,
   finishCameraFrame,
@@ -285,6 +287,25 @@ describe("camera frame gate", () => {
     expect(takeAnimationSample({ now: 1_000, lastSampleAt: 990 })).toBe(false);
     expect(takeAnimationSample({ now: 1_012, lastSampleAt: 1_000 })).toBe(true);
     expect(takeAnimationSample({ now: Number.NaN, lastSampleAt: 1_000 })).toBe(false);
+  });
+
+  it("classifies from the animation clock when the camera box is too small to present frames", () => {
+    expect(cameraBoxKeepsFrames({ width: 320, height: 180 })).toBe(true);
+    expect(cameraBoxKeepsFrames({ width: 1, height: 1 })).toBe(false);
+    expect(paintedCameraSampleSource({
+      boxKeepsFrames: false,
+      hasVideoFrameCallback: true,
+      videoFrames: 12,
+      elapsedMs: 4_000,
+      sinceVideoFrameMs: 16,
+    })).toBe("animation");
+    expect(paintedCameraSampleSource({
+      boxKeepsFrames: true,
+      hasVideoFrameCallback: true,
+      videoFrames: 12,
+      elapsedMs: 4_000,
+      sinceVideoFrameMs: 16,
+    })).toBe("video-frame");
   });
 
   it("samples the animation clock when the phone video-frame callback does not arrive", () => {

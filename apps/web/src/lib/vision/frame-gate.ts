@@ -160,6 +160,30 @@ export function takeAnimationSample(input: { now: number; lastSampleAt: number }
   return input.now - input.lastSampleAt >= ANIMATION_SAMPLE_GAP_MS;
 }
 
+/**
+ * A 1×1 camera box does not present new pictures. The animation clock still
+ * has to classify, even when the browser keeps calling the video-frame callback.
+ */
+export function cameraBoxKeepsFrames(box: { width: number; height: number }) {
+  return box.width >= 160 && box.height >= 120;
+}
+
+/** The animation clock samples only while the video-frame callback is absent, quiet, or not actually painted. */
+export function paintedCameraSampleSource(input: {
+  boxKeepsFrames: boolean;
+  hasVideoFrameCallback: boolean;
+  videoFrames: number;
+  elapsedMs: number;
+  sinceVideoFrameMs: number;
+}): "video-frame" | "animation" {
+  return cameraSampleSource({
+    hasVideoFrameCallback: input.boxKeepsFrames && input.hasVideoFrameCallback,
+    videoFrames: input.videoFrames,
+    elapsedMs: input.elapsedMs,
+    sinceVideoFrameMs: input.sinceVideoFrameMs,
+  });
+}
+
 /** The animation clock samples only while the video-frame callback is absent or quiet. */
 export function cameraSampleSource(input: {
   hasVideoFrameCallback: boolean;

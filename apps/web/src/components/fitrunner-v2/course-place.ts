@@ -4,6 +4,13 @@
  */
 export const PROVISIONAL_COURSE_SEED = 1;
 
+/**
+ * View distance for the course camera.
+ * 320 m is about 45 s of travel from the start at the opening pace.
+ * The runner and the tiles move together, and this stays beyond that mark.
+ */
+export const COURSE_CAMERA_FAR = 2_000;
+
 export function tileOriginZ(spawn: number, tileSize: number) {
   return tileSize * 2 - spawn * tileSize;
 }

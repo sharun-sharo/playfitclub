@@ -145,6 +145,21 @@ export type ScheduleAssessment = {
 
 const LANES: CourseLane[] = [-1, 0, 1];
 
+/**
+ * A schedule with no distance, time, or count limit.
+ * Ten minutes is past the old 220 m stop, which emptied the road near 45 s.
+ */
+export const DEFAULT_COURSE_S = 600;
+
+/** First local chunk. Longer than 45 s, then the runner keeps a buffer ahead. */
+export const COURSE_CHUNK_S = 150;
+
+/** Meters the local course keeps filled ahead of the runner. */
+export function courseHorizonFor(distanceM: number) {
+  const ran = Number.isFinite(distanceM) ? Math.max(0, distanceM) : 0;
+  return Math.max(distanceAt(COURSE_CHUNK_S), ran + 160);
+}
+
 export function courseCeilingFromProfile(value: unknown): CourseLevel {
   if (value === "hard" || value === "advanced") return "advanced";
   if (value === "steady" || value === "intermediate") return "intermediate";
@@ -342,9 +357,14 @@ export function scheduleCourse(input: {
 }): CourseSchedule {
   const ceiling = input.ceiling ?? "beginner";
   const speed = input.speed ?? COURSE_SPEED;
-  const untilDistance =
-    input.untilDistanceM ?? (input.untilTimeS !== undefined || input.untilCount !== undefined ? Number.POSITIVE_INFINITY : 220);
-  const untilTime = input.untilTimeS ?? Number.POSITIVE_INFINITY;
+  // A bare schedule used to stop at 220 m. That is about 31 s of contact at the
+  // opening pace, and the road ahead of the runner is empty near 45 s.
+  // Callers that pass a distance, a time, or a count keep that limit.
+  // A caller that passes none of them still runs long enough for a full session.
+  const untilDistance = input.untilDistanceM ?? Number.POSITIVE_INFINITY;
+  const untilTime =
+    input.untilTimeS ??
+    (input.untilDistanceM !== undefined || input.untilCount !== undefined ? Number.POSITIVE_INFINITY : DEFAULT_COURSE_S);
   const untilCount = input.untilCount ?? Number.POSITIVE_INFINITY;
   const random = mulberry32(input.seed);
   const obstacles: ScheduledObstacle[] = [];

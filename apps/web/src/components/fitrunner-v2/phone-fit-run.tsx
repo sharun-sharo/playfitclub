@@ -28,7 +28,9 @@ import {
   phoneGestureCandidate,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
+  phoneObstacleCounts,
   phonePlayCalories,
+  phoneRunSeed,
   PHONE_LAPTOP_QR_LINE,
   PHONE_LAPTOP_QR_NAME,
   PHONE_MIRROR_GUIDE,
@@ -317,13 +319,25 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
               if (!cancelled) setDemoOver(true);
             },
             onRunBegin: () => {
+              const bytes = new Uint32Array(1);
+              crypto.getRandomValues(bytes);
+              const seed = phoneRunSeed(bytes[0] ?? 1);
               const started = beginRun(emptyRun());
-              runRef.current = started.run;
+              const run = { ...started.run, courseSeed: seed, courseCeiling: "beginner" as const };
+              runRef.current = run;
               hitsRef.current = 0;
-              handleRef.current?.setLives(started.run.lives);
-              if (!cancelled) setLives(started.run.lives);
+              handleRef.current?.applyCourse({ seed, ceiling: run.courseCeiling });
+              handleRef.current?.setLives(run.lives);
+              if (!cancelled) setLives(run.lives);
             },
             onHit: (hit) => {
+              const run = runRef.current;
+              if (!phoneObstacleCounts(run.courseSeed ?? 0, run.courseCeiling, hit.obstacleId)) {
+                const current = handleRef.current;
+                current?.dropHit(hit.obstacleId);
+                current?.releaseLivesHold();
+                return;
+              }
               const decision = applyObstacleHit(runRef.current, hit.obstacleId, hit.clientTimestamp, HIT_INVULNERABILITY_MS);
               runRef.current = decision.run;
               const current = handleRef.current;

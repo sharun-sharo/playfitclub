@@ -1,3 +1,4 @@
+import { scheduleContains, type CourseLevel } from "@fitplay/shared";
 import { readMotionDiagFlag, trackingStatusLine } from "../join/phone-commands";
 import { playCalories, type PlayCalorieView } from "../../lib/fitrunner-v2/play-calories";
 import { BODY_LEFT_MESSAGE } from "../../lib/vision/camera-status";
@@ -66,6 +67,19 @@ export const PHONE_LIVE_CAMERA = { width: 320, height: 180 } as const;
 
 export function phoneLiveCameraKeepsFrames(box: { width: number; height: number }) {
   return box.width >= 160 && box.height >= 120;
+}
+
+/** Same rule as the server seed: 0 is not a seed. The phone course does not wait on Railway. */
+export function phoneRunSeed(randomUint: number) {
+  if (!Number.isFinite(randomUint)) return 1;
+  const value = randomUint >>> 0;
+  return value === 0 ? 1 : value;
+}
+
+/** A palm, a token, or any id outside this run's schedule does not spend a life. */
+export function phoneObstacleCounts(seed: number, ceiling: CourseLevel, obstacleId: string) {
+  if (!Number.isFinite(seed) || seed <= 0) return false;
+  return scheduleContains(seed >>> 0, ceiling, obstacleId);
 }
 
 export type PhoneBodyPhase = "looking" | "detected" | "ready";
