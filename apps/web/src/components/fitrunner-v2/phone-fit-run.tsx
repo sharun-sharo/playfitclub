@@ -33,6 +33,7 @@ import { cameraActiveStep } from "@/lib/fitrunner-v2/play-calories";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { MODEL_FAILED_MESSAGE } from "@/lib/vision/camera-status";
 import { openCamera, PoseEstimator, releaseCamera } from "@/lib/vision/pose-estimator";
+import "./phone-hud.css";
 
 const emptyDiag = (): PhoneMotionDiag => ({
   renderFps: null,
@@ -81,6 +82,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [previewOn, setPreviewOn] = useState(true);
+  const [mirrorOpen, setMirrorOpen] = useState(false);
   const [weightKg, setWeightKg] = useState<number | null | undefined>(undefined);
   const [calorieText, setCalorieText] = useState("—");
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
@@ -469,73 +471,104 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const setupLine = phoneSetupLine(phase, setupGuidance);
 
   return (
-    <div ref={rootRef} className="fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape">
+    <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape">
       <canvas ref={canvasRef} data-fitrunner-v2="" aria-label="Fit Run" className="h-full w-full" hidden={Boolean(graphicsError)} />
-      <LivesHearts hidden={!playing || Boolean(gameOver)} lives={lives} />
-      <PlayScoreCard
-        hidden={!playing || Boolean(gameOver)}
-        scoreRef={playScoreRef}
-        distanceRef={distanceRef}
-        timeRef={timeRef}
-        calories={calorieText}
-        note={calorieNote}
-        keyboard={false}
-        className="top-3 portrait:top-14"
-      />
-      <p
-        data-phone-tracking=""
-        className="pointer-events-none absolute right-3 top-3 z-20 max-w-[11rem] truncate rounded-full bg-[#10141ccc] px-3 py-1 text-right text-[11px] text-[#d6ff4a] portrait:top-14"
-      >
-        {tracking}
-      </p>
-      <p data-phone-rotate="" className="absolute inset-x-3 top-2 z-40 hidden rounded-full bg-[#10141ce6] px-3 py-2 text-center text-sm text-white portrait:block">
-        {PHONE_ROTATE_LINE}
-      </p>
-      <ul
-        data-phone-mirror=""
-        className="pointer-events-none absolute bottom-2 left-40 right-52 z-20 rounded-xl bg-[#10141ccc] px-3 py-2 text-[11px] leading-snug text-[#d6ff4a] portrait:bottom-16 portrait:left-3 portrait:right-3"
-      >
-        {PHONE_MIRROR_GUIDE.map((line) => (
-          <li key={line}>{line}</li>
-        ))}
-      </ul>
-      {frameWarning ? (
-        <p
-          data-phone-frame=""
-          role="status"
-          className="pointer-events-none absolute left-1/2 top-1/4 z-30 max-w-xs -translate-x-1/2 rounded-full bg-[#10141ce6] px-4 py-2 text-center text-sm"
-        >
-          {frameWarning}
-        </p>
-      ) : null}
-      <div className="absolute bottom-2 left-3 z-40 portrait:bottom-36">
-        <button
-          type="button"
-          className="mb-1 rounded-full border border-white/20 bg-[#10141ccc] px-3 py-1.5 text-xs"
-          aria-pressed={previewOn}
-          onClick={() => setPreviewOn((value) => !value)}
-        >
-          {previewOn ? "Hide camera" : "Show camera"}
-        </button>
-        <div
-          data-phone-preview={previewOn ? "shown" : "hidden"}
-          className={previewOn ? "relative h-20 w-32 overflow-hidden rounded-xl border border-white/20 bg-black" : "pointer-events-none absolute h-px w-px overflow-hidden opacity-0"}
-        >
-          <video
-            ref={videoRef}
-            className="h-full w-full object-cover"
-            style={{ transform: "scaleX(-1)" }}
-            muted
-            playsInline
-            aria-label="Camera preview"
-            aria-hidden={previewOn ? undefined : true}
-          />
-          <canvas ref={poseCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
+      <div className="phone-hud-layer">
+        <div className="phone-hud-top">
+          <div className="phone-banners">
+            <p data-phone-rotate="" className="phone-rotate">
+              {PHONE_ROTATE_LINE}
+            </p>
+            {frameWarning ? (
+              <p data-phone-frame="" role="status" className="phone-frame">
+                {frameWarning}
+              </p>
+            ) : null}
+          </div>
+          <div className="phone-score-row">
+            <PlayScoreCard
+              hidden={!playing || Boolean(gameOver)}
+              scoreRef={playScoreRef}
+              distanceRef={distanceRef}
+              timeRef={timeRef}
+              calories={calorieText}
+              note={calorieNote}
+              keyboard={false}
+              className="phone-score"
+            />
+          </div>
+        </div>
+        <div className="phone-hud-spacer" />
+        <div className="phone-hud-bottom">
+          <div className="phone-lower-pre">
+            <div className="phone-preview-col">
+              {playing && !gameOver && !demoOver ? (
+                <button type="button" className="phone-mirror-btn" aria-expanded={mirrorOpen} onClick={() => setMirrorOpen((open) => !open)}>
+                  Mirror
+                </button>
+              ) : null}
+              <div className="phone-preview-slot">
+                <div data-phone-preview={previewOn ? "shown" : "hidden"} className="phone-preview-frame">
+                  <video
+                    ref={videoRef}
+                    className="phone-preview-video"
+                    style={{ transform: "scaleX(-1)" }}
+                    muted
+                    playsInline
+                    aria-label="Camera preview"
+                    aria-hidden={previewOn ? undefined : true}
+                  />
+                  <canvas ref={poseCanvasRef} className="phone-preview-pose" aria-hidden="true" />
+                  {previewOn ? (
+                    <button type="button" className="phone-preview-toggle" aria-pressed="true" onClick={() => setPreviewOn(false)}>
+                      Hide camera
+                    </button>
+                  ) : null}
+                </div>
+                {previewOn ? null : (
+                  <button type="button" className="phone-preview-show" aria-pressed="false" onClick={() => setPreviewOn(true)}>
+                    Show camera
+                  </button>
+                )}
+              </div>
+            </div>
+            <p data-phone-tracking="" className="phone-tracking">
+              {tracking}
+            </p>
+          </div>
+          <div className="phone-controls">
+            <LivesHearts hidden={!playing || Boolean(gameOver)} lives={lives} />
+            {playing && !gameOver && !demoOver ? (
+              <div className="phone-actions">
+                <button type="button" aria-pressed={paused} onClick={() => handleRef.current?.setPaused(!paused)}>
+                  {paused ? "Resume" : "Pause"}
+                </button>
+                <button type="button" aria-pressed={!muted} onClick={() => handleRef.current?.setMuted(!muted)}>
+                  {muted ? "Sound off" : "Sound on"}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
+      {mirrorOpen && playing && !gameOver && !demoOver ? (
+        <div className="phone-mirror-panel" data-phone-mirror="" role="dialog" aria-label="Mirror this phone">
+          <div className="phone-mirror-head">
+            <p>Mirror this phone</p>
+            <button type="button" onClick={() => setMirrorOpen(false)}>
+              Close
+            </button>
+          </div>
+          <ul>
+            {PHONE_MIRROR_GUIDE.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {!playing && !graphicsError && !gameOver && !demoOver ? (
         <div
-          className="absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-[#16181d] px-5 py-8 text-center portrait:justify-center"
+          className="phone-setup absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-[#16181d] text-center portrait:justify-center"
           data-phone-body={phase}
           role="status"
         >
@@ -564,28 +597,8 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
           ) : null}
         </div>
       ) : null}
-      {playing && !gameOver && !demoOver ? (
-        <div className="absolute bottom-2 right-3 z-20 flex gap-2">
-          <button
-            type="button"
-            className="rounded-full border border-white/15 bg-[#10141ccc] px-4 py-2 text-sm"
-            aria-pressed={paused}
-            onClick={() => handleRef.current?.setPaused(!paused)}
-          >
-            {paused ? "Resume" : "Pause"}
-          </button>
-          <button
-            type="button"
-            className="rounded-full border border-white/15 bg-[#10141ccc] px-4 py-2 text-sm"
-            aria-pressed={!muted}
-            onClick={() => handleRef.current?.setMuted(!muted)}
-          >
-            {muted ? "Sound off" : "Sound on"}
-          </button>
-        </div>
-      ) : null}
       {motionDiag ? (
-        <aside data-phone-motiondiag="" className="absolute right-3 top-16 z-50 w-56 rounded-xl border border-white/15 bg-[#10141ce6] p-3 text-[11px] leading-relaxed text-[#d5deea]">
+        <aside data-phone-motiondiag="" className="phone-motion-diag rounded-xl border border-white/15 bg-[#10141ce6] p-3 text-[11px] leading-relaxed text-[#d5deea]">
           {diagLines.map((line) => (
             <p key={line}>{line}</p>
           ))}

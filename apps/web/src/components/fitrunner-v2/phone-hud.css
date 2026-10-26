@@ -1,0 +1,359 @@
+/* Phone play HUD only. The course canvas stays full screen. Pieces sit in the corners. */
+
+.phone-play {
+  max-width: 100%;
+}
+
+.phone-play > canvas:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.phone-hud-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  pointer-events: none;
+}
+
+.phone-hud-top {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.phone-banners {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.phone-rotate {
+  display: none;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0.28rem max(0.6rem, env(safe-area-inset-right, 0px)) 0.28rem max(0.6rem, env(safe-area-inset-left, 0px));
+  background: #10141cf2;
+  color: #fff;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.phone-frame {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0.22rem max(0.45rem, env(safe-area-inset-right, 0px)) 0.22rem max(0.45rem, env(safe-area-inset-left, 0px));
+  background: #1a2430f2;
+  color: #fff;
+  font-size: clamp(10px, 2.7vw, 13px);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (orientation: portrait) {
+  .phone-rotate {
+    display: block;
+  }
+}
+
+.phone-score-row {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.35rem max(0.45rem, env(safe-area-inset-right, 0px)) 0 max(0.45rem, env(safe-area-inset-left, 0px));
+}
+
+.phone-play [data-fitrunner-play-hud] {
+  position: relative;
+  left: auto;
+  top: auto;
+  z-index: auto;
+  width: 10.25rem;
+  max-width: calc(100% - 0.5rem);
+  margin: 0;
+  padding: 0.35rem 0.5rem 0.4rem;
+  box-shadow: none;
+}
+
+.phone-play [data-fitrunner-play-hud] .font-display {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.phone-play [data-fitrunner-play-hud] dl {
+  margin-top: 0.3rem;
+  font-size: 11px;
+  row-gap: 0.08rem;
+}
+
+.phone-play [data-fitrunner-play-hud] [data-calorie-note] {
+  margin-top: 0.25rem;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.phone-hud-spacer {
+  flex: 1 1 auto;
+  min-height: 0.75rem;
+}
+
+.phone-hud-bottom {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 max(0.45rem, env(safe-area-inset-right, 0px)) max(0.4rem, env(safe-area-inset-bottom, 0px))
+    max(0.45rem, env(safe-area-inset-left, 0px));
+}
+
+.phone-lower-pre {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.phone-preview-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.phone-mirror-btn,
+.phone-preview-show,
+.phone-actions button,
+.phone-mirror-head button {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: #10141ccc;
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.phone-mirror-btn,
+.phone-preview-show {
+  padding: 0.28rem 0.6rem;
+}
+
+.phone-preview-slot {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(96px, 26vw, 112px);
+}
+
+.phone-preview-slot:has([data-phone-preview="hidden"]) {
+  width: auto;
+}
+
+.phone-preview-frame {
+  position: relative;
+  width: clamp(96px, 26vw, 112px);
+  height: calc(clamp(96px, 26vw, 112px) * 0.75);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.7rem;
+  background: #000;
+}
+
+.phone-preview-video,
+.phone-preview-pose {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.phone-preview-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0.18rem 0.2rem;
+  border: 0;
+  background: #10141ce0;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.phone-preview-frame[data-phone-preview="hidden"] {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-color: transparent;
+}
+
+.phone-tracking {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin: 0 0 0 auto;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #10141ccc;
+  color: #d6ff4a;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.phone-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.phone-play [data-fitrunner-hearts] {
+  position: static;
+  left: auto;
+  top: auto;
+  z-index: auto;
+  flex: 0 0 auto;
+  gap: 0;
+  transform: none;
+  padding: 0.12rem 0.28rem;
+}
+
+.phone-play [data-fitrunner-hearts] svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.phone-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.phone-actions button {
+  padding: 0.38rem 0.72rem;
+  font-size: 0.8125rem;
+  pointer-events: auto;
+}
+
+.phone-mirror-panel {
+  position: absolute;
+  z-index: 35;
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  bottom: calc(max(0.45rem, env(safe-area-inset-bottom, 0px)) + 8.75rem);
+  box-sizing: border-box;
+  width: min(22rem, calc(100% - max(1rem, env(safe-area-inset-left, 0px) + env(safe-area-inset-right, 0px))));
+  max-height: min(34vh, 14rem);
+  overflow: auto;
+  padding: 0.55rem 0.7rem 0.65rem;
+  border-radius: 0.85rem;
+  background: #10141cf2;
+  color: #d6ff4a;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.phone-mirror-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  color: #fff;
+}
+
+.phone-mirror-head p {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.phone-mirror-head button {
+  padding: 0.2rem 0.55rem;
+}
+
+.phone-mirror-panel ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.phone-mirror-panel li + li {
+  margin-top: 0.15rem;
+}
+
+.phone-setup {
+  padding-top: max(1.5rem, env(safe-area-inset-top, 0px));
+  padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
+}
+
+.phone-motion-diag {
+  position: absolute;
+  z-index: 50;
+  top: max(4.5rem, calc(env(safe-area-inset-top, 0px) + 3.5rem));
+  right: max(0.4rem, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+  width: min(14rem, calc(100% - 1rem));
+  max-height: min(42vh, 16rem);
+  overflow: auto;
+}
+
+@media (orientation: portrait) {
+  .phone-motion-diag {
+    top: max(6.5rem, calc(env(safe-area-inset-top, 0px) + 5.5rem));
+  }
+}
+
+@media (orientation: landscape) {
+  .phone-hud-spacer {
+    min-height: 0.35rem;
+  }
+
+  .phone-mirror-panel {
+    bottom: calc(max(0.4rem, env(safe-area-inset-bottom, 0px)) + 7.25rem);
+    max-height: min(42vh, 11rem);
+  }
+}
