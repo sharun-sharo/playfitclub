@@ -76,7 +76,7 @@ export function GameLibrary({
             {game.href && showPhoneLink ? (
               <p>
                 <a className="fp-text-link" href={PHONE_PLAY_PATH}>
-                  Play on your phone
+                  Play Demo
                 </a>
               </p>
             ) : game.href ? null : (
