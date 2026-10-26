@@ -829,6 +829,65 @@ a.fp-btn-dark:hover {
   color: var(--fp-muted);
 }
 
+.fp-still {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--fp-line);
+  background: #123832;
+}
+
+.fp-still img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fp-still figcaption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: rgba(20, 32, 24, 0.86);
+  color: #f4fbf8;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.fp-help {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.fp-help article {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--fp-line);
+  background: #fffdf8;
+}
+
+.fp-help h3 {
+  margin: 0 0 0.55rem;
+  font-size: clamp(1.45rem, 4vw, 1.9rem);
+  line-height: 1;
+}
+
+.fp-help ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--fp-muted);
+  line-height: 1.55;
+}
+
+.fp-help li + li {
+  margin-top: 0.35rem;
+}
+
 .fp-moves {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1028,8 +1087,9 @@ a.fp-btn-dark:hover {
   text-transform: uppercase;
 }
 
-.fp-library-soon {
+.fp-library-visual span.fp-library-soon {
   background: #ffe08a;
+  color: #142018;
 }
 
 .fp-library-copy {
@@ -1096,7 +1156,8 @@ a.fp-btn-dark:hover {
 
 .fp-steps h3 {
   margin: 0.35rem 0 0;
-  font-size: 2.4rem;
+  font-size: clamp(1.7rem, 7vw, 2.4rem);
+  line-height: 0.95;
 }
 
 .fp-steps p {
@@ -1580,6 +1641,10 @@ a.fp-btn-dark:hover {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .fp-help {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .fp-benefits {
     grid-template-columns: 1fr 1fr;
   }
@@ -1878,6 +1943,17 @@ a.fp-btn-dark:hover {
   line-height: 1.5;
 }
 
+.fp-plan .fp-btn,
+.fp-actions .fp-btn,
+.fp-library-copy .fp-btn {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+  padding-block: 0.8rem;
+}
+
 .fp-plan .fp-btn {
   align-self: flex-start;
   margin-top: 0.8rem;
@@ -1914,9 +1990,9 @@ a.fp-btn-dark:hover {
   }
 }
 
-@media (min-width: 1040px) {
+@media (min-width: 1280px) {
   .fp-plans {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

@@ -15,7 +15,7 @@ export default function TermsPage() {
         <h1>Terms</h1>
         <p>PlayFit Club has not published terms of service yet. This page exists so the link is real. It is not a contract.</p>
         <p>
-          Playing the current build does not create a published paid plan. Pricing has not been decided. The game estimates movement for play. It does not judge exercise form and it cannot prevent injury. Keep a clear space around you.
+          Listed yearly prices are on the pricing page. Opening WhatsApp sends an enquiry. It does not take payment or turn a plan on. Fit Run estimates movement for play. It does not give medical advice. Keep a clear space around you.
         </p>
       </main>
       <SiteFooter prefix="/" />

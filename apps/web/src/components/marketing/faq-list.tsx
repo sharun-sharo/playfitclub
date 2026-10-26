@@ -5,35 +5,35 @@ import { useId, useState } from "react";
 const questions = [
   {
     q: "What is PlayFit Club?",
-    a: "PlayFit Club is a fitness arcade in the browser. Fit Run, a three-lane endless run, plays on your phone. Mirror that phone screen to a TV or laptop with Smart View, Cast, or Screen Mirroring.",
+    a: "PlayFit Club is a fitness arcade. Fit Run, a three-lane 3D run, plays on your phone. The front camera tracks your body. A TV or laptop shows the game only when you mirror that phone.",
   },
   {
     q: "How does camera-based gameplay work?",
-    a: "After you allow the camera, the phone estimates your pose in the browser with MediaPipe. Frames stay on the phone. They are not uploaded or stored, and PlayFit Club does not keep biometric templates. You calibrate a neutral stance, then lean, jump, and squat. Lighting, distance, and a full-body view change how well that works. A phone camera estimates a jump. It does not measure jump height.",
+    a: "Open the game on your phone, tap Play Demo, and allow the camera. The phone estimates your pose in the browser. Frames stay on the phone. Turn sideways, stand so your body is in frame, wait for the countdown, then lean, jump, and squat. A phone camera estimates a jump. It does not measure jump height, and it does not give medical advice.",
   },
   {
     q: "Do I need a special controller?",
-    a: "No. There is no console and no extra sensor. The phone runs Fit Run. Tap Play Demo, allow the front camera, and mirror that phone screen to a TV or laptop.",
+    a: "No. There is no console, no extra sensor, and no pairing code. The phone runs Fit Run. Tap Play Demo, allow the front camera, and turn the phone sideways.",
   },
   {
     q: "Can I play using my phone and a TV?",
-    a: "Yes. On your phone, tap Play Demo, then mirror that phone screen to the TV or laptop with Smart View, Cast, or Screen Mirroring. The game is on the phone. The camera needs a secure page.",
+    a: "Yes. The game stays on the phone. Mirror that phone with Smart View, Cast, Screen Mirroring, or HDMI. The camera needs a secure page.",
   },
   {
     q: "What devices are supported?",
-    a: "A current browser for the screen, and a phone browser that can access a camera. Pose tracking has not been signed off on a physical phone by this project’s automated tests. You start the camera yourself with Turn camera on. Front and rear cameras can be switched when the browser allows it. Keep shoulders, hips, knees, and ankles in frame.",
+    a: "Use a phone with a front camera. Play in landscape in the phone browser or the installed page, with your body in frame from head through knees, good light, and space to jump and squat. If the camera misses you, allow the camera, turn sideways, and step back until your body fits.",
   },
   {
     q: "Can I play with friends?",
-    a: "These games are single player. One phone runs Fit Run. Mirror that phone screen to a TV or laptop. A second phone does not join the same run.",
+    a: "Fit Run is single player. One phone runs the game. A second phone does not join the same run. Mirroring only copies that phone’s screen.",
   },
   {
     q: "Is PlayFit Club suitable for gyms?",
-    a: "A gym buys member seats so people can play FitRunner at home on a television or laptop and a phone camera. The gym does not host the game. A full seat signup is not live yet. Proposed seat packages are listed on Pricing and are not charged there.",
+    a: "A gym can buy member accounts so people play Fit Run at home on their own phones. Gym Starter is ₹19,999 per year for up to 49 accounts. Gym Pro is ₹39,999 per year for 50 to 99 accounts. The gym does not host the game. A WhatsApp enquiry does not assign accounts or start a subscription.",
   },
   {
     q: "Is PlayFit Club free to play?",
-    a: "You can open a home session without an account. Pricing lists proposed amounts only. Nothing on that page takes payment or starts a subscription.",
+    a: "The free demo is ₹0 and includes 10 minutes of cumulative active time. When that time is used, demo time is over and Buy Plan opens Pricing. Fit Run is the playable game. Fit Fight and Fit Dance are coming soon. Nothing on the pricing page takes payment or starts a paid plan.",
   },
 ];
 

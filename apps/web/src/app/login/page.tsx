@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
@@ -66,7 +67,12 @@ function LoginForm() {
     <main id="content" className="fp-wrap fp-page">
       <p className="fp-kicker">Account</p>
       <h1>Sign in</h1>
-      <p className="fp-lead">Home play does not require an account. Sign in to keep personal bests.</p>
+      <p className="fp-lead">The free demo runs on your phone and does not need an account. Sign in to keep personal bests.</p>
+      <p>
+        <Link className="fp-text-link" href="/play/phone">
+          Play Demo
+        </Link>
+      </p>
       <form className="fp-form fp-form-narrow" onSubmit={(event) => void onSubmit(event)}>
         <div className="fp-form-grid">
           <div className="fp-field">

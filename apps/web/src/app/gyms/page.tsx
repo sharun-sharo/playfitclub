@@ -11,20 +11,20 @@ export const metadata: Metadata = gymsMetadata;
 
 const steps = [
   {
-    title: "Register interest",
-    copy: "Send a WhatsApp enquiry. That message does not create a gym or start a subscription.",
+    title: "Send a message",
+    copy: "Request a demo on WhatsApp. That message does not create a gym, reserve a time, or start a subscription.",
   },
   {
-    title: "Choose a seat package later",
-    copy: "Listed plans are Gym Starter (under 50 members, ₹19,999) and Gym Pro (₹39,999). Nothing on this site charges them, and an enquiry does not assign a seat.",
+    title: "Choose a listed plan",
+    copy: "Gym Starter is ₹19,999 per year for up to 49 member accounts. Gym Pro is ₹39,999 per year for 50 to 99 member accounts. This site does not charge either plan.",
   },
   {
     title: "Invite members",
-    copy: "After the team allocates seats, the owner invites members inside that limit. An invite does not start play by itself.",
+    copy: "After the team allocates accounts, the owner invites members inside that limit. An invite does not start play by itself.",
   },
   {
     title: "They play at home",
-    copy: "Each member opens FitRunner at home on their own television or laptop, with a phone camera as the controller.",
+    copy: "Each member opens Fit Run on their own phone. The camera tracks their body. A TV shows the game only if they mirror the phone.",
   },
 ];
 
@@ -34,12 +34,12 @@ export default function GymsPage() {
       <SiteNav prefix="/" />
       <main className="fp-wrap fp-page">
         <p className="fp-kicker">For gyms</p>
-        <h1 className="fp-title-wide">Turn member workouts into home play.</h1>
+        <h1 className="fp-title-wide">Member accounts for home play.</h1>
         <p className="fp-lead">
-          A gym buys member seats. Members play FitRunner at home. PlayFit Club is not installed in the building, and the gym does not host the game.
+          A gym buys accounts so members can play Fit Run at home on their phones. PlayFit Club is not installed in the building, and the gym does not host the game.
         </p>
         <p className="fp-note">
-          This page does not create a gym account or a subscription. Accounts are activated by the PlayFit Club team after subscription confirmation. Opening WhatsApp does not assign seats or start Gym Starter or Gym Pro.
+          Fit Run is the playable game. Fit Fight and Fit Dance are coming soon. This page does not create a gym account. The team activates a subscription after confirmation.
         </p>
         <div className="fp-benefits">
           {steps.map((step, index) => (
@@ -56,10 +56,10 @@ export default function GymsPage() {
             href={whatsappUrl("gym")}
             events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "gym" } }]}
           >
-            Register interest
+            Request a demo
           </TrackedExternal>
           <Link className="fp-btn fp-btn-ghost" href="/pricing">
-            See proposed packages
+            See listed plans
           </Link>
         </div>
       </main>

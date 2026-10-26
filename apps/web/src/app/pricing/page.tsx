@@ -15,27 +15,27 @@ const paidPlans = [
     id: "individual-pro",
     name: "Individual Pro",
     price: "₹999",
-    period: "/ subscription period",
-    audience: "For individual users playing at home.",
-    points: ["Game access", "Personal workout history", "Scores and achievements"],
+    period: "per year",
+    audience: "One person playing Fit Run at home.",
+    points: ["Fit Run on your phone", "Personal scores and achievements when signed in", "Session history on the account"],
     intent: "individual" as const,
   },
   {
     id: "gym-starter",
     name: "Gym Starter",
     price: "₹19,999",
-    period: "",
-    audience: "Under 50 members. For smaller gyms offering subscriptions to their members.",
-    points: ["Up to 49 member accounts", "Home gaming access for members", "Gym dashboard and invitations", "Gym leaderboard"],
+    period: "per year",
+    audience: "A gym with up to 49 member accounts.",
+    points: ["Up to 49 member accounts", "Members play Fit Run at home on their phones", "Gym dashboard and invitations", "Gym leaderboard"],
     intent: "gym" as const,
   },
   {
     id: "gym-pro",
     name: "Gym Pro",
     price: "₹39,999",
-    period: "",
-    audience: "For growing gyms offering subscriptions to their members.",
-    points: ["51–99 member accounts", "All Starter features", "Member engagement reports", "Gym fitness challenges"],
+    period: "per year",
+    audience: "A gym with 50 to 99 member accounts.",
+    points: ["50 to 99 member accounts", "The same member tools as Gym Starter"],
     intent: "gym" as const,
   },
 ];
@@ -49,20 +49,24 @@ export default function PricingPage() {
         <p className="fp-kicker">Listed plans</p>
         <h1>Pricing</h1>
         <p className="fp-lead">
-          These listed prices are information. Accounts are activated by the PlayFit Club team after subscription confirmation. Opening WhatsApp sends an enquiry. It does not take payment or activate an account.
+          These are the yearly list prices. The PlayFit Club team activates an account after subscription confirmation. Buttons on this page do not grant paid access and do not take payment.
+        </p>
+        <p className="fp-note">
+          Fit Run is the playable game. Fit Fight and Fit Dance are coming soon and are not included as playable games.
         </p>
         <div className="fp-plans">
           <article className="fp-plan" id="free-demo">
-            <p className="fp-kicker">Listed plan</p>
+            <p className="fp-kicker">Playable now</p>
             <h2>Free demo</h2>
             <p className="fp-price">₹0</p>
-            <p>10 minutes of play. No paid features.</p>
+            <p>10 minutes of cumulative active time.</p>
             <ul>
-              <li>10 minutes of play</li>
-              <li>No paid features</li>
+              <li>10 minutes of cumulative active time</li>
+              <li>Fit Run on your phone</li>
+              <li>When demo time is over, Buy Plan opens Pricing</li>
             </ul>
             <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
-              Play free demo
+              Play Demo
             </TrackedLink>
           </article>
           {paidPlans.map((plan) => (
@@ -71,7 +75,7 @@ export default function PricingPage() {
               <h2>{plan.name}</h2>
               <p className="fp-price">
                 {plan.price}
-                {plan.period ? <span>{plan.period}</span> : null}
+                <span> {plan.period}</span>
               </p>
               <p>{plan.audience}</p>
               <ul>
@@ -100,7 +104,7 @@ export default function PricingPage() {
           ))}
         </div>
         <p className="fp-note">
-          A gym enquiry does not assign a seat and does not start Gym Starter or Gym Pro. Upgrade and renewal messages are enquiries too.
+          Asking on WhatsApp sends an enquiry. It does not assign an account, charge a card, or start Individual Pro, Gym Starter, or Gym Pro. Upgrade and renewal messages are enquiries too.
         </p>
         <div className="fp-actions">
           <TrackedExternal className="fp-btn fp-btn-ghost" href={whatsappUrl("pricing")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>

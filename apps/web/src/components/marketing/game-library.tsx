@@ -5,37 +5,31 @@ import { Reveal } from "@/components/marketing/reveal";
 const games = [
   {
     title: "Fit Run",
-    description: "Motion-controlled running adventure",
+    description: "A 3D run on your phone. Lean, jump, and squat.",
     status: "Available",
     href: PHONE_PLAY_PATH,
     image: "/marketing/fit-run.jpg",
-    alt: "A woman runs in a living room toward a television showing a motion-controlled running game, with a phone tracking her pose.",
+    alt: "Illustration of a woman running in a living room. A phone shows a body outline and a television shows a running game.",
   },
   {
     title: "Fit Fight",
-    description: "Interactive boxing",
+    description: "Interactive boxing. Coming soon.",
     status: "Coming soon",
     href: null,
     image: "/marketing/fit-fight.jpg",
-    alt: "A man punches a heavy bag in front of a television showing an interactive boxing game, with a phone tracking his pose.",
+    alt: "Illustration of a man hitting a heavy bag in a living room, with a television showing a boxing game.",
   },
   {
     title: "Fit Dance",
-    description: "Follow-the-instructor dance fitness",
+    description: "Follow-the-instructor dance. Coming soon.",
     status: "Coming soon",
     href: null,
     image: "/marketing/fit-dance.jpg",
-    alt: "A woman dances in a living room toward a television showing a follow-the-instructor dance game, with a phone tracking her pose.",
+    alt: "Illustration of a woman dancing in a living room, with a television showing a dance game.",
   },
 ] as const;
 
-export function GameLibrary({
-  heading = "h3",
-  showPhoneLink = true,
-}: {
-  heading?: "h2" | "h3";
-  showPhoneLink?: boolean;
-}) {
+export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
   const Title = heading;
 
   return (
@@ -70,16 +64,9 @@ export function GameLibrary({
                   { name: "fit_run_selected", params: { surface: "library" } },
                 ]}
               >
-                Play Game
+                Play Demo
               </TrackedLink>
-            ) : null}
-            {game.href && showPhoneLink ? (
-              <p>
-                <a className="fp-text-link" href={PHONE_PLAY_PATH}>
-                  Play Demo
-                </a>
-              </p>
-            ) : game.href ? null : (
+            ) : (
               <button className="fp-btn fp-btn-ghost" type="button" disabled>
                 Coming soon
               </button>

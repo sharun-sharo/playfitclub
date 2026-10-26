@@ -16,9 +16,9 @@ import { homeMetadata } from "@/lib/site-metadata";
 export const metadata: Metadata = homeMetadata;
 
 const statements = [
-  { title: "Your body. Your controls.", copy: "The phone camera is the controller. No console and no extra sensor." },
+  { title: "The phone plays Fit Run.", copy: "The front camera tracks your body. There is no console and no extra sensor." },
   { title: "Every move matters.", copy: "A lean changes lanes. A jump clears a low barrier. A squat slides under a high one." },
-  { title: "Play your way.", copy: "Play on your phone, then mirror that phone screen to the TV or laptop." },
+  { title: "Landscape on your phone.", copy: "Turn the phone sideways and stand in frame. A TV or laptop shows the game only if you mirror that phone." },
 ];
 
 const moves = ["Run", "Jump", "Dodge", "Move"];
@@ -42,7 +42,7 @@ export default function HomePage() {
           <div className="fp-wrap">
             <Reveal>
               <h2 id="statement-title">Your workout just got a new world.</h2>
-              <p className="fp-lead">Forget staring at a timer. Step into a game where your movements drive the action and every session becomes a challenge.</p>
+              <p className="fp-lead">Burn calories by playing at home. Step into Fit Run, where your movements drive the action.</p>
             </Reveal>
             <div className="fp-statements">
               {statements.map((item) => (
@@ -60,9 +60,9 @@ export default function HomePage() {
             <Reveal>
               <p className="fp-kicker">Worlds</p>
               <h2 id="games-title">Pick your world. Make your move.</h2>
-              <p className="fp-lead">Fit Run is available now. Fit Fight and Fit Dance are coming soon.</p>
+              <p className="fp-lead">Fit Run is playable now on your phone. Fit Fight and Fit Dance are coming soon.</p>
             </Reveal>
-            <GameLibrary showPhoneLink={false} />
+            <GameLibrary />
           </div>
         </section>
 
@@ -72,10 +72,10 @@ export default function HomePage() {
               <p className="fp-kicker">The experience</p>
               <h2 id="experience-title">This is what movement looks like now.</h2>
               <p className="fp-lead">
-                Turn your body into the controller. Run, jump, dodge, and move through immersive 3D worlds using real-world body movements.
+                Fit Run is a 3D run on your phone. The front camera estimates your pose in the browser. Frames stay on the phone.
               </p>
               <p className="fp-lead">
-                A phone camera estimates your pose in the browser. Frames are not uploaded. Stand far enough back that your shoulders, hips, knees, and ankles stay in view, with enough light to see your whole body. Fit Run reads lean, jump, and squat. Jump height is an estimate, not a measurement.
+                Turn sideways, stand so your head through your knees stay in frame, and leave room to jump and squat. A lean changes lanes. A jump clears a low barrier. A squat slides under a high one. Jump height is an estimate, not a measurement.
               </p>
               <ul className="fp-moves" aria-label="Supported movement labels">
                 {moves.map((move) => (
@@ -83,28 +83,21 @@ export default function HomePage() {
                 ))}
               </ul>
               <div className="fp-actions">
-                <Link className="fp-btn fp-btn-primary" href="/play/phone">
-                  Experience PlayFit Club
-                </Link>
+                <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
+                  Play Demo
+                </TrackedLink>
               </div>
             </Reveal>
             <Reveal delay={1}>
-              {/*
-                Future gameplay video:
-                Replace this labelled slot with a real FitPlay recording.
-                Do not point it at an unrelated clip.
-                <video controls preload="none" playsInline>
-                  <source src="/media/fitplay-experience.mp4" type="video/mp4" />
-                </video>
-              */}
-              <div className="fp-media">
-                <div className="fp-media-slot">
-                  <div>
-                    <strong>Footage slot</strong>
-                    <p>No gameplay video is published yet. This frame is a concrete texture, not a live match. Drop a real recording into the comment in this file when one exists.</p>
-                  </div>
-                </div>
-              </div>
+              <figure className="fp-still">
+                <img
+                  src="/marketing/fit-run.jpg"
+                  alt="Illustration of a woman running in a living room. A phone shows a body outline and a television shows a running game."
+                  width={960}
+                  height={890}
+                />
+                <figcaption>Illustration of Fit Run at home. The game runs on the phone.</figcaption>
+              </figure>
             </Reveal>
           </div>
         </section>
@@ -113,38 +106,50 @@ export default function HomePage() {
           <div className="fp-wrap">
             <Reveal>
               <p className="fp-kicker">How it works</p>
-              <h2 id="how-title">No controller. Just movement.</h2>
+              <h2 id="how-title">Open it on your phone.</h2>
               <p className="fp-lead">
-                Camera compatibility, lighting, where you place the phone, and which movements the game supports all change the session. PlayFit Club does not judge exercise form and it cannot prevent injury.
+                Use a phone with a front camera. PlayFit Club reads movement for the game. It does not give medical advice.
               </p>
             </Reveal>
             <Reveal className="fp-steps" stagger>
               <article>
                 <StepIcon name="setup" />
                 <p className="fp-step-no">Step 01</p>
-                <h3>Set up</h3>
-                <p>Play on your phone, then mirror that phone screen to the TV or laptop.</p>
-                <p>
-                  The game is on that phone. Smart View, Cast, or Screen Mirroring shows this phone screen on a TV or laptop.
-                </p>
+                <h3>Open</h3>
+                <p>Open PlayFit Club on your phone and tap Play Demo.</p>
               </article>
               <article>
                 <StepIcon name="move" />
                 <p className="fp-step-no">Step 02</p>
-                <h3>Move</h3>
-                <p>
-                  The phone camera tracks your pose on that page. A lean changes lanes. A jump clears a low barrier. A squat slides under a high one. The character moves on the phone when the gesture is confirmed.
-                </p>
+                <h3>Frame</h3>
+                <p>Allow the camera, turn the phone sideways, and stand so your body is in frame from head through knees. Use good light and leave space to jump and squat.</p>
               </article>
               <article>
                 <StepIcon name="play" />
                 <p className="fp-step-no">Step 03</p>
                 <h3>Play</h3>
-                <p>
-                  Mirror this phone to your TV or laptop. The game is on this phone. Coins and clean dodges build the score. The picture on the TV or laptop is your phone’s own screen mirror.
-                </p>
+                <p>Wait for the countdown, then play. To put the same picture on a TV or laptop, mirror the phone with Smart View, Cast, Screen Mirroring, or HDMI.</p>
               </article>
             </Reveal>
+            <div className="fp-help">
+              <article>
+                <h3>What you need</h3>
+                <ul>
+                  <li>A phone with a front camera, in the phone browser or the installed page.</li>
+                  <li>Landscape, with your full body in frame from head through knees.</li>
+                  <li>Good light, and space to jump and squat.</li>
+                </ul>
+              </article>
+              <article>
+                <h3>If the camera misses you</h3>
+                <ul>
+                  <li>Allow the camera when the browser asks.</li>
+                  <li>Use the phone browser or the installed page.</li>
+                  <li>Turn the phone sideways.</li>
+                  <li>Step back until your body fits.</li>
+                </ul>
+              </article>
+            </div>
           </div>
         </section>
 
@@ -157,19 +162,19 @@ export default function HomePage() {
             <Reveal className="fp-benefits" stagger>
               <article>
                 <h3>Move to play</h3>
-                <p>Use body movements to interact with supported game mechanics. In Fit Run that means lean, jump, and squat.</p>
+                <p>In Fit Run, a lean, a jump, and a squat are how you play.</p>
               </article>
               <article>
                 <h3>Make every session a challenge</h3>
-                <p>Chase the score on the screen. Signed-in players can keep a personal best. PlayFit Club does not claim calories, heart rate, or exercise quality.</p>
+                <p>Burn calories by playing at home. Chase the score. Signed-in players can keep a personal best.</p>
               </article>
               <article>
                 <h3>Bring the screen to life</h3>
-                <p>Play Fit Run on your phone, then mirror that phone screen. The world today is Fit Run’s procedural city.</p>
+                <p>Fit Run’s world is a procedural city on your phone. Mirror that phone when you want it on a TV.</p>
               </article>
               <article>
-                <h3>One phone, one screen</h3>
-                <p>One phone runs the game. Smart View, Cast, or Screen Mirroring puts that screen on a TV or laptop.</p>
+                <h3>One phone</h3>
+                <p>The phone runs the game. Smart View, Cast, Screen Mirroring, or HDMI can show that screen on a TV or laptop.</p>
               </article>
             </Reveal>
           </div>
@@ -184,14 +189,14 @@ export default function HomePage() {
             <div className="fp-ways">
               <article className="fp-panel">
                 <h3>Turn your space into a playground.</h3>
-                <p>Bring movement-driven gaming into your home and make play a more active experience. Home play does not need an account.</p>
+                <p>Play Fit Run at home on your phone. The free demo does not need an account.</p>
                 <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
-                  Start Playing
+                  Play Demo
                 </TrackedLink>
               </article>
               <article className="fp-panel">
-                <h3>Seats for members who play at home.</h3>
-                <p>A gym buys member seats. Members play Fit Run at home. A full seat signup is not live yet.</p>
+                <h3>Accounts for members who play at home.</h3>
+                <p>A gym buys member accounts. Each member plays Fit Run on their own phone. Gym Starter covers up to 49 accounts. Gym Pro covers 50 to 99.</p>
                 <Link className="fp-btn fp-btn-ghost" href="/gyms">
                   For gyms
                 </Link>
@@ -227,14 +232,11 @@ export default function HomePage() {
           <Reveal>
             <div className="fp-wrap">
               <h2 id="final-title">Your next workout won&apos;t feel like a workout.</h2>
-              <p className="fp-lead">Step into the game. Move with purpose. Make every session an experience.</p>
+              <p className="fp-lead">Open Fit Run on your phone. Move with purpose. Make every session an experience.</p>
               <div className="fp-actions">
                 <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "home" } }]}>
-                  Play PlayFit Club
+                  Play Demo
                 </TrackedLink>
-                <Link className="fp-btn fp-btn-ghost" href="/gyms">
-                  For gyms
-                </Link>
               </div>
             </div>
           </Reveal>

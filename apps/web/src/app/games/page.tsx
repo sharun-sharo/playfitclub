@@ -15,7 +15,7 @@ export default function GamesPage() {
         <p className="fp-kicker">Experience</p>
         <h1>Pick a game.</h1>
         <p className="fp-lead">
-          Fit Run plays on your phone. Tap Play Game, then mirror that phone screen to a TV or laptop. Fit Fight and Fit Dance are coming soon.
+          Fit Run plays on your phone. Tap Play Demo, allow the camera, turn sideways, and stand in frame. Fit Fight and Fit Dance are coming soon and cannot be started.
         </p>
         <GameLibrary heading="h2" />
       </main>
