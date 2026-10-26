@@ -100,6 +100,8 @@ export type FitRunnerHud = {
   }) => void;
   onPose?: (report: PoseReport) => void;
   onGraphicsFailure?: (message: string) => void;
+  /** Render-loop clock. Phone diagnostics read this. The course does not wait on it. */
+  onFrame?: (now: number) => void;
 };
 
 export type PoseCommand = {
@@ -320,9 +322,10 @@ async function loadRunner() {
 export async function startFitRunner(
   canvas: HTMLCanvasElement,
   hud: FitRunnerHud,
-  options?: { holdCourse?: boolean; demoLimitSeconds?: number | null; drawProfile?: "phone" },
+  options?: { holdCourse?: boolean; demoLimitSeconds?: number | null; drawProfile?: "phone"; acceptKeyboard?: boolean },
 ): Promise<FitRunnerHandle> {
   const holdCourse = options?.holdCourse === true;
+  const acceptKeyboard = options?.acceptKeyboard !== false;
   const rawLimit = options?.demoLimitSeconds;
   const demoLimit = typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : null;
   const phoneDraw = options?.drawProfile === "phone";
@@ -1287,6 +1290,7 @@ export async function startFitRunner(
     // movement:event and they do not go through the phone camera. Camera commands
     // arrive later, in applyPose, after the phone and the server.
     function onKey(event: KeyboardEvent) {
+      if (!acceptKeyboard) return;
       if (finished || demoOver || livesHold || courseMode === "hold") return;
       if (courseMode !== "live" && canvas.dataset.tutorialKeys !== "1") return;
       const target = event.target;
@@ -1806,9 +1810,10 @@ export async function startFitRunner(
       hud.onDemoOver?.({ activeMs: Math.round(elapsed * 1000) });
     }
 
-    function tick() {
+    function tick(now = performance.now()) {
       if (stopped) return;
       frame = window.requestAnimationFrame(tick);
+      hud.onFrame?.(now);
       resize();
       if (courseMode !== "live") {
         presentHeld(Math.min(0.05, clock.getDelta()));

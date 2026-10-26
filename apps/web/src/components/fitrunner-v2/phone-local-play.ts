@@ -1,9 +1,28 @@
+import { readMotionDiagFlag, trackingStatusLine } from "../join/phone-commands";
+import { playCalories, type PlayCalorieView } from "../../lib/fitrunner-v2/play-calories";
+import { BODY_LEFT_MESSAGE } from "../../lib/vision/camera-status";
+
 /** Phone runs Fit Run here. A TV or laptop shows this screen through the phone's own mirror. */
 export const PHONE_PLAY_PATH = "/play/phone";
 export const PHONE_PLAY_URL = "https://playfitclub.com/play/phone";
 
-export const PHONE_MIRROR_LINE =
-  "Mirror this phone to your TV or laptop (Smart View, Cast, or Screen Mirroring). The game is on this phone.";
+/** Short guide. The picture on a TV or laptop is this phone's own screen mirror. */
+export const PHONE_MIRROR_GUIDE = [
+  "Mirror this phone. The game stays on this phone. A TV or laptop shows this screen through the phone's own mirror.",
+  "Samsung: Smart View.",
+  "Android: Cast.",
+  "iPhone: Screen Mirroring.",
+  "HDMI: from a laptop only while that laptop is displaying this mirrored phone.",
+] as const;
+
+export const PHONE_MIRROR_LINE = PHONE_MIRROR_GUIDE.join(" ");
+
+/** Shown in portrait. The page does not call screen.orientation.lock. */
+export const PHONE_ROTATE_LINE = "Turn your phone sideways.";
+
+export const PHONE_STAND_LINE = "Stand where the camera sees you.";
+
+export const PHONE_TEST_CONTROLS_LABEL = "Test controls";
 
 /** Drawing-buffer cap for /play/phone only. Laptop and TV sessions keep their own caps. */
 export const PHONE_PIXEL_RATIO_CAP = 1.5;
@@ -76,3 +95,126 @@ export function phoneCameraFailure(error: unknown) {
   if (name === "SecurityError") return "This page is not secure yet. Open the https link, then try again.";
   return "The camera could not start. Try again.";
 }
+
+/** Portrait viewport. Callers ask the player to rotate. They do not lock the OS orientation. */
+export function phoneAsksForLandscape(width: number, height: number) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
+  return height >= width;
+}
+
+/**
+ * Setup copy from the existing pose phase.
+ * Looking uses the stand line. Detected uses the estimator's own guidance.
+ */
+export function phoneSetupLine(phase: PhoneBodyPhase, guidance: string | null) {
+  if (phase === "ready") return "The game is on this phone.";
+  if (phase === "looking") return PHONE_STAND_LINE;
+  const text = guidance?.trim();
+  if (text) return text;
+  return "Hold still.";
+}
+
+export function phoneTrackingStatus(input: { playing: boolean; poseCount: number; calibrated: boolean }) {
+  const phase = input.playing ? "PLAYING" : input.calibrated ? "READY" : input.poseCount > 0 ? "POSITIONING" : "DETECTING_PLAYER";
+  return trackingStatusLine(phase, input.poseCount, null);
+}
+
+/** Sustained framing loss from the existing monitor. One empty sample is not enough. */
+export function phoneFrameWarning(input: { playing: boolean; banner: boolean; pause: boolean }) {
+  if (!input.playing) return null;
+  if (input.pause || input.banner) return BODY_LEFT_MESSAGE;
+  return null;
+}
+
+/**
+ * Preview visibility is paint. The pose callback still applies while the preview is hidden.
+ * `previewVisible` is part of the call so a hide button cannot grow a second gate.
+ */
+export function applyLocalPose(input: {
+  playing: boolean;
+  previewVisible: boolean;
+  movementType: string;
+  eventId: string;
+  seen: Set<string>;
+  game: LocalGameControls;
+}) {
+  void input.previewVisible;
+  if (!input.playing) return false;
+  if (!input.eventId || input.seen.has(input.eventId)) return false;
+  const applied = dispatchLocalGesture(input.movementType, input.game);
+  if (!applied) return false;
+  input.seen.add(input.eventId);
+  if (input.seen.size > 80) {
+    const oldest = input.seen.values().next().value;
+    if (oldest) input.seen.delete(oldest);
+  }
+  return true;
+}
+
+/** Dash when weight is unknown or the camera clock is not live. Otherwise the existing kcal formula. */
+export function phonePlayCalories(input: {
+  weightKg: number | null | undefined;
+  cameraActiveMs: number;
+  cameraLive: boolean;
+}): PlayCalorieView {
+  if (!input.cameraLive || input.weightKg === undefined) return { kcal: null, text: "—", note: null };
+  return playCalories({
+    weightKg: input.weightKg,
+    cameraActiveMs: input.cameraActiveMs,
+    keyboardOnly: false,
+  });
+}
+
+/** Developer overlay only. `?motiondiag=1`. Development mode alone does not open it. */
+export function phoneMotionDiagEnabled(search: string) {
+  return readMotionDiagFlag(search);
+}
+
+export function renderLoopFps(samples: readonly number[]) {
+  if (samples.length < 2) return null;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  if (first === undefined || last === undefined) return null;
+  const span = last - first;
+  if (!Number.isFinite(span) || span <= 0) return null;
+  return ((samples.length - 1) * 1000) / span;
+}
+
+/** Milliseconds from gesture confirm to the local jump, roll, or stepLane call. */
+export function confirmToGameMs(confirmMs: number | null | undefined, calledAtMs: number) {
+  if (typeof confirmMs !== "number" || !Number.isFinite(confirmMs)) return null;
+  if (!Number.isFinite(calledAtMs)) return null;
+  const delta = calledAtMs - confirmMs;
+  if (!Number.isFinite(delta) || delta < 0) return null;
+  return Math.round(delta);
+}
+
+export type PhoneMotionDiag = {
+  renderFps: number | null;
+  inferenceMs: number | null;
+  confidence: number | null;
+  lastAction: string | null;
+  confirmToCallMs: number | null;
+};
+
+export function phoneMotionDiagLines(input: PhoneMotionDiag) {
+  const fps = input.renderFps === null || !Number.isFinite(input.renderFps) ? "—" : input.renderFps.toFixed(1);
+  const inference = input.inferenceMs === null || !Number.isFinite(input.inferenceMs) ? "—" : `${input.inferenceMs.toFixed(1)} ms`;
+  const confidence =
+    input.confidence === null || !Number.isFinite(input.confidence) ? "—" : `${Math.round(Math.max(0, Math.min(1, input.confidence)) * 100)}%`;
+  const lag = input.confirmToCallMs === null || !Number.isFinite(input.confirmToCallMs) ? "—" : `${Math.round(input.confirmToCallMs)} ms`;
+  return [
+    `render ${fps} fps`,
+    `inference ${inference}`,
+    `confidence ${confidence}`,
+    `action ${input.lastAction || "—"}`,
+    `confirm to call ${lag}`,
+  ];
+}
+
+export const PHONE_TEST_CONTROLS = [
+  { label: "Test jump", movementType: "jump" },
+  { label: "Test squat", movementType: "squat" },
+  { label: "Test left", movementType: "lean_left" },
+  { label: "Test right", movementType: "lean_right" },
+] as const;

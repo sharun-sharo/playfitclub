@@ -10,6 +10,7 @@ export function PlayScoreCard({
   calories,
   note,
   keyboard,
+  className,
 }: {
   hidden: boolean;
   scoreRef: Ref<HTMLParagraphElement>;
@@ -18,10 +19,11 @@ export function PlayScoreCard({
   calories: string;
   note: string | null;
   keyboard: boolean;
+  className?: string;
 }) {
   return (
     <section
-      className="pointer-events-none absolute left-4 top-4 z-10 w-52 rounded-2xl border border-[#d6ff4a]/35 bg-[#10141ccc] px-4 py-3 shadow-xl backdrop-blur-sm"
+      className={`pointer-events-none absolute left-4 z-10 w-52 rounded-2xl border border-[#d6ff4a]/35 bg-[#10141ccc] px-4 py-3 shadow-xl backdrop-blur-sm ${className ?? "top-4"}`}
       data-fitrunner-play-hud=""
       hidden={hidden}
     >
