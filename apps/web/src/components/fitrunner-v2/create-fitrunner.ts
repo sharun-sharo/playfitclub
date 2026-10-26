@@ -14,7 +14,7 @@ import { coastModule, createTropical, type SegmentDressing } from "@/components/
 import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
-import { fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionUserAgent } from "@/components/fitrunner-v2/tv-graphics";
+import { fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
 import { createRunRecorder } from "@/lib/fitrunner-v2/run-recorder";
@@ -317,7 +317,13 @@ export async function startFitRunner(
   const holdCourse = options?.holdCourse === true;
   const rawLimit = options?.demoLimitSeconds;
   const demoLimit = typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : null;
-  const television = isTelevisionUserAgent(typeof navigator === "undefined" ? "" : navigator.userAgent);
+  const television = isTelevisionBrowser({
+    userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+    pointerCoarse:
+      typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches,
+    screenWidth: typeof window === "undefined" ? 0 : Math.max(window.screen?.width || 0, window.innerWidth || 0),
+    screenHeight: typeof window === "undefined" ? 0 : Math.max(window.screen?.height || 0, window.innerHeight || 0),
+  });
   if (television) tuning.quality = fitRunnerQuality(true);
   const gl = canvas.getContext("webgl2", {
     alpha: false,
@@ -344,8 +350,8 @@ export async function startFitRunner(
     preserveDrawingBuffer: false,
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = television ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = television ? 1 : 1.05;
   renderer.shadowMap.enabled = tuning.quality !== "low";
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setPixelRatio(fitRunnerPixelRatio(window.devicePixelRatio || 1, television));
@@ -359,7 +365,7 @@ export async function startFitRunner(
   camera.position.set(0, tuning.camera.height, tuning.camera.distance);
 
   scene.add(new THREE.HemisphereLight("#e7f6ff", "#e4c48a", 0.92));
-  scene.add(new THREE.AmbientLight("#fff8ee", 0.2));
+  if (!television) scene.add(new THREE.AmbientLight("#fff8ee", 0.2));
   const sun = new THREE.DirectionalLight("#fff1d2", 2.45);
   const shadowSize = tuning.quality === "high" ? 2048 : tuning.quality === "medium" ? 1024 : 1;
   sun.castShadow = tuning.quality !== "low";
@@ -885,9 +891,10 @@ export async function startFitRunner(
     }
 
     function setQuality(next: GraphicsQuality) {
-      tuning.quality = next;
-      tropical.setQuality(next);
-      canvas.dataset.quality = next;
+      const applied = television ? fitRunnerQuality(true) : next;
+      tuning.quality = applied;
+      tropical.setQuality(applied);
+      canvas.dataset.quality = applied;
     }
 
     function fadeTo(action: THREE.AnimationAction, fade = tuning.crossfade) {
@@ -1295,10 +1302,22 @@ export async function startFitRunner(
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       if (width < 2 || height < 2) return;
-      if (width === viewWidth && height === viewHeight) return;
+      const ratio = fitRunnerPixelRatio(window.devicePixelRatio || 1, television);
+      const layout = fitRunnerDrawingSize(width, height, television);
+      const bufferWidth = Math.floor(layout.width * ratio);
+      const bufferHeight = Math.floor(layout.height * ratio);
+      const unchanged =
+        width === viewWidth &&
+        height === viewHeight &&
+        canvas.width === bufferWidth &&
+        canvas.height === bufferHeight &&
+        renderer.getPixelRatio() === ratio;
+      if (unchanged) return;
       viewWidth = width;
       viewHeight = height;
-      renderer.setSize(width, height, false);
+      if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
+      // false keeps the CSS box on the full viewport. A later resize cannot write a 4K bitmap back.
+      renderer.setSize(layout.width, layout.height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     }
