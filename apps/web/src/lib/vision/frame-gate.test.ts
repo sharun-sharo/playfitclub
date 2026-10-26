@@ -289,10 +289,13 @@ describe("camera frame gate", () => {
     expect(takeAnimationSample({ now: Number.NaN, lastSampleAt: 1_000 })).toBe(false);
   });
 
-  it("classifies from the animation clock when the camera box is too small to present frames", () => {
+  it("classifies from the animation clock when the camera box is hidden", () => {
     expect(cameraBoxKeepsFrames({ width: 320, height: 180 })).toBe(true);
-    expect(cameraBoxKeepsFrames({ width: 112, height: 96 })).toBe(true);
-    expect(cameraBoxKeepsFrames({ width: 1, height: 1 })).toBe(false);
+    expect(cameraBoxKeepsFrames({ width: 6, height: 4, opacity: 0.02 })).toBe(true);
+    expect(cameraBoxKeepsFrames({ width: 1, height: 1 })).toBe(true);
+    expect(cameraBoxKeepsFrames({ width: 0, height: 0 })).toBe(false);
+    expect(cameraBoxKeepsFrames({ width: 112, height: 96, opacity: 0 })).toBe(false);
+    expect(cameraBoxKeepsFrames({ width: 112, height: 96, hidden: true })).toBe(false);
     expect(paintedCameraSampleSource({
       boxKeepsFrames: false,
       hasVideoFrameCallback: true,
@@ -382,10 +385,11 @@ describe("camera frame gate", () => {
     expect(sameCount.accept).toBe(false);
   });
 
-  it("still classifies a thumbnail when presentedFrames stays 0", () => {
-    expect(cameraBoxKeepsFrames({ width: 112, height: 96 })).toBe(true);
+  it("still classifies a tiny painted video when presentedFrames stays 0", () => {
+    expect(cameraBoxKeepsFrames({ width: 6, height: 4, opacity: 0.02 })).toBe(true);
+    expect(cameraBoxKeepsFrames({ width: 6, height: 4, opacity: 0 })).toBe(false);
     expect(paintedCameraSampleSource({
-      boxKeepsFrames: cameraBoxKeepsFrames({ width: 112, height: 96 }),
+      boxKeepsFrames: cameraBoxKeepsFrames({ width: 6, height: 4, opacity: 0.02 }),
       hasVideoFrameCallback: true,
       videoFrames: 2,
       elapsedMs: 1_000,

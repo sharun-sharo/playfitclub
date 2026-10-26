@@ -1618,6 +1618,9 @@ describe("body lean lane control", () => {
     const held = feed(14, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0 }));
     expect(held.events.map((event) => event.movementType)).toEqual(["lean_left"]);
 
+    const heldLong = feed(30, (index) => pose({ time: index * 33, shoulderLean: index >= 2 ? -clear : 0 }));
+    expect(heldLong.events.map((event) => event.movementType)).toEqual(["lean_left"]);
+
     const reset = feed(16, (index) => {
       const shift = index < 2 ? 0 : index < 6 ? -clear : index < 10 ? 0 : clear;
       return pose({ time: index * 33, shoulderLean: shift });
@@ -1778,6 +1781,22 @@ describe("pre-jump knee bend versus squat", () => {
     expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBeGreaterThanOrEqual(120);
     expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBeLessThanOrEqual(200);
     expect(DEFAULT_THRESHOLDS.jumpPrepMaxDrop).toBeGreaterThan(DEFAULT_THRESHOLDS.squatEnterDrop);
+  });
+
+  it("does not turn jump preparation under the prep cap into a squat", () => {
+    expect(DEFAULT_THRESHOLDS.jumpPrepMaxDrop).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    const { events } = play([
+      { n: 3 },
+      { hipDrop: 0.06, kneeForward: 0.08 },
+      { hipDrop: 0.12, kneeForward: 0.1 },
+      { hipDrop: 0.18, kneeForward: 0.1 },
+      { rise: 0.07, kneeForward: 0.02 },
+      { n: 6 },
+    ]);
+    expect(events.filter((event) => event.movementType === "squat")).toHaveLength(0);
+    expect(events.filter((event) => event.movementType === "jump")).toHaveLength(1);
   });
 
   it("emits one jump and no squat when a slight knee bend rises", () => {

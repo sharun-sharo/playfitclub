@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THRESHOLDS } from "./movement-types";
+import { medianStandingBaseline } from "./calibration";
+import { DEFAULT_THRESHOLDS, type NeutralPose } from "./movement-types";
 import {
   CALIBRATION_RETRY_MS,
   armMappingVerdict,
@@ -93,5 +94,41 @@ describe("session motion calibration", () => {
     expect(armMappingVerdict("left", "lean_right")).toBe("mismatch");
     expect(armMappingVerdict("right", "lean_right")).toBe("match");
     expect(armMappingVerdict("right", "jump")).toBe("waiting");
+  });
+
+  it("uses the median standing pose and not the first frame alone", () => {
+    const stance = (overrides: Partial<NeutralPose>): NeutralPose => ({
+      centerX: 0.5,
+      hipY: 0.5,
+      shoulderY: 0.28,
+      torso: 0.22,
+      shoulderWidth: 0.16,
+      ankleY: 0.9,
+      kneeAngle: 175,
+      thighLength: 0.2,
+      shinLength: 0.2,
+      leftWristLateral: 0.1,
+      rightWristLateral: 0.1,
+      shoulderHip: 0,
+      legsMeasured: true,
+      ...overrides,
+    });
+    const first = stance({ torso: 0.9, hipY: 0.1, shoulderWidth: 0.8, centerX: 0.1 });
+    const steady = stance({});
+    const median = medianStandingBaseline([
+      first,
+      steady,
+      steady,
+      stance({ torso: 0.24, hipY: 0.52, shoulderWidth: 0.17, centerX: 0.51 }),
+      steady,
+    ]);
+    expect(median?.torso).toBeCloseTo(0.22);
+    expect(median?.torso).not.toBe(first.torso);
+    expect(median?.hipY).toBeCloseTo(0.5);
+    expect(median?.hipY).not.toBe(first.hipY);
+    expect(median?.shoulderWidth).toBeCloseTo(0.16);
+    expect(median?.centerX).toBeCloseTo(0.5);
+    expect(medianStandingBaseline([first])).toBeNull();
+    expect(medianStandingBaseline([first, steady, steady, steady])).toBeNull();
   });
 });

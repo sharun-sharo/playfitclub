@@ -8,6 +8,7 @@ import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import {
   createPhoneCalibration,
   phoneBodyReading,
+  phoneCalibMachine,
   phoneFullscreenKeepsPlay,
   phoneStageCaps,
   readPhonePlayStarted,
@@ -16,7 +17,9 @@ import {
   stepPhoneCalibration,
   PHONE_PLAYER_READY,
   PHONE_PLAY_STARTED_KEY,
+  PHONE_STABLE_MS,
   PHONE_STAGE_NOTE,
+  PHONE_VISIBILITY_FLOOR,
   type PhoneCalibState,
 } from "@/components/fitrunner-v2/phone-calibration";
 import {
@@ -26,6 +29,7 @@ import {
   dispatchLocalGesture,
   phoneAsksForLandscape,
   phoneHudCardWidth,
+  phoneMotionLogText,
   phonePlayViewportBox,
   phoneCameraFailure,
   phoneGestureCandidate,
@@ -34,6 +38,7 @@ import {
   phoneObstacleCounts,
   phonePlayCalories,
   phoneRunSeed,
+  placePhonePreview,
   PHONE_LAPTOP_QR_LINE,
   PHONE_LAPTOP_QR_NAME,
   PHONE_MIRROR_GUIDE,
@@ -43,7 +48,9 @@ import {
   PHONE_TEST_CONTROLS_LABEL,
   renderLoopFps,
   type PhoneMotionDiag,
+  type PhoneMotionLogRecord,
 } from "@/components/fitrunner-v2/phone-local-play";
+import { neutralFromLandmarks } from "@fitplay/game";
 import { PlayScoreCard } from "@/components/fitrunner-v2/play-score-card";
 import type { FitRunnerHandle } from "@/components/fitrunner-v2/create-fitrunner";
 import { notePhoneFrameGap, phoneFrameDiagLines, type PhoneFrameDiag } from "@/components/fitrunner-v2/runner-clock";
@@ -148,6 +155,10 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const poseCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const flipRef = useRef<HTMLDivElement>(null);
+  const baselineSamplesRef = useRef<NonNullable<ReturnType<typeof neutralFromLandmarks>>[]>([]);
+  const motionLogRef = useRef<PhoneMotionLogRecord[]>([]);
   const handleRef = useRef<FitRunnerHandle | null>(null);
   const estimatorRef = useRef<PoseEstimator | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -448,6 +459,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     estimatorRef.current = estimator;
     estimator.setCoaching(false);
     estimator.setRaceLive(false);
+    estimator.setDeferBaseline(true);
     estimator.setDiagnosticsLog(motionDiagRef.current);
 
     void (async () => {
@@ -478,6 +490,13 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             diagRef.current.reject = state.diagnostics?.reject || "none";
             if (state.movement) diagRef.current.confirmed = state.movement;
             else if (state.diagnostics?.lastGesture) diagRef.current.confirmed = state.diagnostics.lastGesture;
+            if (state.diagnostics) {
+              diagRef.current.hip = state.diagnostics.hipDrop;
+              diagRef.current.shoulder = state.diagnostics.torsoLean;
+              const leftKnee = state.diagnostics.joints?.includes("L knee");
+              const rightKnee = state.diagnostics.joints?.includes("R knee");
+              diagRef.current.knee = leftKnee && rightKnee ? state.diagnostics.kneeAngle : null;
+            }
           },
           onMovement: (draft) => {
             const current = handleRef.current;
@@ -530,17 +549,47 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     const tick = () => {
       frame = window.requestAnimationFrame(tick);
       const pose = poseRef.current;
+      const marks = estimatorRef.current?.latestLandmarks() ?? null;
       const reading = phoneBodyReading({
         poseCount: pose.poseCount,
-        landmarks: estimatorRef.current?.latestLandmarks() ?? null,
+        landmarks: marks,
         framingCode: pose.framingCode,
       });
+      const now = performance.now();
+      const estimator = estimatorRef.current;
+      const holdStarted = calibRef.current.holdStartedAt;
+      const stableFor = holdStarted === null ? 0 : now - holdStarted;
+      if (reading.signal === "none") baselineSamplesRef.current = [];
+      else if (estimator && !estimator.hasSessionBaseline() && stableFor >= PHONE_STABLE_MS && reading.standing && marks) {
+        const poseSample = neutralFromLandmarks(marks);
+        if (poseSample) {
+          baselineSamplesRef.current.push(poseSample);
+          if (baselineSamplesRef.current.length > 11) baselineSamplesRef.current.shift();
+        }
+        if (baselineSamplesRef.current.length >= 5) estimator.commitSessionBaseline(baselineSamplesRef.current);
+      }
+      const collecting = stableFor >= PHONE_STABLE_MS && !estimator?.hasSessionBaseline();
       const next = stepPhoneCalibration(calibRef.current, {
-        now: performance.now(),
+        now,
         signal: reading.signal,
         guidance: reading.guidance,
         framingPause: pose.framingPause,
+        baselineReady: collecting ? false : undefined,
       });
+      if ((next.phase === "finding" || next.phase === "reposition") && estimator?.hasSessionBaseline()) {
+        estimator.clearSessionBaseline();
+        baselineSamplesRef.current = [];
+      }
+      const preview = previewRef.current;
+      const flip = flipRef.current;
+      const video = videoRef.current;
+      const showPreview = next.phase !== "running" && next.phase !== "warning";
+      if (preview) {
+        preview.classList.toggle("phone-cal-stage", showPreview);
+        preview.classList.toggle("phone-camera-park", !showPreview);
+        preview.dataset.phonePreview = showPreview ? "shown" : "sliver";
+      }
+      if (preview && flip && video) placePhonePreview(flip, preview, video, showPreview);
       calibRef.current = next;
       const handle = handleRef.current;
       if (next.startCourse) pendingCourseRef.current = "start";
@@ -549,7 +598,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
         courseBegunRef.current = true;
         pendingCourseRef.current = null;
         handle.beginCourse();
-        const estimator = estimatorRef.current;
         estimator?.setMode("play");
         estimator?.setCoaching(false);
         estimator?.setRaceLive(true);
@@ -649,9 +697,56 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     if (!motionDiag) return;
     const timer = window.setInterval(() => {
       const canvas = canvasRef.current;
+      const video = videoRef.current;
+      const marks = estimatorRef.current?.latestLandmarks() ?? null;
+      const leftKnee = marks?.[25];
+      const rightKnee = marks?.[26];
+      const kneesSeen = Boolean(
+        leftKnee && rightKnee && (leftKnee.visibility ?? 0) >= PHONE_VISIBILITY_FLOOR && (rightKnee.visibility ?? 0) >= PHONE_VISIBILITY_FLOOR,
+      );
       diagRef.current.buffer = canvas && canvas.width > 0 && canvas.height > 0 ? `${canvas.width}x${canvas.height}` : null;
+      diagRef.current.camera = video && video.videoWidth > 0 ? `${video.videoWidth}x${video.videoHeight}` : null;
+      diagRef.current.stability = calibRef.current.phase;
+      diagRef.current.calibration = calibRef.current.machine ?? phoneCalibMachine(calibRef.current);
+      if (marks) {
+        const indexes = [0, 11, 12, 23, 24, 25, 26];
+        let total = 0;
+        let count = 0;
+        for (const index of indexes) {
+          const point = marks[index];
+          if (!point || !Number.isFinite(point.x)) continue;
+          total += point.visibility ?? 0;
+          count += 1;
+        }
+        if (count > 0) diagRef.current.confidence = total / count;
+      }
+      const baseline = estimatorRef.current?.sessionBaseline();
+      diagRef.current.baseline = baseline
+        ? `torso ${baseline.torso.toFixed(3)} hip ${baseline.hipY.toFixed(3)} shoulder ${baseline.shoulderWidth.toFixed(3)} center ${baseline.centerX.toFixed(3)}`
+        : null;
+      if (!kneesSeen) diagRef.current.knee = null;
+      else if (diagRef.current.knee === undefined) diagRef.current.knee = null;
       const frameDiag = frameDiagRef.current;
-      setDiagLines([...phoneMotionDiagLines(diagRef.current), ...phoneFrameDiagLines(frameDiag)]);
+      const lines = [...phoneMotionDiagLines(diagRef.current), ...phoneFrameDiagLines(frameDiag)];
+      setDiagLines(lines);
+      const log = motionLogRef.current;
+      log.push({
+        t: Math.round(performance.now()),
+        camera: diagRef.current.camera ?? null,
+        confidence: diagRef.current.confidence ?? null,
+        calibration: diagRef.current.calibration ?? null,
+        candidate: diagRef.current.candidate,
+        confirmed: diagRef.current.confirmed,
+        reject: diagRef.current.reject,
+        hip: diagRef.current.hip ?? null,
+        shoulder: diagRef.current.shoulder ?? null,
+        knee: kneesSeen ? (diagRef.current.knee ?? null) : null,
+        gameFps: diagRef.current.renderFps,
+        poseFps: diagRef.current.poseFps,
+        inferenceMs: diagRef.current.inferenceMs,
+        confirmToCallMs: diagRef.current.confirmToCallMs,
+      });
+      if (log.length > 240) log.shift();
       if (frameDiag.longFrame) frameDiagRef.current = { frameMs: frameDiag.frameMs, longFrame: false };
     }, 250);
     return () => window.clearInterval(timer);
@@ -752,9 +847,16 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   return (
     <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape" data-phone-phase={calib.phase}>
       <canvas ref={canvasRef} data-fitrunner-v2="" aria-label="Fit Run" className="h-full w-full" hidden={Boolean(graphicsError)} />
-      <div className={cameraLarge ? "phone-cal-stage" : "phone-camera-park"} data-phone-preview={cameraLarge ? "shown" : "thumb"}>
-        <div className="phone-cal-flip">
-          <video ref={videoRef} className="phone-cal-media" muted playsInline aria-label="Camera preview" />
+      <div ref={previewRef} className={cameraLarge ? "phone-cal-stage" : "phone-camera-park"} data-phone-preview={cameraLarge ? "shown" : "sliver"}>
+        <div ref={flipRef} className="phone-cal-flip">
+          <video
+            ref={videoRef}
+            className="phone-cal-media"
+            muted
+            playsInline
+            aria-label="Camera preview"
+            aria-hidden={cameraLarge ? undefined : true}
+          />
           <canvas ref={poseCanvasRef} className="phone-cal-media" aria-hidden="true" />
         </div>
         {cameraLarge ? (
@@ -883,6 +985,21 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="mt-2 rounded-full border border-white/20 px-2 py-1"
+            onClick={() => {
+              const blob = new Blob([phoneMotionLogText(motionLogRef.current)], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = "playfit-motion-log.json";
+              link.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download log
+          </button>
         </aside>
       ) : null}
       {graphicsError ? (

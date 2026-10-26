@@ -6,6 +6,7 @@ import {
   COMMAND_STALE_MS,
   createDetector,
   createMotionCalibration,
+  medianStandingBaseline,
   noteBodyScale,
   observeMotionCalibration,
   pushPose,
@@ -18,6 +19,7 @@ import {
   type MotionCalibration,
   type MovementDraft,
   type MovementThresholds,
+  type NeutralPose,
   type PoseFrame,
 } from "@fitplay/game";
 import {
@@ -178,6 +180,9 @@ export class PoseEstimator {
   private removeTimeUpdate: (() => void) | null = null;
   private running = false;
   private mode: "idle" | "calibrate" | "play" = "idle";
+  /** Phone Fit Run locks the median stance itself. The first good frames must not. */
+  private deferBaseline = false;
+  private baselineLocked = false;
   private recent: PoseFrame[] = [];
   private lastUi = 0;
   private video: HTMLVideoElement | null = null;
@@ -287,6 +292,56 @@ export class PoseEstimator {
     if (enteringPlay) this.readyForRound();
   }
 
+  /** The phone page collects the stable pose. This estimator must not lock an earlier frame. */
+  setDeferBaseline(defer: boolean) {
+    this.deferBaseline = defer;
+  }
+
+  hasSessionBaseline() {
+    return this.baselineLocked && Boolean(this.detector.neutral);
+  }
+
+  sessionBaseline() {
+    const neutral = this.detector.neutral;
+    if (!this.baselineLocked || !neutral) return null;
+    return {
+      torso: neutral.torso,
+      hipY: neutral.hipY,
+      shoulderWidth: neutral.shoulderWidth,
+      centerX: neutral.centerX,
+    };
+  }
+
+  /**
+   * One median stance for this run. A second call does nothing until the body
+   * leaves and clearSessionBaseline runs. Neutral drift stays off so the same
+   * samples are not blended in again.
+   */
+  commitSessionBaseline(samples: NeutralPose[]) {
+    if (this.baselineLocked) return false;
+    const neutral = medianStandingBaseline(samples);
+    if (!neutral) return false;
+    this.detector = setNeutral(this.detector, neutral);
+    this.detector = setThresholds(this.detector, {
+      ...adaptThresholds(neutral, this.detector.thresholds),
+      neutralDrift: 0,
+    });
+    this.motion = noteBodyScale(this.motion, neutral.torso, neutral.shoulderWidth, performance.now());
+    this.motion = { ...this.motion, instruction: null, step: "done" };
+    this.baselineLocked = true;
+    this.recent = [];
+    return true;
+  }
+
+  /** A covered camera or a real loss. Minor jitter must not call this. */
+  clearSessionBaseline() {
+    if (!this.baselineLocked && !this.detector.neutral) return;
+    this.baselineLocked = false;
+    this.recent = [];
+    this.detector = createDetector({ mirror: this.facing === "user" });
+    this.motion = createMotionCalibration(performance.now());
+  }
+
   setThresholds(overrides: Partial<MovementThresholds>) {
     this.detector = setThresholds(this.detector, overrides);
   }
@@ -318,6 +373,7 @@ export class PoseEstimator {
     this.framing.reset();
     this.motion = createMotionCalibration();
     this.squatFitted = false;
+    this.baselineLocked = false;
     this.detector = createDetector({ mirror: this.facing === "user" });
   }
 
@@ -468,6 +524,20 @@ export class PoseEstimator {
         confidence: 0,
         framingReady: false,
         calibrated: Boolean(this.detector.neutral),
+        movement: null,
+        actionsEnabled: false,
+        diagnostics: null,
+        framing: view,
+      }, now);
+      return;
+    }
+    if (this.mode === "calibrate" && this.deferBaseline) {
+      const calibrated = this.hasSessionBaseline();
+      this.emitUi({
+        guidance: view.instruction,
+        confidence: view.confidence,
+        framingReady: calibrated && view.code === "good",
+        calibrated,
         movement: null,
         actionsEnabled: false,
         diagnostics: null,
@@ -664,6 +734,7 @@ export class PoseEstimator {
     const onFrame = (now: number, metadata: PhoneVideoMetadata) => {
       if (!this.running) return;
       this.videoFrameHandle = withFrames.requestVideoFrameCallback?.(onFrame) ?? 0;
+      if (!this.paintAllowsClassify()) return;
       const arrivedAt = performance.now();
       const decision = takeVideoFrame(this.videoCursor, { callbackNow: now, metadata, arrivedAt });
       this.videoCursor = decision.cursor;
@@ -688,6 +759,7 @@ export class PoseEstimator {
       }) === "animation";
     };
     const sampleAnimation = () => {
+      if (!this.paintAllowsClassify()) return;
       if (!animationDue()) return;
       const now = performance.now();
       // currentTime may stay put on a live camera. This path is already the fallback,
@@ -770,6 +842,24 @@ export class PoseEstimator {
     this.inferenceTotal = 0;
     this.inferenceSamples = 0;
     this.rateWindowStart = now;
+  }
+
+  /** A hidden video is not a frame. A few painted pixels still are. */
+  private paintAllowsClassify() {
+    const video = this.video;
+    if (!video) return false;
+    const rect = video.getBoundingClientRect();
+    let opacity: number | undefined;
+    let hidden = Boolean(video.hidden);
+    try {
+      const style = getComputedStyle(video);
+      if (style.display === "none" || style.visibility === "hidden") hidden = true;
+      const parsed = Number.parseFloat(style.opacity);
+      if (Number.isFinite(parsed)) opacity = parsed;
+    } catch {
+      /* The element is not in a document yet. Size still decides. */
+    }
+    return cameraBoxKeepsFrames({ width: rect.width, height: rect.height, opacity, hidden });
   }
 
   private draw(landmarks: Array<{ x: number; y: number }> | undefined) {

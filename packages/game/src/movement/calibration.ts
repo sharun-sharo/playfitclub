@@ -194,6 +194,38 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function median(values: number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid] ?? 0;
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+
+/**
+ * Session stance from several standing samples.
+ * The median ignores a bad first frame. Fewer than five samples is not a baseline.
+ */
+export function medianStandingBaseline(samples: NeutralPose[]): NeutralPose | null {
+  if (samples.length < 5) return null;
+  const withLegs = samples.filter((item) => item.legsMeasured !== false);
+  const legs = withLegs.length > 0 ? withLegs : samples;
+  return {
+    centerX: median(samples.map((item) => item.centerX)),
+    hipY: median(samples.map((item) => item.hipY)),
+    shoulderY: median(samples.map((item) => item.shoulderY)),
+    torso: median(samples.map((item) => item.torso)),
+    shoulderWidth: median(samples.map((item) => item.shoulderWidth)),
+    ankleY: median(legs.map((item) => item.ankleY)),
+    kneeAngle: median(legs.map((item) => item.kneeAngle)),
+    thighLength: median(legs.map((item) => item.thighLength)),
+    shinLength: median(legs.map((item) => item.shinLength)),
+    leftWristLateral: median(samples.map((item) => item.leftWristLateral)),
+    rightWristLateral: median(samples.map((item) => item.rightWristLateral)),
+    shoulderHip: median(samples.map((item) => item.shoulderHip ?? 0)),
+    legsMeasured: withLegs.length > 0,
+  };
+}
+
 function spread(values: number[]): number {
   return Math.max(...values) - Math.min(...values);
 }

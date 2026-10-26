@@ -2,6 +2,7 @@ import { scheduleContains, type CourseLevel } from "@fitplay/shared";
 import { readMotionDiagFlag, trackingStatusLine } from "../join/phone-commands";
 import { playCalories, type PlayCalorieView } from "../../lib/fitrunner-v2/play-calories";
 import { BODY_LEFT_MESSAGE } from "../../lib/vision/camera-status";
+import { containFrame } from "../../lib/vision/preview-fit";
 import { isTelevisionUserAgent } from "./tv-graphics";
 
 /** Phone runs Fit Run here. A TV or laptop shows this screen through the phone's own mirror. */
@@ -59,17 +60,19 @@ export const PHONE_TEST_CONTROLS_LABEL = "Test controls";
 export const PHONE_PIXEL_RATIO_CAP = 1.5;
 
 /**
- * Painted thumbnail once the course is on screen.
+ * A few painted pixels once the course is on screen.
  * Samsung Internet presents no new camera frames when this video is opacity 0,
  * visibility hidden, display none, or fully covered by the game canvas.
- * Jump, squat, left, and right then stay at the ready pose together.
- * The box stays about 96–120px, in a corner, and on top of the canvas.
+ * The element stays composited: non-zero size, opacity at least 0.02, above the
+ * WebGL canvas. It is not a camera picture the player can recognize.
  */
-export const PHONE_LIVE_CAMERA = { width: 112, height: 96 } as const;
+export const PHONE_LIVE_CAMERA = { width: 6, height: 4, opacity: 0.02 } as const;
 
-/** A 1×1 box does not present. This thumbnail is smaller than the calibration preview and still does. */
-export function phoneLiveCameraKeepsFrames(box: { width: number; height: number }) {
-  return box.width >= 96 && box.height >= 72;
+/** A zero-size or fully hidden video does not present. A few painted pixels still do. */
+export function phoneLiveCameraKeepsFrames(box: { width: number; height: number; opacity?: number; hidden?: boolean }) {
+  if (box.hidden) return false;
+  if (typeof box.opacity === "number" && !(box.opacity >= PHONE_LIVE_CAMERA.opacity)) return false;
+  return box.width > 0 && box.height > 0;
 }
 
 /** Phone HUD corner. A television width must not stretch this into a side panel. */
@@ -113,6 +116,40 @@ export function phonePlayViewportBox(input: {
     width: visualWidth > 0 ? visualWidth : Math.max(0, innerWidth),
     height: visualHeight > 0 ? visualHeight : Math.max(0, innerHeight),
   };
+}
+
+/**
+ * Calibration preview box. The video and the skeleton canvas share this rectangle,
+ * then CSS mirrors the rectangle. Landmark x and y stay image fractions of the
+ * camera bitmap. They are not CSS pixels of the mirrored element.
+ */
+export function phonePreviewFrame(stageWidth: number, stageHeight: number, mediaWidth: number, mediaHeight: number) {
+  return containFrame(stageWidth, stageHeight, mediaWidth, mediaHeight);
+}
+
+/** Pins the shared preview rectangle. Clearing it lets the in-run sliver use its stylesheet size. */
+export function placePhonePreview(
+  flip: HTMLElement,
+  stage: { clientWidth: number; clientHeight: number },
+  video: { videoWidth: number; videoHeight: number },
+  shown: boolean,
+) {
+  if (!shown) {
+    flip.style.left = "";
+    flip.style.top = "";
+    flip.style.width = "";
+    flip.style.height = "";
+    flip.style.right = "";
+    flip.style.bottom = "";
+    return;
+  }
+  const box = phonePreviewFrame(stage.clientWidth, stage.clientHeight, video.videoWidth, video.videoHeight);
+  flip.style.left = `${box.x}px`;
+  flip.style.top = `${box.y}px`;
+  flip.style.width = `${box.width}px`;
+  flip.style.height = `${box.height}px`;
+  flip.style.right = "auto";
+  flip.style.bottom = "auto";
 }
 
 /** Pins the play root and the WebGL canvas to the visual viewport. */
@@ -311,7 +348,37 @@ export type PhoneMotionDiag = {
   confirmed: string | null;
   confirmToCallMs: number | null;
   reject: string | null;
+  camera?: string | null;
+  confidence?: number | null;
+  stability?: string | null;
+  calibration?: string | null;
+  baseline?: string | null;
+  hip?: number | null;
+  shoulder?: number | null;
+  knee?: number | null;
 };
+
+export interface PhoneMotionLogRecord {
+  t: number;
+  camera: string | null;
+  confidence: number | null;
+  calibration: string | null;
+  candidate: string | null;
+  confirmed: string | null;
+  reject: string | null;
+  hip: number | null;
+  shoulder: number | null;
+  knee: number | null;
+  gameFps: number | null;
+  poseFps: number | null;
+  inferenceMs: number | null;
+  confirmToCallMs: number | null;
+}
+
+/** Local download only. Timestamps and decisions. No picture, name, or token. */
+export function phoneMotionLogText(records: readonly PhoneMotionLogRecord[]) {
+  return JSON.stringify(records);
+}
 
 export function phoneGestureCandidate(input: {
   squatPhase?: string | null;
@@ -334,12 +401,26 @@ export function phoneGestureCandidate(input: {
   return parts.join("+") || "none";
 }
 
+function diagNumber(value: number | null | undefined, digits = 3) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return value.toFixed(digits);
+}
+
 export function phoneMotionDiagLines(input: PhoneMotionDiag) {
   const fps = input.renderFps === null || !Number.isFinite(input.renderFps) ? "—" : input.renderFps.toFixed(1);
   const pose = input.poseFps === null || !Number.isFinite(input.poseFps) ? "—" : input.poseFps.toFixed(1);
   const inference = input.inferenceMs === null || !Number.isFinite(input.inferenceMs) ? "—" : `${input.inferenceMs.toFixed(1)} ms`;
   const lag = input.confirmToCallMs === null || !Number.isFinite(input.confirmToCallMs) ? "—" : `${Math.round(input.confirmToCallMs)} ms`;
+  const knee = typeof input.knee === "number" && Number.isFinite(input.knee) ? `${input.knee.toFixed(0)}` : "—";
   return [
+    `camera ${input.camera || "—"}`,
+    `confidence ${diagNumber(input.confidence, 2)}`,
+    `stability ${input.stability || "—"}`,
+    `calibration ${input.calibration || "—"}`,
+    `baseline ${input.baseline || "—"}`,
+    `hip ${diagNumber(input.hip)}`,
+    `shoulder ${diagNumber(input.shoulder)}`,
+    `knee ${knee}`,
     `buffer ${input.buffer || "—"}`,
     `game ${fps} fps`,
     `pose ${pose} fps`,

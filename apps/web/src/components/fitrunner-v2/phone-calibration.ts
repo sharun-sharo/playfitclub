@@ -47,8 +47,38 @@ export const PHONE_STAGE_NOTE = "Turn the phone sideways, and use the browser fu
 export const PHONE_STATUSES = ["Finding Player", "Adjust Position", "Calibrating", "Ready"] as const;
 export type PhoneStatus = (typeof PHONE_STATUSES)[number];
 
-export const PHONE_GUIDANCE = ["Move Back", "Move Closer", "Move Left", "Move Right", "Stand Straight", "Full Body Detected"] as const;
+export const PHONE_GUIDANCE = [
+  "Move farther",
+  "Move closer",
+  "Center your body",
+  "Keep your knees visible",
+  "Hold still",
+  "Full body detected",
+  "Improve lighting",
+] as const;
 export type PhoneGuidance = (typeof PHONE_GUIDANCE)[number];
+
+/**
+ * Phone start order. A practice jump is not one of these steps.
+ * WAITING_FOR_PERSON → CHECKING_VISIBILITY → CHECKING_STABILITY →
+ * COLLECTING_BASELINE → CALIBRATED → READY_TO_PLAY.
+ */
+export type PhoneCalibMachine =
+  | "WAITING_FOR_PERSON"
+  | "CHECKING_VISIBILITY"
+  | "CHECKING_STABILITY"
+  | "COLLECTING_BASELINE"
+  | "CALIBRATED"
+  | "READY_TO_PLAY";
+
+/** Image fractions. Distance is torso length and the head-to-knee box, not pixels or metres. */
+const PHONE_EDGE = 0.04;
+const PHONE_CENTER_MIN = 0.36;
+const PHONE_CENTER_MAX = 0.64;
+const PHONE_TORSO_CLOSE = 0.46;
+const PHONE_TORSO_FAR = 0.11;
+const PHONE_SPAN_CLOSE = 0.78;
+const PHONE_SPAN_FAR = 0.3;
 
 export type PhoneBodySignal = "none" | "partial" | "full";
 
@@ -86,6 +116,7 @@ export interface PhoneCalibState {
   readyAt: number | null;
   lostSince: number | null;
   shown: PhoneCountdownLabel[];
+  machine: PhoneCalibMachine;
 }
 
 export interface PhoneCalibSample {
@@ -94,6 +125,11 @@ export interface PhoneCalibSample {
   guidance?: PhoneGuidance | null;
   /** Existing play-profile pause. Already waited about pauseMs. Ignored once repositioning. */
   framingPause?: boolean;
+  /**
+   * False while the median baseline is still being collected after the 2s hold.
+   * Omitted means the caller is not collecting, so the 2s clock can open Ready.
+   */
+  baselineReady?: boolean;
 }
 
 export interface PhoneStageCaps {
@@ -168,6 +204,7 @@ export function createPhoneCalibration(): PhoneCalibState {
     readyAt: null,
     lostSince: null,
     shown: [],
+    machine: "WAITING_FOR_PERSON",
   };
 }
 
@@ -199,21 +236,9 @@ export function phoneShouldersLevel(
   return Math.abs(left.y - right.y) / width <= 0.35;
 }
 
-function bodyPresent(landmarks: Array<FramingLandmark | null | undefined> | null | undefined, minVisibility: number) {
-  if (!landmarks) return false;
-  return (
-    jointSeen(landmarks, PHONE_START_LANDMARKS.head, minVisibility) ||
-    jointSeen(landmarks, PHONE_START_LANDMARKS.leftShoulder, minVisibility) ||
-    jointSeen(landmarks, PHONE_START_LANDMARKS.rightShoulder, minVisibility) ||
-    jointSeen(landmarks, PHONE_START_LANDMARKS.leftHip, minVisibility) ||
-    jointSeen(landmarks, PHONE_START_LANDMARKS.rightHip, minVisibility)
-  );
-}
-
 /**
- * Maps the existing framing codes onto the phone lines.
- * too_close / too_far are the framer's only distance checks. It does not measure metres.
- * keep_feet is a missing-feet check, so it stays Stand Straight instead of a made-up distance.
+ * Older framing-code labels. The phone gate below measures the body itself.
+ * These strings stay so a code still maps onto the same on-screen words.
  */
 export function phoneFramingGuidance(input: {
   framingCode: FramingCode | null;
@@ -224,24 +249,114 @@ export function phoneFramingGuidance(input: {
   if (input.poseCount !== 1) return null;
   switch (input.framingCode) {
     case "too_close":
-      return "Move Back";
+      return "Move farther";
     case "too_far":
-      return "Move Closer";
+      return "Move closer";
     case "move_left":
-      return "Move Left";
     case "move_right":
-      return "Move Right";
+      return "Center your body";
     case "good":
-      return input.fullBody && input.straight ? "Full Body Detected" : "Stand Straight";
+      return input.fullBody && input.straight ? "Full body detected" : "Hold still";
     case "keep_feet":
+      return "Keep your knees visible";
     case "tilt_up":
     case "tilt_down":
     case "arm_space":
     case "adjust_camera":
-      return "Stand Straight";
+      return "Hold still";
     default:
       return null;
   }
+}
+
+const PHONE_GATE_JOINTS = [
+  PHONE_START_LANDMARKS.head,
+  PHONE_START_LANDMARKS.leftShoulder,
+  PHONE_START_LANDMARKS.rightShoulder,
+  PHONE_START_LANDMARKS.leftHip,
+  PHONE_START_LANDMARKS.rightHip,
+  PHONE_START_LANDMARKS.leftKnee,
+  PHONE_START_LANDMARKS.rightKnee,
+] as const;
+
+function visibilityOf(landmarks: Array<FramingLandmark | null | undefined> | null | undefined, index: number) {
+  const point = landmarks?.[index];
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return 0;
+  return point.visibility ?? 0;
+}
+
+function placedJoint(
+  landmarks: Array<FramingLandmark | null | undefined> | null | undefined,
+  index: number,
+  minVisibility: number,
+) {
+  const point = landmarks?.[index];
+  if (!point || (point.visibility ?? 0) < minVisibility) return null;
+  if (!inCameraFrame(point)) return null;
+  return point;
+}
+
+/**
+ * One frame of the phone gate. Ankles are not read.
+ * Ready requires one person, head through knees, inside the image, roughly centered,
+ * and a torso length that is neither a close crop nor a distant speck.
+ */
+export function phoneBodyGate(input: {
+  poseCount: number;
+  landmarks: Array<FramingLandmark | null | undefined> | null;
+  minVisibility?: number;
+}): { signal: PhoneBodySignal; fullBody: boolean; straight: boolean; guidance: PhoneGuidance | null; standing: boolean } {
+  const minVisibility = input.minVisibility ?? PHONE_VISIBILITY_FLOOR;
+  const empty = { signal: "none" as const, fullBody: false, straight: false, guidance: null, standing: false };
+  if (input.poseCount <= 0) return empty;
+  if (input.poseCount !== 1) return { ...empty, signal: "partial" };
+  const seen = PHONE_GATE_JOINTS.map((index) => visibilityOf(input.landmarks, index)).filter((value) => value > 0);
+  if (seen.length === 0) return empty;
+  if (seen.every((value) => value < minVisibility)) {
+    return { signal: "partial", fullBody: false, straight: false, guidance: "Improve lighting", standing: false };
+  }
+  const head = placedJoint(input.landmarks, PHONE_START_LANDMARKS.head, minVisibility);
+  const leftShoulder = placedJoint(input.landmarks, PHONE_START_LANDMARKS.leftShoulder, minVisibility);
+  const rightShoulder = placedJoint(input.landmarks, PHONE_START_LANDMARKS.rightShoulder, minVisibility);
+  const leftHip = placedJoint(input.landmarks, PHONE_START_LANDMARKS.leftHip, minVisibility);
+  const rightHip = placedJoint(input.landmarks, PHONE_START_LANDMARKS.rightHip, minVisibility);
+  const leftKnee = placedJoint(input.landmarks, PHONE_START_LANDMARKS.leftKnee, minVisibility);
+  const rightKnee = placedJoint(input.landmarks, PHONE_START_LANDMARKS.rightKnee, minVisibility);
+  const fullBody = Boolean(head && leftShoulder && rightShoulder && leftHip && rightHip && leftKnee && rightKnee);
+  const straight = phoneShouldersLevel(input.landmarks, minVisibility);
+  if (!leftKnee || !rightKnee) {
+    return { signal: "partial", fullBody: false, straight, guidance: "Keep your knees visible", standing: false };
+  }
+  if (!head || !leftShoulder || !rightShoulder || !leftHip || !rightHip) {
+    const shouldersHigh = Boolean(leftShoulder && rightShoulder && Math.min(leftShoulder.y, rightShoulder.y) <= PHONE_EDGE);
+    return {
+      signal: "partial",
+      fullBody: false,
+      straight,
+      guidance: !head || shouldersHigh ? "Move farther" : "Hold still",
+      standing: false,
+    };
+  }
+  const shoulderX = (leftShoulder.x + rightShoulder.x) / 2;
+  const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+  const hipX = (leftHip.x + rightHip.x) / 2;
+  const hipY = (leftHip.y + rightHip.y) / 2;
+  const torso = Math.hypot(hipX - shoulderX, hipY - shoulderY);
+  const span = Math.max(leftKnee.y, rightKnee.y) - head.y;
+  const center = (shoulderX + hipX) / 2;
+  const cutTop = head.y <= PHONE_EDGE;
+  const cutBottom = leftKnee.y >= 1 - PHONE_EDGE || rightKnee.y >= 1 - PHONE_EDGE;
+  if (cutTop || cutBottom || torso >= PHONE_TORSO_CLOSE || span >= PHONE_SPAN_CLOSE) {
+    return { signal: "partial", fullBody, straight, guidance: "Move farther", standing: false };
+  }
+  if (torso <= PHONE_TORSO_FAR || span <= PHONE_SPAN_FAR) {
+    return { signal: "partial", fullBody, straight, guidance: "Move closer", standing: false };
+  }
+  if (center < PHONE_CENTER_MIN || center > PHONE_CENTER_MAX) {
+    return { signal: "partial", fullBody, straight, guidance: "Center your body", standing: false };
+  }
+  if (!straight) return { signal: "partial", fullBody, straight: false, guidance: "Hold still", standing: false };
+  return { signal: "full", fullBody: true, straight: true, guidance: "Full body detected", standing: true };
 }
 
 export function phoneBodyReading(input: {
@@ -249,23 +364,9 @@ export function phoneBodyReading(input: {
   landmarks: Array<FramingLandmark | null | undefined> | null;
   framingCode: FramingCode | null;
   minVisibility?: number;
-}): { signal: PhoneBodySignal; fullBody: boolean; straight: boolean; guidance: PhoneGuidance | null } {
-  const minVisibility = input.minVisibility ?? PHONE_VISIBILITY_FLOOR;
-  const fullBody = input.poseCount === 1 && phoneFullBody(input.landmarks, minVisibility);
-  const straight = phoneShouldersLevel(input.landmarks, minVisibility);
-  const guidance = phoneFramingGuidance({
-    framingCode: input.framingCode,
-    fullBody,
-    straight,
-    poseCount: input.poseCount,
-  });
-  if (input.poseCount <= 0) return { signal: "none", fullBody: false, straight: false, guidance: null };
-  if (input.poseCount !== 1) return { signal: "partial", fullBody: false, straight, guidance: null };
-  if (fullBody && straight && input.framingCode === "good") return { signal: "full", fullBody, straight, guidance };
-  if (!bodyPresent(input.landmarks, minVisibility) && (input.framingCode === null || input.framingCode === "adjust_camera")) {
-    return { signal: "none", fullBody, straight, guidance: null };
-  }
-  return { signal: "partial", fullBody, straight, guidance };
+}): { signal: PhoneBodySignal; fullBody: boolean; straight: boolean; guidance: PhoneGuidance | null; standing: boolean } {
+  void input.framingCode;
+  return phoneBodyGate(input);
 }
 
 function clearEdges(state: PhoneCalibState): PhoneCalibState {
@@ -379,11 +480,27 @@ function stepPosition(state: PhoneCalibState, sample: PhoneCalibSample, config: 
     const lastFullAt = sample.signal === "full" ? sample.now : state.lastFullAt;
     const elapsed = sample.now - holdStartedAt;
     if (elapsed >= config.stableMs) {
+      if (sample.baselineReady === false) {
+        return {
+          ...state,
+          phase: positioningPhase(state.runStarted, "calibrating"),
+          status: "Calibrating",
+          guidance: "Hold still",
+          holdStartedAt,
+          lastFullAt,
+          readyAt: null,
+          countdown: null,
+          countdownIndex: -1,
+          coursePaused: state.runStarted,
+          startCourse: false,
+          resumeCourse: false,
+        };
+      }
       return {
         ...state,
         phase: "ready",
         status: "Ready",
-        guidance: "Full Body Detected",
+        guidance: "Full body detected",
         holdStartedAt,
         lastFullAt,
         readyAt: sample.now,
@@ -398,7 +515,7 @@ function stepPosition(state: PhoneCalibState, sample: PhoneCalibSample, config: 
       ...state,
       phase: positioningPhase(state.runStarted, "calibrating"),
       status: "Calibrating",
-      guidance: sample.signal === "full" ? "Full Body Detected" : sample.guidance ?? state.guidance,
+      guidance: sample.signal === "full" ? "Hold still" : sample.guidance ?? state.guidance,
       holdStartedAt,
       lastFullAt,
       readyAt: null,
@@ -494,10 +611,27 @@ function stepRun(state: PhoneCalibState, sample: PhoneCalibSample, config: Phone
   };
 }
 
+export function phoneCalibMachine(
+  state: Pick<PhoneCalibState, "phase" | "status" | "holdStartedAt">,
+  sample?: Pick<PhoneCalibSample, "now" | "baselineReady">,
+  stableMs = PHONE_CALIB_CONFIG.stableMs,
+): PhoneCalibMachine {
+  if (state.phase === "finding") return "WAITING_FOR_PERSON";
+  if (state.phase === "adjust") return "CHECKING_VISIBILITY";
+  if (state.phase === "reposition") return state.status === "Finding Player" ? "WAITING_FOR_PERSON" : "CHECKING_VISIBILITY";
+  if (state.phase === "calibrating") {
+    const held = state.holdStartedAt !== null && sample !== undefined && sample.now - state.holdStartedAt >= stableMs;
+    if (held && sample?.baselineReady === false) return "COLLECTING_BASELINE";
+    return "CHECKING_STABILITY";
+  }
+  if (state.phase === "ready") return "CALIBRATED";
+  return "READY_TO_PLAY";
+}
+
 export function stepPhoneCalibration(state: PhoneCalibState, sample: PhoneCalibSample, config: PhoneCalibConfig = PHONE_CALIB_CONFIG): PhoneCalibState {
   const base = clearEdges(state);
-  if (base.phase === "running" || base.phase === "warning") return stepRun(base, sample, config);
-  return stepPosition(base, sample, config);
+  const next = base.phase === "running" || base.phase === "warning" ? stepRun(base, sample, config) : stepPosition(base, sample, config);
+  return { ...next, machine: phoneCalibMachine(next, sample, config.stableMs) };
 }
 
 export const PHONE_PLAY_STARTED_KEY = "fitplay.phone.playStarted";

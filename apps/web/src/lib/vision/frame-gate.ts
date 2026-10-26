@@ -161,14 +161,16 @@ export function takeAnimationSample(input: { now: number; lastSampleAt: number }
 }
 
 /**
- * A 1×1 camera box does not present new pictures. The animation clock still
- * has to classify, even when the browser keeps calling the video-frame callback.
- * A thumbnail around 96px is smaller than the calibration preview and still presents.
- * Treating that box as absent drops jump, squat, left, and right together.
- * `presentedFrames` staying 0 is not an absent frame: takeVideoFrame still accepts it.
+ * Samsung Internet presents no new pictures when the video is opacity 0,
+ * visibility hidden, display none, or fully covered. A few painted pixels still
+ * present, so a non-zero box at opacity 0.02 or more is a live camera.
+ * A hidden or zero-size video is not. `presentedFrames` staying 0 is not an
+ * absent frame: takeVideoFrame still accepts a painted video.
  */
-export function cameraBoxKeepsFrames(box: { width: number; height: number }) {
-  return box.width >= 96 && box.height >= 72;
+export function cameraBoxKeepsFrames(box: { width: number; height: number; opacity?: number; hidden?: boolean }) {
+  if (box.hidden) return false;
+  if (typeof box.opacity === "number" && !(box.opacity >= 0.02)) return false;
+  return box.width > 0 && box.height > 0;
 }
 
 /** The animation clock samples only while the video-frame callback is absent, quiet, or not actually painted. */

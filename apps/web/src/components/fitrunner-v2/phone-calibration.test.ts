@@ -29,7 +29,25 @@ function step(state: PhoneCalibState, sample: PhoneCalibSample) {
 }
 
 function full(now: number): PhoneCalibSample {
-  return { now, signal: "full", guidance: "Full Body Detected" };
+  return { now, signal: "full", guidance: "Full body detected" };
+}
+
+function standing(mutate?: (points: FramingLandmark[]) => void): FramingLandmark[] {
+  const points: FramingLandmark[] = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 0 }));
+  const set = (index: number, x: number, y: number, visibility = 0.95) => {
+    points[index] = { x, y, visibility };
+  };
+  set(0, 0.5, 0.16);
+  set(11, 0.42, 0.28);
+  set(12, 0.58, 0.28);
+  set(23, 0.44, 0.52);
+  set(24, 0.56, 0.52);
+  set(25, 0.45, 0.72);
+  set(26, 0.55, 0.72);
+  set(27, 0.46, 0.9, 0);
+  set(28, 0.54, 0.9, 0);
+  mutate?.(points);
+  return points;
 }
 
 function reachReady() {
@@ -82,7 +100,7 @@ describe("phone calibration", () => {
   it("does not reset the 2 second hold for jitter inside the window", () => {
     let state = createPhoneCalibration();
     state = step(state, full(0));
-    state = step(state, { now: 300, signal: "partial", guidance: "Stand Straight" });
+    state = step(state, { now: 300, signal: "partial", guidance: "Hold still" });
     state = step(state, full(2000));
     expect(state.status).toBe("Ready");
     expect(state.holdStartedAt).toBe(0);
@@ -196,22 +214,80 @@ describe("phone calibration", () => {
 
     expect(phoneBodyReading({ poseCount: 0, landmarks: null, framingCode: null }).signal).toBe("none");
     expect(phoneBodyReading({ poseCount: 0, landmarks: null, framingCode: null }).guidance).toBeNull();
-    const reading = phoneBodyReading({ poseCount: 1, landmarks: body, framingCode: "good" });
+    const reading = phoneBodyReading({ poseCount: 1, landmarks: standing(), framingCode: "good" });
     expect(reading.signal).toBe("full");
-    expect(reading.guidance).toBe("Full Body Detected");
+    expect(reading.guidance).toBe("Full body detected");
+    expect(reading.standing).toBe(true);
 
-    const covered = landmarks();
-    covered[25] = { x: 0.47, y: 0.72, visibility: 0 };
-    covered[26] = { x: 0.53, y: 0.72, visibility: 0 };
+    const covered = standing((points) => {
+      points[25] = { x: 0.45, y: 0.72, visibility: 0 };
+      points[26] = { x: 0.55, y: 0.72, visibility: 0 };
+    });
     const legs = phoneBodyReading({ poseCount: 1, landmarks: covered, framingCode: "good" });
     expect(legs.signal).toBe("partial");
-    expect(legs.guidance).toBe("Stand Straight");
-    expect(phoneFramingGuidance({ framingCode: "too_close", fullBody: true, straight: true, poseCount: 1 })).toBe("Move Back");
-    expect(phoneFramingGuidance({ framingCode: "too_far", fullBody: false, straight: true, poseCount: 1 })).toBe("Move Closer");
-    expect(phoneFramingGuidance({ framingCode: "move_left", fullBody: false, straight: true, poseCount: 1 })).toBe("Move Left");
-    expect(phoneFramingGuidance({ framingCode: "move_right", fullBody: false, straight: true, poseCount: 1 })).toBe("Move Right");
-    expect(phoneFramingGuidance({ framingCode: "keep_feet", fullBody: false, straight: true, poseCount: 1 })).toBe("Stand Straight");
+    expect(legs.standing).toBe(false);
+    expect(legs.guidance).toBe("Keep your knees visible");
+    expect(phoneFramingGuidance({ framingCode: "too_close", fullBody: true, straight: true, poseCount: 1 })).toBe("Move farther");
+    expect(phoneFramingGuidance({ framingCode: "too_far", fullBody: false, straight: true, poseCount: 1 })).toBe("Move closer");
+    expect(phoneFramingGuidance({ framingCode: "move_left", fullBody: false, straight: true, poseCount: 1 })).toBe("Center your body");
+    expect(phoneFramingGuidance({ framingCode: "move_right", fullBody: false, straight: true, poseCount: 1 })).toBe("Center your body");
+    expect(phoneFramingGuidance({ framingCode: "keep_feet", fullBody: false, straight: true, poseCount: 1 })).toBe("Keep your knees visible");
     expect(phoneFramingGuidance({ framingCode: "good", fullBody: true, straight: true, poseCount: 2 })).toBeNull();
+  });
+
+  it("matches the on-screen line to the body measurement", () => {
+    const centered = phoneBodyReading({ poseCount: 1, landmarks: standing(), framingCode: null });
+    expect(centered.signal).toBe("full");
+    expect(centered.guidance).toBe("Full body detected");
+
+    const far = standing((points) => {
+      points[0] = { x: 0.5, y: 0.46, visibility: 0.95 };
+      points[11] = { x: 0.48, y: 0.48, visibility: 0.95 };
+      points[12] = { x: 0.52, y: 0.48, visibility: 0.95 };
+      points[23] = { x: 0.49, y: 0.52, visibility: 0.95 };
+      points[24] = { x: 0.51, y: 0.52, visibility: 0.95 };
+      points[25] = { x: 0.49, y: 0.56, visibility: 0.95 };
+      points[26] = { x: 0.51, y: 0.56, visibility: 0.95 };
+    });
+    expect(phoneBodyReading({ poseCount: 1, landmarks: far, framingCode: "good" }).guidance).toBe("Move closer");
+
+    const close = standing((points) => {
+      points[0] = { x: 0.5, y: 0.02, visibility: 0.95 };
+      points[11] = { x: 0.3, y: 0.12, visibility: 0.95 };
+      points[12] = { x: 0.7, y: 0.12, visibility: 0.95 };
+      points[23] = { x: 0.34, y: 0.62, visibility: 0.95 };
+      points[24] = { x: 0.66, y: 0.62, visibility: 0.95 };
+      points[25] = { x: 0.36, y: 0.97, visibility: 0.95 };
+      points[26] = { x: 0.64, y: 0.97, visibility: 0.95 };
+    });
+    expect(phoneBodyReading({ poseCount: 1, landmarks: close, framingCode: "good" }).guidance).toBe("Move farther");
+
+    const off = standing((points) => {
+      for (const point of points) {
+        if ((point.visibility ?? 0) > 0) point.x -= 0.22;
+      }
+    });
+    expect(phoneBodyReading({ poseCount: 1, landmarks: off, framingCode: null }).guidance).toBe("Center your body");
+
+    const dim = standing((points) => {
+      for (const point of points) point.visibility = point.visibility ? 0.2 : 0;
+    });
+    expect(phoneBodyReading({ poseCount: 1, landmarks: dim, framingCode: null }).guidance).toBe("Improve lighting");
+    expect(phoneBodyReading({ poseCount: 2, landmarks: standing(), framingCode: "good" }).signal).toBe("partial");
+  });
+
+  it("waits for the baseline after the 2 second hold and does not treat that wait as a reset", () => {
+    let state = createPhoneCalibration();
+    state = step(state, full(0));
+    state = step(state, { ...full(2000), baselineReady: false });
+    expect(state.status).toBe("Calibrating");
+    expect(state.phase).toBe("calibrating");
+    expect(state.machine).toBe("COLLECTING_BASELINE");
+    expect(state.holdStartedAt).toBe(0);
+    state = step(state, { ...full(2300), baselineReady: true });
+    expect(state.status).toBe("Ready");
+    expect(state.machine).toBe("CALIBRATED");
+    expect(state.guidance).toBe("Full body detected");
   });
 
   it("shows the sideways line only when fullscreen or orientation lock is missing or fails", async () => {

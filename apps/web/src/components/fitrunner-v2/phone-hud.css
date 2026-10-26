@@ -405,28 +405,28 @@ html:-webkit-full-screen .phone-play,
 
 .phone-camera-park {
   position: absolute;
-  top: max(10px, env(safe-area-inset-top, 0px));
-  right: max(10px, env(safe-area-inset-right, 0px));
+  top: 0;
+  right: 0;
   left: auto;
-  /* Above the canvas and the HUD. A covered, opacity 0, or display:none video stops frames on Samsung Internet. */
+  /* Above the WebGL canvas. Opacity 0, display none, or a covered video stops frames on Samsung Internet. */
   z-index: 24;
   display: block;
-  width: 112px;
-  height: 96px;
-  min-width: 112px;
-  min-height: 96px;
+  width: 6px;
+  height: 4px;
+  min-width: 6px;
+  min-height: 4px;
   overflow: hidden;
   opacity: 1;
   visibility: visible;
   pointer-events: none;
-  background: #10141c;
 }
 
 .phone-camera-park .phone-cal-flip {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  width: 6px;
+  height: 4px;
+  transform: none;
 }
 
 .phone-camera-park video {
@@ -435,22 +435,19 @@ html:-webkit-full-screen .phone-play,
   left: 0;
   z-index: 2;
   display: block;
-  width: 112px;
-  height: 96px;
-  max-width: 112px;
-  max-height: 96px;
-  opacity: 1;
+  width: 6px;
+  height: 4px;
+  min-width: 6px;
+  min-height: 4px;
+  max-width: 6px;
+  max-height: 4px;
+  opacity: 0.02;
   visibility: visible;
   object-fit: cover;
 }
 
 .phone-camera-park canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 1;
-  width: 112px;
-  height: 96px;
+  display: none;
 }
 
 .phone-cal-stage {
@@ -473,6 +470,11 @@ html:-webkit-full-screen .phone-play,
   height: 100%;
   object-fit: contain;
   background: #000;
+}
+
+/* The flip box is the camera's own aspect. Fill it. Landmark fractions map onto that bitmap, then the box mirrors. */
+.phone-cal-stage .phone-cal-media {
+  object-fit: fill;
 }
 
 .phone-calib-guide {

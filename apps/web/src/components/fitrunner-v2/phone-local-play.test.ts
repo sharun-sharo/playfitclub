@@ -17,6 +17,8 @@ import {
   phoneGestureCandidate,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
+  phoneMotionLogText,
+  phonePreviewFrame,
   phonePixelRatio,
   phonePlayCalories,
   phoneSetupLine,
@@ -189,6 +191,14 @@ describe("phone local gestures", () => {
       reject: "none",
     });
     expect(lines).toEqual([
+      "camera —",
+      "confidence —",
+      "stability —",
+      "calibration —",
+      "baseline —",
+      "hip —",
+      "shoulder —",
+      "knee —",
       "buffer 1688x860",
       "game 30.0 fps",
       "pose 15.0 fps",
@@ -198,6 +208,26 @@ describe("phone local gestures", () => {
       "confirm to call 18 ms",
       "reject none",
     ]);
+    const log = phoneMotionLogText([
+      {
+        t: 10,
+        camera: "1280x720",
+        confidence: 0.8,
+        calibration: "CALIBRATED",
+        candidate: "jump",
+        confirmed: "jump",
+        reject: "none",
+        hip: 0.01,
+        shoulder: 0.02,
+        knee: 170,
+        gameFps: 30,
+        poseFps: 15,
+        inferenceMs: 12,
+        confirmToCallMs: 18,
+      },
+    ]);
+    expect(log).toContain("\"confirmed\":\"jump\"");
+    expect(log).not.toMatch(/token|email|name|frameData|dataUrl/i);
     expect(phoneGestureCandidate({ jumpPhase: "CANDIDATE", squatPhase: "NEUTRAL" })).toBe("jump");
     expect(phoneGestureCandidate({ leftPhase: "ARM_RISING", rightPhase: "ARM_RISING" })).toBe("left+right");
     expect(phoneGestureCandidate(null)).toBe("none");
@@ -207,25 +237,34 @@ describe("phone local gestures", () => {
     expect(confirmToGameMs(50, 40)).toBeNull();
   });
 
-  it("keeps a real camera box so a long frame can still dispatch jump, squat, left, and right", () => {
+  it("keeps a few painted pixels so a long frame can still dispatch jump, squat, left, and right", () => {
     expect(phoneLiveCameraKeepsFrames(PHONE_LIVE_CAMERA)).toBe(true);
-    expect(phoneLiveCameraKeepsFrames({ width: 112, height: 96 })).toBe(true);
-    expect(phoneLiveCameraKeepsFrames({ width: 1, height: 1 })).toBe(false);
-    expect(PHONE_LIVE_CAMERA.width).toBeGreaterThanOrEqual(96);
-    expect(PHONE_LIVE_CAMERA.width).toBeLessThanOrEqual(120);
-    expect(PHONE_LIVE_CAMERA.height).toBeGreaterThanOrEqual(96);
-    expect(PHONE_LIVE_CAMERA.height).toBeLessThanOrEqual(120);
+    expect(phoneLiveCameraKeepsFrames({ width: 6, height: 4, opacity: 0.02 })).toBe(true);
+    expect(phoneLiveCameraKeepsFrames({ width: 1, height: 1 })).toBe(true);
+    expect(phoneLiveCameraKeepsFrames({ width: 0, height: 4 })).toBe(false);
+    expect(phoneLiveCameraKeepsFrames({ width: 112, height: 96, opacity: 0 })).toBe(false);
+    expect(phoneLiveCameraKeepsFrames({ width: 112, height: 96, hidden: true })).toBe(false);
+    expect(PHONE_LIVE_CAMERA.width).toBeGreaterThan(0);
+    expect(PHONE_LIVE_CAMERA.width).toBeLessThanOrEqual(8);
+    expect(PHONE_LIVE_CAMERA.height).toBeGreaterThan(0);
+    expect(PHONE_LIVE_CAMERA.height).toBeLessThanOrEqual(8);
+    expect(PHONE_LIVE_CAMERA.opacity).toBeGreaterThanOrEqual(0.02);
     const css = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "phone-hud.css"), "utf8");
     const park = css.slice(css.indexOf(".phone-camera-park {"), css.indexOf(".phone-cal-stage"));
+    const videoRule = css.slice(css.indexOf(".phone-camera-park video {"), css.indexOf(".phone-camera-park canvas"));
     expect(park).toContain(`width: ${PHONE_LIVE_CAMERA.width}px`);
     expect(park).toContain(`height: ${PHONE_LIVE_CAMERA.height}px`);
-    expect(park).toContain("opacity: 1");
-    expect(park).toContain("visibility: visible");
-    expect(park).not.toContain("width: 1px");
-    expect(park).not.toContain("opacity: 0");
-    expect(park).not.toContain("display: none");
-    expect(park).not.toContain("visibility: hidden");
+    expect(videoRule).toContain(`opacity: ${PHONE_LIVE_CAMERA.opacity}`);
+    expect(videoRule).toContain("visibility: visible");
+    expect(videoRule).not.toContain("display: none");
+    expect(videoRule).not.toContain("visibility: hidden");
+    expect(videoRule).not.toContain("opacity: 0;");
     expect(park).toContain("z-index: 24");
+    expect(css.slice(css.indexOf(".phone-camera-park canvas"), css.indexOf(".phone-cal-stage"))).toContain("display: none");
+    const preview = phonePreviewFrame(1000, 500, 1920, 1080);
+    expect(preview.height).toBeCloseTo(500);
+    expect(preview.width).toBeLessThan(1000);
+    expect(preview.x).toBeGreaterThan(0);
     const canvasRule = css.slice(css.indexOf(".phone-play > canvas"), css.indexOf(".phone-play > canvas") + 280);
     expect(canvasRule).toContain("position: fixed");
     expect(canvasRule).toContain("z-index: 1");
