@@ -14,7 +14,7 @@ import { coastModule, createTropical, type SegmentDressing } from "@/components/
 import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
-import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices } from "@/components/fitrunner-v2/runner-clock";
+import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices, runnerUsesCatchUp } from "@/components/fitrunner-v2/runner-clock";
 import { applyPhoneTextureClarity } from "@/components/fitrunner-v2/phone-clarity";
 import {
   createPhoneDrawHysteresis,
@@ -1872,7 +1872,13 @@ export async function startFitRunner(
       hud.onFrame?.(now);
       resize();
       if (courseMode !== "live") {
-        presentHeld(Math.min(0.05, clock.getDelta()));
+        if (!phoneDraw) {
+          presentHeld(Math.min(0.05, clock.getDelta()));
+          return;
+        }
+        const rawDelta = clock.getDelta();
+        const heldDt = runnerFrameSlices(rawDelta, true).reduce((total, step) => total + step, 0);
+        presentHeld(heldDt);
         return;
       }
       if (demoOver) {
@@ -1890,7 +1896,7 @@ export async function startFitRunner(
       unstickClip();
       const rawDelta = clock.getDelta();
       if (television && poseBuffer) poseFrameDebtMs = noteLongFrame(poseFrameDebtMs, rawDelta * 1000);
-      const slices = runnerFrameSlices(rawDelta, television);
+      const slices = runnerFrameSlices(rawDelta, runnerUsesCatchUp({ television, phone: phoneDraw }));
       const steps = slices.length > 0 ? slices : [0];
       inTick = true;
       try {

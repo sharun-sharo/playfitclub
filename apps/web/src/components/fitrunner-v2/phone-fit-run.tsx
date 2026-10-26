@@ -40,6 +40,7 @@ import {
 } from "@/components/fitrunner-v2/phone-local-play";
 import { PlayScoreCard } from "@/components/fitrunner-v2/play-score-card";
 import type { FitRunnerHandle } from "@/components/fitrunner-v2/create-fitrunner";
+import { notePhoneFrameGap, phoneFrameDiagLines, type PhoneFrameDiag } from "@/components/fitrunner-v2/runner-clock";
 import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
 import { cameraActiveStep } from "@/lib/fitrunner-v2/play-calories";
 import { whatsappUrl } from "@/lib/whatsapp";
@@ -153,6 +154,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const hitsRef = useRef(0);
   const motionDiagRef = useRef(false);
   const frameTimesRef = useRef<number[]>([]);
+  const frameDiagRef = useRef<PhoneFrameDiag>({ frameMs: null, longFrame: false });
   const diagRef = useRef<PhoneMotionDiag>(emptyDiag());
   const weightRef = useRef<number | null | undefined>(undefined);
   const cameraActiveRef = useRef(0);
@@ -188,7 +190,10 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const [calorieText, setCalorieText] = useState("—");
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
   const [motionDiag, setMotionDiag] = useState(false);
-  const [diagLines, setDiagLines] = useState<string[]>(() => phoneMotionDiagLines(emptyDiag()));
+  const [diagLines, setDiagLines] = useState<string[]>(() => [
+    ...phoneMotionDiagLines(emptyDiag()),
+    ...phoneFrameDiagLines({ frameMs: null, longFrame: false }),
+  ]);
   weightRef.current = weightKg;
 
   function cameraStreamLive() {
@@ -277,6 +282,14 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             onFrame: (now) => {
               if (!motionDiagRef.current) return;
               const samples = frameTimesRef.current;
+              const previous = samples.length > 0 ? (samples[samples.length - 1] ?? 0) : 0;
+              const pace = notePhoneFrameGap(previous, now);
+              if (pace.frameMs !== null) {
+                frameDiagRef.current = {
+                  frameMs: pace.frameMs,
+                  longFrame: frameDiagRef.current.longFrame || pace.longFrame,
+                };
+              }
               samples.push(now);
               const cutoff = now - 1000;
               while (samples.length > 0 && (samples[0] ?? 0) < cutoff) samples.shift();
@@ -566,7 +579,9 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     const timer = window.setInterval(() => {
       const canvas = canvasRef.current;
       diagRef.current.buffer = canvas && canvas.width > 0 && canvas.height > 0 ? `${canvas.width}x${canvas.height}` : null;
-      setDiagLines(phoneMotionDiagLines(diagRef.current));
+      const frameDiag = frameDiagRef.current;
+      setDiagLines([...phoneMotionDiagLines(diagRef.current), ...phoneFrameDiagLines(frameDiag)]);
+      if (frameDiag.longFrame) frameDiagRef.current = { frameMs: frameDiag.frameMs, longFrame: false };
     }, 250);
     return () => window.clearInterval(timer);
   }, [motionDiag]);

@@ -19,9 +19,19 @@ export type RunSpeed = {
 };
 
 /**
+ * The phone shares this flag with television for the clock only.
+ * A MediaPipe hitch on the phone must be spent, or the run freezes.
+ * The phone drawing buffer stays on its own preset path.
+ */
+export function runnerUsesCatchUp(input: { television: boolean; phone: boolean }) {
+  return input.television || input.phone;
+}
+
+/**
  * Laptop: one step, clamped at 50ms, which is the loop that already shipped.
- * Television: the real gap is spent as 50ms slices, up to 250ms.
+ * Television and the phone: the real gap is spent as 50ms slices, up to 250ms.
  * At 60fps both return one ~16.7ms step, so the distance matches.
+ * A stall longer than 250ms is still cut, so one hitch cannot teleport the runner.
  */
 export function runnerFrameSlices(rawDeltaSeconds: number, television: boolean): number[] {
   const delta = Number.isFinite(rawDeltaSeconds) && rawDeltaSeconds > 0 ? rawDeltaSeconds : 0;
@@ -60,6 +70,27 @@ export function forwardTravel(frameDeltas: number[], television: boolean, speed:
     }
   }
   return distance;
+}
+
+export type PhoneFrameDiag = {
+  frameMs: number | null;
+  longFrame: boolean;
+};
+
+/** Gap since the previous displayed frame. The first sample has no gap yet. */
+export function notePhoneFrameGap(previousMs: number, nowMs: number): PhoneFrameDiag {
+  if (!(previousMs > 0) || !Number.isFinite(previousMs) || !Number.isFinite(nowMs)) {
+    return { frameMs: null, longFrame: false };
+  }
+  const frameMs = nowMs - previousMs;
+  if (!(frameMs >= 0)) return { frameMs: null, longFrame: false };
+  return { frameMs, longFrame: frameMs >= LONG_FRAME_MS };
+}
+
+/** Lines for the existing ?motiondiag=1 corner. No identity, token, or session text. */
+export function phoneFrameDiagLines(input: PhoneFrameDiag) {
+  const frame = input.frameMs === null || !Number.isFinite(input.frameMs) ? "—" : `${input.frameMs.toFixed(1)} ms`;
+  return [`frame ${frame}`, input.longFrame ? "long frame yes" : "long frame no"];
 }
 
 /** Add this frame's wall time when it was slow. Short frames leave the debt unchanged. */
