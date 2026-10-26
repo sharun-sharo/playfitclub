@@ -17,7 +17,9 @@ import {
   finishCameraFrame,
   framePresentationMs,
   offerCameraFrame,
+  takeAnimationSample,
   takeVideoFrame,
+  videoFrameKeepsClock,
   VIDEO_FRAME_FALLBACK_MS,
   type VideoFrameCursor,
 } from "./frame-gate";
@@ -266,6 +268,23 @@ describe("camera frame gate", () => {
 
     const lean = play(stuck, (index, time) => pose({ time, shoulderLean: index >= 2 ? -0.045 : 0 }));
     expect(lean.map((event) => event.movementType)).toEqual(["lean_left"]);
+  });
+
+  it("classifies on the animation clock after a long video frame is ignored", () => {
+    expect(videoFrameKeepsClock("ignore")).toBe(false);
+    expect(videoFrameKeepsClock("run")).toBe(true);
+    expect(videoFrameKeepsClock("queue")).toBe(true);
+    expect(
+      cameraSampleSource({
+        hasVideoFrameCallback: true,
+        videoFrames: 5,
+        elapsedMs: 4_000,
+        sinceVideoFrameMs: videoFrameKeepsClock("ignore") ? 16 : VIDEO_FRAME_FALLBACK_MS,
+      }),
+    ).toBe("animation");
+    expect(takeAnimationSample({ now: 1_000, lastSampleAt: 990 })).toBe(false);
+    expect(takeAnimationSample({ now: 1_012, lastSampleAt: 1_000 })).toBe(true);
+    expect(takeAnimationSample({ now: Number.NaN, lastSampleAt: 1_000 })).toBe(false);
   });
 
   it("samples the animation clock when the phone video-frame callback does not arrive", () => {

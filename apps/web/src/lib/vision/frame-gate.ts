@@ -138,6 +138,28 @@ export function takeVideoFrame(
   };
 }
 
+/**
+ * A video callback that was not run or queued is not a fresh camera frame.
+ * Stamping it as fresh keeps the animation clock off while every late frame is
+ * ignored, so a long hitch never classifies and jump, squat, and leans stop.
+ */
+export function videoFrameKeepsClock(action: "run" | "queue" | "ignore") {
+  return action === "run" || action === "queue";
+}
+
+/** Minimum gap between animation-clock samples. Stops a 60Hz loop from stacking inference. */
+export const ANIMATION_SAMPLE_GAP_MS = 12;
+
+/**
+ * The caller already chose the animation clock because video frames are missing or quiet.
+ * A camera whose currentTime stays put still classifies. iOS can present a new picture
+ * without moving currentTime, and that picture is what reaches jump, squat, and lean.
+ */
+export function takeAnimationSample(input: { now: number; lastSampleAt: number }) {
+  if (!Number.isFinite(input.now) || !Number.isFinite(input.lastSampleAt)) return false;
+  return input.now - input.lastSampleAt >= ANIMATION_SAMPLE_GAP_MS;
+}
+
 /** The animation clock samples only while the video-frame callback is absent or quiet. */
 export function cameraSampleSource(input: {
   hasVideoFrameCallback: boolean;

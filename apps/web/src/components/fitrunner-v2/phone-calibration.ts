@@ -101,6 +101,56 @@ export interface PhoneStageCaps {
   orientationLock?: (orientation: "landscape") => Promise<void>;
 }
 
+export type PhoneFullscreenOptions = { navigationUI?: "hide" | "show" | "auto" };
+
+export type PhoneFullscreenTarget = {
+  requestFullscreen?: (options?: PhoneFullscreenOptions) => Promise<void> | void;
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+/** Entering or leaving fullscreen stays on this screen. It does not return to Play. */
+export function phoneFullscreenKeepsPlay(started: boolean) {
+  return started;
+}
+
+export function canRequestPhoneFullscreen(node: PhoneFullscreenTarget | null | undefined) {
+  if (!node) return false;
+  return typeof node.requestFullscreen === "function" || typeof node.webkitRequestFullscreen === "function";
+}
+
+function callPhoneFullscreen(node: PhoneFullscreenTarget): Promise<void> | null {
+  if (typeof node.requestFullscreen === "function") {
+    try {
+      return Promise.resolve(node.requestFullscreen({ navigationUI: "hide" }));
+    } catch {
+      try {
+        return Promise.resolve(node.requestFullscreen());
+      } catch {
+        /* This node rejected the standard call. Try the prefixed one, then another node. */
+      }
+    }
+  }
+  if (typeof node.webkitRequestFullscreen === "function") {
+    try {
+      return Promise.resolve(node.webkitRequestFullscreen());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fullscreen starts in this turn. The game root is preferred so the canvas covers the screen.
+ * navigationUI hide is passed when that options object is accepted. A node that cannot go
+ * fullscreen falls through to the document element. The returned promise may still reject.
+ */
+export function requestPhoneFullscreen(root: PhoneFullscreenTarget | null | undefined, documentElement?: PhoneFullscreenTarget | null): Promise<void> {
+  const started = (root ? callPhoneFullscreen(root) : null) ?? (documentElement ? callPhoneFullscreen(documentElement) : null);
+  if (!started) return Promise.reject(new Error("fullscreen unavailable"));
+  return started;
+}
+
 export function createPhoneCalibration(): PhoneCalibState {
   return {
     phase: "finding",
@@ -524,8 +574,12 @@ export async function requestPhoneStage(caps: PhoneStageCaps): Promise<{ fullscr
   return { fullscreen, orientationLocked, note };
 }
 
-export function phoneStageCaps(root: { requestFullscreen?: () => Promise<void> } | null | undefined): PhoneStageCaps {
-  const fullscreen = root && typeof root.requestFullscreen === "function" ? () => root.requestFullscreen!() : undefined;
+export function phoneStageCaps(root: PhoneFullscreenTarget | null | undefined): PhoneStageCaps {
+  const documentElement = typeof document === "undefined" ? null : (document.documentElement as PhoneFullscreenTarget);
+  const fullscreen =
+    canRequestPhoneFullscreen(root) || canRequestPhoneFullscreen(documentElement)
+      ? () => requestPhoneFullscreen(root, documentElement)
+      : undefined;
   const orientation =
     typeof screen === "undefined" ? undefined : (screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> });
   const orientationLock = orientation && typeof orientation.lock === "function" ? (mode: "landscape") => orientation.lock!(mode) : undefined;

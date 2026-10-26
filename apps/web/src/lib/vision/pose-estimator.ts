@@ -27,7 +27,9 @@ import {
   emptyVideoCursor,
   finishCameraFrame,
   offerCameraFrame,
+  takeAnimationSample,
   takeVideoFrame,
+  videoFrameKeepsClock,
   type CameraFrameGate,
   type PhoneVideoMetadata,
   type VideoFrameCursor,
@@ -624,6 +626,7 @@ export class PoseEstimator {
     const decision = offerCameraFrame(this.frameGate, frameAt, performance.now(), COMMAND_STALE_MS);
     this.frameGate = decision.gate;
     if (decision.action === "run") this.drainInference();
+    return decision.action;
   }
 
   private drainInference() {
@@ -665,11 +668,12 @@ export class PoseEstimator {
       this.videoCursor = decision.cursor;
       if (!decision.accept) return;
       this.videoFramesAccepted += 1;
-      this.lastVideoFrameAt = arrivedAt;
       this.cameraClock = true;
       this.cameraFrames += 1;
       this.sampleRates(arrivedAt, null);
-      this.acceptFrame(decision.frameAt);
+      // A frame that is too late to run must not refresh this clock. The animation
+      // fallback then classifies the latest picture and calls the local gesture.
+      if (videoFrameKeepsClock(this.acceptFrame(decision.frameAt))) this.lastVideoFrameAt = arrivedAt;
     };
     const animationDue = () => {
       const now = performance.now();
@@ -683,10 +687,10 @@ export class PoseEstimator {
     const sampleAnimation = () => {
       if (!animationDue()) return;
       const now = performance.now();
-      if (now - this.lastAnimationSample < 12) return;
-      const mediaTime = video.currentTime;
-      if (Number.isFinite(this.lastMediaTime) && mediaTime === this.lastMediaTime && mediaTime > 0) return;
-      this.lastMediaTime = mediaTime;
+      // currentTime may stay put on a live camera. This path is already the fallback,
+      // so a stuck media clock must not skip the sample that dispatches the gesture.
+      if (!takeAnimationSample({ now, lastSampleAt: this.lastAnimationSample })) return;
+      this.lastMediaTime = video.currentTime;
       this.lastAnimationSample = now;
       this.cameraClock = true;
       this.cameraFrames += 1;

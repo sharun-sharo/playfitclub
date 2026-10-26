@@ -4,6 +4,7 @@ import {
   createPhoneCalibration,
   phoneBodyReading,
   phoneFramingGuidance,
+  phoneFullscreenKeepsPlay,
   phoneFullBody,
   PHONE_ANKLES_NOT_REQUIRED,
   PHONE_CALIB_CONFIG,
@@ -15,6 +16,7 @@ import {
   PHONE_VISIBILITY_FLOOR,
   readPhonePlayStarted,
   rememberPhonePlayStarted,
+  requestPhoneFullscreen,
   requestPhoneStage,
   startPhonePlay,
   stepPhoneCalibration,
@@ -296,6 +298,57 @@ describe("phone calibration", () => {
     await Promise.resolve();
     expect(events).toContain("lock");
     expect(events).toContain("stage");
+  });
+
+  it("requests fullscreen on the game root in the play gesture and hides browser navigation", async () => {
+    const calls: string[] = [];
+    await requestPhoneFullscreen(
+      {
+        requestFullscreen: (options) => {
+          calls.push(options?.navigationUI ?? "plain");
+          return Promise.resolve();
+        },
+      },
+      {
+        requestFullscreen: () => {
+          calls.push("document");
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(calls).toEqual(["hide"]);
+
+    await requestPhoneFullscreen({
+      webkitRequestFullscreen: () => {
+        calls.push("webkit");
+      },
+    });
+    expect(calls).toEqual(["hide", "webkit"]);
+
+    await requestPhoneFullscreen(null, {
+      requestFullscreen: (options) => {
+        calls.push(`doc:${options?.navigationUI ?? "plain"}`);
+        return Promise.resolve();
+      },
+    });
+    expect(calls).toEqual(["hide", "webkit", "doc:hide"]);
+  });
+
+  it("retries fullscreen without navigation options when the browser rejects that object", async () => {
+    const calls: string[] = [];
+    await requestPhoneFullscreen({
+      requestFullscreen: (options) => {
+        calls.push(options?.navigationUI ?? "plain");
+        if (options) throw new Error("options unsupported");
+        return Promise.resolve();
+      },
+    });
+    expect(calls).toEqual(["hide", "plain"]);
+  });
+
+  it("keeps a started phone session when fullscreen changes", () => {
+    expect(phoneFullscreenKeepsPlay(true)).toBe(true);
+    expect(phoneFullscreenKeepsPlay(false)).toBe(false);
   });
 
   it("remembers a started phone session for the next read", () => {

@@ -1,12 +1,33 @@
 /* Phone play HUD only. The course canvas stays full screen. Pieces sit in the corners. */
 
 .phone-play {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
   max-width: 100%;
+  overflow: hidden;
+}
+
+html:has(.phone-play),
+body:has(.phone-play) {
+  height: 100%;
+  overflow: hidden;
+}
+
+html:fullscreen .phone-play,
+html:-webkit-full-screen .phone-play,
+.phone-play:fullscreen,
+.phone-play:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  height: 100lvh;
 }
 
 .phone-play > canvas:not([hidden]) {
   position: absolute;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
 }
@@ -360,10 +381,13 @@
 
 .phone-camera-park {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 320px;
+  height: 180px;
   overflow: hidden;
-  opacity: 0;
+  opacity: 1;
   pointer-events: none;
 }
 

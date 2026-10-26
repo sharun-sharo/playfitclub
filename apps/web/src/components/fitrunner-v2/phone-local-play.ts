@@ -57,6 +57,17 @@ export const PHONE_TEST_CONTROLS_LABEL = "Test controls";
  */
 export const PHONE_PIXEL_RATIO_CAP = 1.5;
 
+/**
+ * Camera element once the course is on screen. It sits behind the game canvas.
+ * A 1×1, fully transparent box stopped the phone from presenting new frames,
+ * so the pose stayed at the ready stance and jump, squat, left, and right never moved.
+ */
+export const PHONE_LIVE_CAMERA = { width: 320, height: 180 } as const;
+
+export function phoneLiveCameraKeepsFrames(box: { width: number; height: number }) {
+  return box.width >= 160 && box.height >= 120;
+}
+
 export type PhoneBodyPhase = "looking" | "detected" | "ready";
 
 export const PHONE_BODY_LABEL: Record<PhoneBodyPhase, string> = {

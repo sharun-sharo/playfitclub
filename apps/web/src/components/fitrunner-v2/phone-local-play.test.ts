@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { DEFAULT_THRESHOLDS } from "@fitplay/game";
 import { describe, expect, it } from "vitest";
 import { fitRunnerPixelRatio } from "./tv-graphics";
@@ -21,6 +24,8 @@ import {
   phonePlayQrPayload,
   PHONE_LAPTOP_QR_LINE,
   PHONE_LAPTOP_QR_NAME,
+  PHONE_LIVE_CAMERA,
+  phoneLiveCameraKeepsFrames,
   PHONE_MIRROR_GUIDE,
   PHONE_MIRROR_NOTE,
   PHONE_PLAY_PATH,
@@ -194,5 +199,28 @@ describe("phone local gestures", () => {
     expect(renderLoopFps([0, 500, 1000])).toBe(2);
     expect(renderLoopFps([10])).toBeNull();
     expect(confirmToGameMs(50, 40)).toBeNull();
+  });
+
+  it("keeps a real camera box so a long frame can still dispatch jump, squat, left, and right", () => {
+    expect(phoneLiveCameraKeepsFrames(PHONE_LIVE_CAMERA)).toBe(true);
+    expect(phoneLiveCameraKeepsFrames({ width: 1, height: 1 })).toBe(false);
+    const css = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "phone-hud.css"), "utf8");
+    const park = css.slice(css.indexOf(".phone-camera-park"), css.indexOf(".phone-camera-park") + 320);
+    expect(park).toContain("width: 320px");
+    expect(park).toContain("height: 180px");
+    expect(park).toContain("opacity: 1");
+    expect(park).not.toContain("width: 1px");
+    expect(park).not.toContain("opacity: 0");
+    const calls: string[] = [];
+    const game = {
+      jump: () => calls.push("jump"),
+      roll: () => calls.push("roll"),
+      stepLane: (direction: -1 | 1) => calls.push(`stepLane:${direction}`),
+    };
+    expect(dispatchLocalGesture("jump", game)).toBe(true);
+    expect(dispatchLocalGesture("squat", game)).toBe(true);
+    expect(dispatchLocalGesture("lean_left", game)).toBe(true);
+    expect(dispatchLocalGesture("lean_right", game)).toBe(true);
+    expect(calls).toEqual(["jump", "roll", "stepLane:-1", "stepLane:1"]);
   });
 });

@@ -8,6 +8,7 @@ import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import {
   createPhoneCalibration,
   phoneBodyReading,
+  phoneFullscreenKeepsPlay,
   phoneStageCaps,
   readPhonePlayStarted,
   rememberPhonePlayStarted,
@@ -234,6 +235,23 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     return () => {
       window.removeEventListener("resize", apply);
       window.removeEventListener("orientationchange", apply);
+    };
+  }, []);
+
+  useEffect(() => {
+    const mark = () => {
+      if (!phoneFullscreenKeepsPlay(true)) return;
+      const node = rootRef.current;
+      if (!node) return;
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      const active = document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+      node.dataset.phoneFullscreen = active ? "1" : "0";
+    };
+    document.addEventListener("fullscreenchange", mark);
+    document.addEventListener("webkitfullscreenchange", mark);
+    return () => {
+      document.removeEventListener("fullscreenchange", mark);
+      document.removeEventListener("webkitfullscreenchange", mark);
     };
   }, []);
 
