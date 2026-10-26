@@ -16,7 +16,7 @@ test.describe("television browser compatibility", () => {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
 
-    await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Play Free" })).toHaveAttribute("href", "/play/phone");
+    await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Play Now" })).toHaveAttribute("href", "/games");
     await expect(page.getByRole("link", { name: "Play at home", exact: true })).toHaveCount(0);
     await page.goto("/play/fit-run");
     await expect(page.getByRole("heading", { name: "Play on a big screen" })).toBeVisible();

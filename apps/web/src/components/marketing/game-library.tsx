@@ -32,51 +32,55 @@ const games = [
   },
 ] as const;
 
-export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
+export function GameLibrary({ heading = "h3", variant = "site" }: { heading?: "h2" | "h3"; variant?: "home" | "site" }) {
   const Title = heading;
 
   return (
     <Reveal className="fp-library" stagger>
-      {games.map((game) => (
-        <article key={game.title} className="fp-library-card">
-          <div className="fp-library-visual">
-            {game.href ? (
-              <TrackedLink
-                href={game.href}
-                events={[
-                  { name: "play_clicked", params: { surface: "library" } },
-                  { name: "fit_run_selected", params: { surface: "library" } },
-                ]}
-              >
+      {games.map((game) => {
+        const description = variant === "home" && game.title === "Fit Run" ? "A 3D run on your phone. Lean, jump, and squat." : game.description;
+        const action = variant === "home" && game.href ? "Play Demo" : game.action;
+        return (
+          <article key={game.title} className="fp-library-card">
+            <div className="fp-library-visual">
+              {game.href ? (
+                <TrackedLink
+                  href={game.href}
+                  events={[
+                    { name: "play_clicked", params: { surface: "library" } },
+                    { name: "fit_run_selected", params: { surface: "library" } },
+                  ]}
+                >
+                  <img src={game.image} alt={game.alt} width={960} height={890} loading="lazy" decoding="async" />
+                </TrackedLink>
+              ) : (
                 <img src={game.image} alt={game.alt} width={960} height={890} loading="lazy" decoding="async" />
-              </TrackedLink>
-            ) : (
-              <img src={game.image} alt={game.alt} width={960} height={890} loading="lazy" decoding="async" />
-            )}
-            <span className={game.status === "Coming soon" ? "fp-library-soon" : undefined}>{game.status}</span>
-          </div>
-          <div className="fp-library-copy">
-            <Title>{game.title}</Title>
-            <p>{game.description}</p>
-            {game.href ? (
-              <TrackedLink
-                className="fp-btn fp-btn-primary"
-                href={game.href}
-                events={[
-                  { name: "play_clicked", params: { surface: "library" } },
-                  { name: "fit_run_selected", params: { surface: "library" } },
-                ]}
-              >
-                {game.action}
-              </TrackedLink>
-            ) : (
-              <button className="fp-btn fp-btn-ghost" type="button" disabled>
-                Coming soon
-              </button>
-            )}
-          </div>
-        </article>
-      ))}
+              )}
+              <span className={game.status === "Coming soon" ? "fp-library-soon" : undefined}>{game.status}</span>
+            </div>
+            <div className="fp-library-copy">
+              <Title>{game.title}</Title>
+              <p>{description}</p>
+              {game.href ? (
+                <TrackedLink
+                  className="fp-btn fp-btn-primary"
+                  href={game.href}
+                  events={[
+                    { name: "play_clicked", params: { surface: "library" } },
+                    { name: "fit_run_selected", params: { surface: "library" } },
+                  ]}
+                >
+                  {action}
+                </TrackedLink>
+              ) : (
+                <button className="fp-btn fp-btn-ghost" type="button" disabled>
+                  Coming soon
+                </button>
+              )}
+            </div>
+          </article>
+        );
+      })}
     </Reveal>
   );
 }

@@ -210,13 +210,16 @@ export function HeroShowcase() {
     <>
       <div className="fp-hero-copy">
         <h1 id="hero-title">
-          <span className="fp-hero-line">YOUR BODY.</span>
-          <span className="fp-hero-line">YOUR CONTROLLER.</span>
-          <span className="fp-hero-line">YOUR GAME.</span>
+          <span className="fp-hero-line">You Move.</span>
+          <span className="fp-hero-line">The Game Moves.</span>
         </h1>
-        <p className="fp-hero-lead">
-          Turn real movement into an immersive gaming experience. Jump, squat, dodge, and play using your phone camera. Bring the action to the big screen.
-        </p>
+        <p className="fp-hero-lead">No buttons. No controllers. Just your body in action.</p>
+        <div className="fp-hero-story">
+          <p className="fp-hero-sub fp-hero-rise">Turn your workout into an adventure.</p>
+          <p className="fp-hero-body fp-hero-rise">
+            Fit Run plays on your phone in landscape. The camera tracks your body. Mirror the phone to a TV if you want a bigger picture. Fit Fight and Fit Dance are coming soon.
+          </p>
+        </div>
         <div className="fp-actions">
           <span className="fp-hero-cta fp-hero-rise">
             <Link
@@ -228,12 +231,7 @@ export function HeroShowcase() {
               }}
             >
               <Play aria-hidden="true" />
-              Play Free
-            </Link>
-          </span>
-          <span className="fp-hero-cta fp-hero-rise">
-            <Link className="fp-btn fp-btn-ghost" href="/for-gyms">
-              Bring PlayFit to Your Gym
+              Play Demo
             </Link>
           </span>
         </div>

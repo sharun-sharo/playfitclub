@@ -3,11 +3,11 @@ import type { Metadata } from "next";
 /** Production origin. Hard-coded so metadata never falls back to localhost. */
 export const SITE_ORIGIN = "https://playfitclub.com";
 
-export const HOME_TITLE = "PlayFit Club — Your Body. Your Controller. Your Game.";
+export const HOME_TITLE = "PlayFit Club — You Move. The Game Moves.";
 
-/** Uses the live hero and how the game is actually played. */
+/** Uses the live hero signature and how the game is actually played. */
 export const HOME_DESCRIPTION =
-  "Turn real movement into a game with your phone camera. Play Fit Run on your phone, and mirror to a TV when you want a bigger screen.";
+  "No buttons. No controllers. Just your body in action. Fit Run plays on your phone. Mirror that phone to a TV or laptop if you want.";
 
 export const OG_IMAGE = {
   url: "/marketing/hero-run.jpg",
