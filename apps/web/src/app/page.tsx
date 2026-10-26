@@ -61,13 +61,8 @@ export default function HomePage() {
               <p className="fp-kicker">Worlds</p>
               <h2 id="games-title">Pick your world. Make your move.</h2>
               <p className="fp-lead">Fit Run is available now. Fit Fight and Fit Dance are coming soon.</p>
-              <div className="fp-actions">
-                <Link className="fp-btn fp-btn-ghost" href="/games">
-                  See the experience
-                </Link>
-              </div>
             </Reveal>
-            <GameLibrary />
+            <GameLibrary showPhoneLink={false} />
           </div>
         </section>
 
@@ -130,7 +125,7 @@ export default function HomePage() {
                 <h3>Set up</h3>
                 <p>Play on your phone, then mirror that phone screen to the TV or laptop.</p>
                 <p>
-                  On your phone, tap <a className="fp-text-link" href="/play/phone">Play on your phone</a>. The game is on that phone. Smart View, Cast, or Screen Mirroring shows this phone screen on a TV or laptop.
+                  The game is on that phone. Smart View, Cast, or Screen Mirroring shows this phone screen on a TV or laptop.
                 </p>
               </article>
               <article>
@@ -150,11 +145,6 @@ export default function HomePage() {
                 </p>
               </article>
             </Reveal>
-            <div className="fp-actions">
-              <Link className="fp-btn fp-btn-ghost" href="/games">
-                See the experience
-              </Link>
-            </div>
           </div>
         </section>
 

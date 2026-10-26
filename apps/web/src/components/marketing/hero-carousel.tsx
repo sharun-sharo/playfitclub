@@ -1,10 +1,6 @@
 "use client";
 
-import { CirclePlay, Play } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
-import { trackEvent } from "@/components/analytics/track-event";
-import { PHONE_PLAY_PATH } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
@@ -219,30 +215,6 @@ export function HeroShowcase() {
           <p className="fp-hero-body fp-hero-rise">
             Run, fight, dance and play exciting fitness games using your body movements. Play on your phone, then mirror that phone screen to a TV or laptop.
           </p>
-          <p className="fp-hero-note fp-hero-rise">
-            The game is on your phone. Tap <a className="fp-text-link" href={PHONE_PLAY_PATH}>Play on your phone</a>.
-          </p>
-        </div>
-        <div className="fp-actions">
-          <span className="fp-hero-cta fp-hero-rise">
-            <Link
-              className="fp-btn fp-btn-primary"
-              href={PHONE_PLAY_PATH}
-              onClick={() => {
-                trackEvent("play_clicked", { surface: "home" });
-                trackEvent("fit_run_selected", { surface: "home-phone" });
-              }}
-            >
-              <Play aria-hidden="true" />
-              Play on your phone
-            </Link>
-          </span>
-          <span className="fp-hero-cta fp-hero-rise">
-            <a className="fp-btn fp-btn-ghost" href="#experience">
-              <CirclePlay aria-hidden="true" />
-              Watch how it works
-            </a>
-          </span>
         </div>
       </div>
       <figure className="fp-stage">

@@ -29,7 +29,13 @@ const games = [
   },
 ] as const;
 
-export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
+export function GameLibrary({
+  heading = "h3",
+  showPhoneLink = true,
+}: {
+  heading?: "h2" | "h3";
+  showPhoneLink?: boolean;
+}) {
   const Title = heading;
 
   return (
@@ -67,13 +73,13 @@ export function GameLibrary({ heading = "h3" }: { heading?: "h2" | "h3" }) {
                 Play Game
               </TrackedLink>
             ) : null}
-            {game.href ? (
+            {game.href && showPhoneLink ? (
               <p>
                 <a className="fp-text-link" href={PHONE_PLAY_PATH}>
                   Play on your phone
                 </a>
               </p>
-            ) : (
+            ) : game.href ? null : (
               <button className="fp-btn fp-btn-ghost" type="button" disabled>
                 Coming soon
               </button>
