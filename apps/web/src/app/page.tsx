@@ -129,7 +129,13 @@ export default function HomePage() {
                 <p className="fp-step-no">Step 01</p>
                 <h3>Set up</h3>
                 <p>
-                  Open /play on a television or laptop. A join code and QR code appear. On the phone, join that session and place the camera so your full body fits. A phone away from the computer needs an HTTPS page before the camera will start.
+                  On a TV, open <a className="fp-text-link" href="https://playfitclub.com/tv">https://playfitclub.com/tv</a>.
+                </p>
+                <p>
+                  On a laptop, open <a className="fp-text-link" href="https://playfitclub.com">https://playfitclub.com</a>.
+                </p>
+                <p>
+                  A join code and QR code appear. The phone joins by scanning the QR code. Place the camera so your full body fits. A phone away from the computer needs an HTTPS page before the camera will start.
                 </p>
               </article>
               <article>

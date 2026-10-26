@@ -17,7 +17,7 @@ const questions = [
   },
   {
     q: "Can I play using my phone and a TV?",
-    a: "Yes. Open /play on the television or computer. The lobby shows a QR code and a join code. The phone opens the matching /join page. The camera needs a secure page. https://localhost works on the same computer. A phone on another device needs HTTPS, or the browser blocks the camera.",
+    a: "Yes. On a TV, open https://playfitclub.com/tv. On a laptop, open https://playfitclub.com. The lobby shows a QR code and a join code. The phone joins by scanning the QR code. The camera needs a secure page. https://localhost works on the same computer. A phone on another device needs HTTPS, or the browser blocks the camera.",
   },
   {
     q: "What devices are supported?",

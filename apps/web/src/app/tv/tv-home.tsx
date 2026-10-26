@@ -91,6 +91,8 @@ export function TvHome() {
             Run, fight, dance and play exciting fitness games using your body movements. Your phone camera is the controller — your TV or laptop is the playground.
           </p>
           <p className="tv-note">Play at home or through your gym membership.</p>
+          <p className="tv-note">On a TV, open https://playfitclub.com/tv</p>
+          <p className="tv-note">On a laptop, open https://playfitclub.com</p>
           <div className="tv-actions">
             <Link
               className="tv-btn tv-btn-primary"
