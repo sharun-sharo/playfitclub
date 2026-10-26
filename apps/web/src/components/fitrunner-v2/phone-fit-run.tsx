@@ -20,8 +20,10 @@ import {
 import {
   applyLocalPose,
   confirmToGameMs,
+  dispatchLocalGesture,
   phoneAsksForLandscape,
   phoneCameraFailure,
+  phoneGestureCandidate,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
   phonePlayCalories,
@@ -86,11 +88,14 @@ function clearPhoneSession() {
 }
 
 const emptyDiag = (): PhoneMotionDiag => ({
+  buffer: null,
   renderFps: null,
+  poseFps: null,
   inferenceMs: null,
-  confidence: null,
-  lastAction: null,
+  candidate: null,
+  confirmed: null,
   confirmToCallMs: null,
+  reject: null,
 });
 
 export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | null }) {
@@ -321,6 +326,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     estimatorRef.current = estimator;
     estimator.setCoaching(false);
     estimator.setRaceLive(false);
+    estimator.setDiagnosticsLog(motionDiagRef.current);
 
     void (async () => {
       try {
@@ -345,14 +351,18 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             setPoseCount((current) => (current === state.poseCount ? current : state.poseCount));
             if (!motionDiagRef.current) return;
             diagRef.current.inferenceMs = state.rates.lastInferenceMs;
-            diagRef.current.confidence = state.confidence;
+            diagRef.current.poseFps = state.rates.poseFps;
+            diagRef.current.candidate = phoneGestureCandidate(state.diagnostics);
+            diagRef.current.reject = state.diagnostics?.reject || "none";
+            if (state.movement) diagRef.current.confirmed = state.movement;
+            else if (state.diagnostics?.lastGesture) diagRef.current.confirmed = state.diagnostics.lastGesture;
           },
           onMovement: (draft) => {
             const current = handleRef.current;
             if (!current) return;
             const note = (action: string) => {
               if (!motionDiagRef.current) return;
-              diagRef.current.lastAction = action;
+              diagRef.current.confirmed = action;
               diagRef.current.confirmToCallMs = confirmToGameMs(draft.clientTimestamp, performance.now());
             };
             applyLocalPose({
@@ -516,6 +526,8 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   useEffect(() => {
     if (!motionDiag) return;
     const timer = window.setInterval(() => {
+      const canvas = canvasRef.current;
+      diagRef.current.buffer = canvas && canvas.width > 0 && canvas.height > 0 ? `${canvas.width}x${canvas.height}` : null;
       setDiagLines(phoneMotionDiagLines(diagRef.current));
     }, 250);
     return () => window.clearInterval(timer);
@@ -593,10 +605,20 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   function runTest(movementType: (typeof PHONE_TEST_CONTROLS)[number]["movementType"]) {
     const handle = handleRef.current;
     if (!handle || !motionDiagRef.current) return;
-    diagRef.current.lastAction = movementType;
-    if (movementType === "jump") handle.localJump();
-    else if (movementType === "squat") handle.localRoll();
-    else handle.localStep(movementType === "lean_left" ? -1 : 1);
+    dispatchLocalGesture(movementType, {
+      jump: () => {
+        diagRef.current.confirmed = "jump";
+        handle.localJump();
+      },
+      roll: () => {
+        diagRef.current.confirmed = "squat";
+        handle.localRoll();
+      },
+      stepLane: (direction) => {
+        diagRef.current.confirmed = direction < 0 ? "lean_left" : "lean_right";
+        handle.localStep(direction);
+      },
+    });
   }
 
   const cameraLarge = started && calib.phase !== "running" && calib.phase !== "warning";

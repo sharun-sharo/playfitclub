@@ -15,7 +15,15 @@ import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, relea
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
 import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices } from "@/components/fitrunner-v2/runner-clock";
-import { phonePixelRatio } from "@/components/fitrunner-v2/phone-local-play";
+import { applyPhoneTextureClarity } from "@/components/fitrunner-v2/phone-clarity";
+import {
+  createPhoneDrawHysteresis,
+  phoneDrawingPixelRatio,
+  selectPhoneDrawPreset,
+  stepPhoneDrawHysteresis,
+  type PhoneDrawHysteresis,
+  type PhoneDrawPreset,
+} from "@/components/fitrunner-v2/phone-draw";
 import { fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -319,6 +327,21 @@ async function loadRunner() {
   }
 }
 
+function readPhoneDeviceHints() {
+  if (typeof window === "undefined") {
+    return { screenWidth: 0, screenHeight: 0, deviceMemoryGb: null, hardwareConcurrency: null };
+  }
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const memory = typeof nav.deviceMemory === "number" ? nav.deviceMemory : null;
+  const cores = typeof navigator.hardwareConcurrency === "number" ? navigator.hardwareConcurrency : null;
+  return {
+    screenWidth: window.screen?.width || window.innerWidth || 0,
+    screenHeight: window.screen?.height || window.innerHeight || 0,
+    deviceMemoryGb: memory,
+    hardwareConcurrency: cores,
+  };
+}
+
 export async function startFitRunner(
   canvas: HTMLCanvasElement,
   hud: FitRunnerHud,
@@ -342,9 +365,20 @@ export async function startFitRunner(
   if (television) tuning.quality = fitRunnerQuality(true);
   const sceneQuality: GraphicsQuality = phoneDraw ? "low" : tuning.quality;
   let activeQuality = sceneQuality;
+  const phoneHints = phoneDraw ? readPhoneDeviceHints() : null;
+  let phonePreset: PhoneDrawPreset = phoneHints ? selectPhoneDrawPreset(phoneHints) : "balanced";
+  let phoneDrawState: PhoneDrawHysteresis = createPhoneDrawHysteresis(phonePreset);
+  let phoneFrameAt = 0;
+  let phoneWarmup = 0;
   function drawingPixelRatio() {
     const ratio = window.devicePixelRatio || 1;
-    return phoneDraw ? phonePixelRatio(ratio) : fitRunnerPixelRatio(ratio, television);
+    if (!phoneDraw) return fitRunnerPixelRatio(ratio, television);
+    return phoneDrawingPixelRatio({
+      devicePixelRatio: ratio,
+      cssWidth: canvas.clientWidth || window.innerWidth || 0,
+      cssHeight: canvas.clientHeight || window.innerHeight || 0,
+      preset: phonePreset,
+    });
   }
   const gl = canvas.getContext("webgl2", {
     alpha: false,
@@ -379,6 +413,7 @@ export async function startFitRunner(
   if (phoneDraw) {
     canvas.dataset.draw = "phone";
     canvas.dataset.shadows = "off";
+    canvas.dataset.drawPreset = phonePreset;
   }
   renderer.setClearColor("#8ec8ea");
 
@@ -1354,6 +1389,8 @@ export async function startFitRunner(
       if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
       // false keeps the CSS box on the full viewport. A later resize cannot write a 4K bitmap back.
       renderer.setSize(layout.width, layout.height, false);
+      canvas.dataset.buffer = `${renderer.domElement.width}x${renderer.domElement.height}`;
+      if (phoneDraw) canvas.dataset.drawPreset = phonePreset;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     }
@@ -1810,9 +1847,28 @@ export async function startFitRunner(
       hud.onDemoOver?.({ activeMs: Math.round(elapsed * 1000) });
     }
 
+    function notePhoneFrame(now: number) {
+      if (!phoneDraw) return;
+      const previous = phoneFrameAt;
+      phoneFrameAt = now;
+      if (phoneWarmup < 45) {
+        phoneWarmup += 1;
+        return;
+      }
+      if (previous <= 0) return;
+      const next = stepPhoneDrawHysteresis(phoneDrawState, now - previous);
+      const changed = next.preset !== phoneDrawState.preset;
+      phoneDrawState = next;
+      if (!changed) return;
+      phonePreset = next.preset;
+      canvas.dataset.drawPreset = next.preset;
+      applyPhoneTextureClarity(scene, next.preset, renderer.capabilities.getMaxAnisotropy());
+    }
+
     function tick(now = performance.now()) {
       if (stopped) return;
       frame = window.requestAnimationFrame(tick);
+      notePhoneFrame(now);
       hud.onFrame?.(now);
       resize();
       if (courseMode !== "live") {
@@ -1988,7 +2044,9 @@ export async function startFitRunner(
 
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", resize);
+    window.addEventListener("orientationchange", resize);
     window.addEventListener("pointerdown", onPointer);
+    if (phoneDraw) applyPhoneTextureClarity(scene, phonePreset, renderer.capabilities.getMaxAnisotropy());
     resize();
     publish(tuning.forwardSpeed);
     tropical.update(runner.position, camera, 0);
@@ -2027,6 +2085,7 @@ export async function startFitRunner(
         window.cancelAnimationFrame(frame);
         window.removeEventListener("keydown", onKey);
         window.removeEventListener("resize", resize);
+        window.removeEventListener("orientationchange", resize);
         window.removeEventListener("pointerdown", onPointer);
         mixer.stopAllAction();
         fx.dispose();

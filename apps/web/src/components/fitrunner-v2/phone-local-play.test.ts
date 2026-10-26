@@ -10,6 +10,7 @@ import {
   phoneAsksForLandscape,
   phoneCameraFailure,
   phoneFrameWarning,
+  phoneGestureCandidate,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
   phonePixelRatio,
@@ -57,7 +58,7 @@ describe("phone local gestures", () => {
     expect(JSON.stringify(confirmedLocalGesture("jump"))).not.toMatch(/socket|movement:event/);
   });
 
-  it("keeps the live detector gates and the phone drawing cap", () => {
+  it("keeps the live detector gates and the balanced pixel-ratio cap", () => {
     expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
     expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
     expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
@@ -153,14 +154,29 @@ describe("phone local gestures", () => {
     expect(PHONE_TEST_CONTROLS_LABEL).toBe("Test controls");
     expect(PHONE_TEST_CONTROLS_LABEL).not.toMatch(/play with keyboard/i);
     const lines = phoneMotionDiagLines({
+      buffer: "1688x860",
       renderFps: 30,
+      poseFps: 15,
       inferenceMs: 12.5,
-      confidence: 0.8,
-      lastAction: "jump",
+      candidate: "jump",
+      confirmed: "jump",
       confirmToCallMs: confirmToGameMs(1000, 1018),
+      reject: "none",
     });
-    expect(lines).toEqual(["render 30.0 fps", "inference 12.5 ms", "confidence 80%", "action jump", "confirm to call 18 ms"]);
-    expect(lines.join(" ")).not.toMatch(/token|player name|socket/i);
+    expect(lines).toEqual([
+      "buffer 1688x860",
+      "game 30.0 fps",
+      "pose 15.0 fps",
+      "inference 12.5 ms",
+      "candidate jump",
+      "confirmed jump",
+      "confirm to call 18 ms",
+      "reject none",
+    ]);
+    expect(phoneGestureCandidate({ jumpPhase: "CANDIDATE", squatPhase: "NEUTRAL" })).toBe("jump");
+    expect(phoneGestureCandidate({ leftPhase: "ARM_RISING", rightPhase: "ARM_RISING" })).toBe("left+right");
+    expect(phoneGestureCandidate(null)).toBe("none");
+    expect(lines.join(" ")).not.toMatch(/token|player name|email|session|socket/i);
     expect(renderLoopFps([0, 500, 1000])).toBe(2);
     expect(renderLoopFps([10])).toBeNull();
     expect(confirmToGameMs(50, 40)).toBeNull();

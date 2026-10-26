@@ -34,7 +34,11 @@ export const PHONE_STAND_LINE = "Stand where the camera sees you.";
 
 export const PHONE_TEST_CONTROLS_LABEL = "Test controls";
 
-/** Drawing-buffer cap for /play/phone only. Laptop and TV sessions keep their own caps. */
+/**
+ * Balanced device-pixel-ratio cap. The live phone route picks low, balanced, or
+ * high in phone-draw.ts and also limits the long edge. Laptop and TV sessions
+ * do not use this cap. The television buffer stays 960×540.
+ */
 export const PHONE_PIXEL_RATIO_CAP = 1.5;
 
 export type PhoneBodyPhase = "looking" | "detected" | "ready";
@@ -200,25 +204,51 @@ export function confirmToGameMs(confirmMs: number | null | undefined, calledAtMs
 }
 
 export type PhoneMotionDiag = {
+  buffer: string | null;
   renderFps: number | null;
+  poseFps: number | null;
   inferenceMs: number | null;
-  confidence: number | null;
-  lastAction: string | null;
+  candidate: string | null;
+  confirmed: string | null;
   confirmToCallMs: number | null;
+  reject: string | null;
 };
+
+export function phoneGestureCandidate(input: {
+  squatPhase?: string | null;
+  jumpPhase?: string | null;
+  leanPhase?: string | null;
+  leftPhase?: string | null;
+  rightPhase?: string | null;
+  takeoffPhase?: string | null;
+} | null) {
+  if (!input) return "none";
+  const jump =
+    input.jumpPhase === "CANDIDATE" || input.takeoffPhase === "TAKEOFF_CANDIDATE" || input.takeoffPhase === "PREPARING";
+  const parts = [
+    input.squatPhase === "CANDIDATE" ? "squat" : "",
+    jump ? "jump" : "",
+    input.leanPhase === "CANDIDATE" ? "lean" : "",
+    input.leftPhase === "ARM_RISING" ? "left" : "",
+    input.rightPhase === "ARM_RISING" ? "right" : "",
+  ].filter(Boolean);
+  return parts.join("+") || "none";
+}
 
 export function phoneMotionDiagLines(input: PhoneMotionDiag) {
   const fps = input.renderFps === null || !Number.isFinite(input.renderFps) ? "—" : input.renderFps.toFixed(1);
+  const pose = input.poseFps === null || !Number.isFinite(input.poseFps) ? "—" : input.poseFps.toFixed(1);
   const inference = input.inferenceMs === null || !Number.isFinite(input.inferenceMs) ? "—" : `${input.inferenceMs.toFixed(1)} ms`;
-  const confidence =
-    input.confidence === null || !Number.isFinite(input.confidence) ? "—" : `${Math.round(Math.max(0, Math.min(1, input.confidence)) * 100)}%`;
   const lag = input.confirmToCallMs === null || !Number.isFinite(input.confirmToCallMs) ? "—" : `${Math.round(input.confirmToCallMs)} ms`;
   return [
-    `render ${fps} fps`,
+    `buffer ${input.buffer || "—"}`,
+    `game ${fps} fps`,
+    `pose ${pose} fps`,
     `inference ${inference}`,
-    `confidence ${confidence}`,
-    `action ${input.lastAction || "—"}`,
+    `candidate ${input.candidate || "none"}`,
+    `confirmed ${input.confirmed || "none"}`,
     `confirm to call ${lag}`,
+    `reject ${input.reject || "none"}`,
   ];
 }
 
