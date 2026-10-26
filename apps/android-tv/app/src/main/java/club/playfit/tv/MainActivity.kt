@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         fun homeUrl(start: String): String {
             val uri = Uri.parse(start)
-            return uri.buildUpon().path("/tv").clearQuery().fragment(null).build().toString()
+            return uri.buildUpon().path("/").clearQuery().fragment(null).build().toString()
         }
     }
 }

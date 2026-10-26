@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://playfitclub.com/tv" version="1.0.0" viewmodes="maximized">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://playfitclub.com" version="1.0.0" viewmodes="maximized">
     <access origin="*" subdomains="true"/>
     <tizen:application id="PlayFitClb.PlayFitTV" package="PlayFitClb" required_version="4.0"/>
-    <tizen:content src="https://playfitclub.com/tv"/>
+    <tizen:content src="https://playfitclub.com"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
     <icon src="icon.png"/>
     <name>PlayFit Club</name>
-    <description>PlayFit Club on the television. The phone browser joins by QR code. This app opens the live site.</description>
+    <description>PlayFit Club. This app opens the live site. The game runs on the phone.</description>
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:profile name="tv-samsung"/>
     <tizen:allow-navigation>playfitclub.com *.playfitclub.com</tizen:allow-navigation>

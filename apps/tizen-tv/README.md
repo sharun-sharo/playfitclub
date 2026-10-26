@@ -1,10 +1,8 @@
 # PlayFit Club for Samsung TV
 
-This is a hosted Tizen web app. Its start URL is `https://playfitclub.com/tv`. Play at home on that page opens the live FitRunner session. The package does not contain a game screenshot or a second copy of the game.
+This is a hosted Tizen web app. Its start URL is `https://playfitclub.com`. The package does not contain a game. The game runs on the phone. A television shows that phone when the phone OS mirrors the screen. `/tv` on the site permanently redirects to the homepage. This package does not open `/tv`.
 
-If the TV browser cannot create a WebGL 2 context, the site shows its own error. Leave that message on screen.
-
-The phone is not an app. A player scans the QR code in the phone browser. This package does not request the camera.
+The phone is not an app. This package does not request the camera. This app is not in Samsung Seller Office.
 
 `icon.png` is the existing PlayFit mark, padded to 512×512. It is not store screenshot art.
 

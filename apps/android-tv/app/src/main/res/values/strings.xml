@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PlayFit TV</string>
-    <string name="loading_title">Opening FitRunner</string>
-    <string name="loading_detail">Loading the television page. The phone stays the controller.</string>
-    <string name="error_title">Could not open FitRunner</string>
-    <string name="error_detail">Check the network connection. This app opens https://playfitclub.com/tv.</string>
+    <string name="loading_title">Opening PlayFit Club</string>
+    <string name="loading_detail">Loading the site.</string>
+    <string name="error_title">Could not open PlayFit Club</string>
+    <string name="error_detail">Check the network connection. This app opens https://playfitclub.com.</string>
     <string name="https_only">This app only opens HTTPS pages.</string>
     <string name="ssl_release">The certificate was rejected. This app only continues when the device trusts the site certificate.</string>
     <string name="retry">Try again</string>

@@ -19,11 +19,6 @@ export function SubscriptionExpired({ message, note, tv = false }: { message?: s
           <TrackedExternal className={tv ? "rounded-full bg-[#BEFF39] px-8 py-4 text-xl font-semibold text-[#1c1f24]" : "rounded-full bg-[#BEFF39] px-5 py-3 text-sm font-semibold text-[#1c1f24]"} href={whatsappUrl("renewal")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>
             Renew
           </TrackedExternal>
-          {tv ? (
-            <Link className="rounded-full border border-[#BEFF39] px-8 py-4 text-xl font-semibold text-[#BEFF39]" href="/tv">
-              TV home
-            </Link>
-          ) : null}
           <Link className={tv ? "rounded-full border border-[#BEFF39] px-8 py-4 text-xl font-semibold text-[#BEFF39]" : "rounded-full border border-[#BEFF39] px-5 py-3 text-sm font-semibold text-[#BEFF39]"} href="/dashboard">
             View history
           </Link>

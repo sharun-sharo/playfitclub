@@ -17,7 +17,7 @@ export const OG_IMAGE = {
   type: "image/jpeg",
 };
 
-export const PUBLIC_PATHS = ["/", "/games", "/pricing", "/gyms", "/tv", "/privacy", "/terms"] as const;
+export const PUBLIC_PATHS = ["/", "/games", "/pricing", "/gyms", "/privacy", "/terms"] as const;
 
 export const organizationJsonLd = {
   "@context": "https://schema.org",
@@ -76,13 +76,6 @@ export const gymsMetadata: Metadata = {
   title: segmentTitle("For gyms"),
   description:
     "A gym buys member seats so members play FitRunner at home. The game is not installed in the gym. An enquiry does not assign a seat or start a subscription.",
-  robots: INDEXABLE,
-};
-
-export const tvHomeMetadata: Metadata = {
-  title: segmentTitle("Play on your TV"),
-  description:
-    "PlayFit Club on your television. You move and the game moves. Fit Run is available now. Your phone camera is the controller, and this screen is the playground.",
   robots: INDEXABLE,
 };
 

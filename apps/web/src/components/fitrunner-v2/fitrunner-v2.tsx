@@ -26,9 +26,9 @@ import type { PoseDiagnostics } from "@/lib/vision/pose-estimator";
 const CLIP_BUTTONS = ["StandUp", "WipeSweat", "LongJump"] as const;
 const QUALITIES = ["low", "medium", "high"] as const;
 
-/** Opened on a TV route, Exit returns to TV home. Any other route returns to the games list. */
-function gameOverExitPath(pathname: string) {
-  return pathname === "/tv" || pathname.startsWith("/tv/") ? "/tv" : "/games";
+/** Exit returns to the games list. */
+function gameOverExitPath() {
+  return "/games";
 }
 
 export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | null }) {
@@ -818,7 +818,7 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           saved={gameSaved}
           onAgain={playAgain}
           onExit={() => {
-            const exitTo = gameOverExitPath(window.location.pathname);
+            const exitTo = gameOverExitPath();
             void session.leaveSession().finally(() => {
               window.location.assign(exitTo);
             });

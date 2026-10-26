@@ -2,7 +2,7 @@
 
 Two television shells open the live site. Neither one is a copy of the game.
 
-There is no phone app. A player scans the QR code in the phone browser at `https://playfitclub.com`. The camera stays in that browser. The TV apps do not request the camera or the microphone.
+There is no phone app. The game runs in the phone browser. A television shows that phone when the phone OS mirrors the screen. The TV apps do not request the camera or the microphone.
 
 Nothing in this repository has been uploaded to Google Play or Samsung Seller Office.
 
@@ -12,7 +12,7 @@ Project: `apps/android-tv`
 
 Package id: `club.playfit.tv`
 
-The Leanback launcher opens `https://playfitclub.com/tv` in a landscape WebView. Play at home on that page goes to the live session at `/tv/play`. D-pad and Enter are delivered to the page. Back from `/tv/play` returns to `/tv`. Back from the first page exits the app.
+The Leanback launcher opens `https://playfitclub.com` in a landscape WebView. D-pad and Enter are delivered to the page. Back from the first page exits the app. `/tv` and `/tv/play` on the site permanently redirect to the homepage. This app is not uploaded to Google Play.
 
 The banner in the project is a placeholder. It is not a television screenshot and it is not store art. Capture a 320×180 banner and screenshots on a real Android TV or Google TV before you upload anything.
 
@@ -37,7 +37,7 @@ Release signing reads these environment variables. The keystore path should be a
 
 If those variables are unset, the release file is unsigned. Play Console will not accept it. `*.jks` and `*.keystore` are gitignored.
 
-`TV_START_URL` defaults to `https://playfitclub.com/tv`. An override must be `https` and must not be localhost.
+`TV_START_URL` defaults to `https://playfitclub.com`. An override must be `https` and must not be localhost.
 
 The module targets API 35. Google Play's rule dated 31 August 2026 allows an Android TV app that targets API 34 or higher.
 
@@ -55,9 +55,9 @@ This machine cannot submit the listing.
 
 Project: `apps/tizen-tv`
 
-`config.xml` sets the start URL with `tizen:content` to `https://playfitclub.com/tv`. The privilege is internet only. The icon is the existing PlayFit mark padded to 512×512, not a picture of the game.
+`config.xml` sets the start URL with `tizen:content` to `https://playfitclub.com`. The privilege is internet only. The icon is the existing PlayFit mark padded to 512×512, not a picture of the game.
 
-The live page has to load. If that TV's browser has no WebGL 2, the site's own error stays on screen. Do not replace it with a poster.
+The live homepage has to load. The game is not played inside this TV browser.
 
 Arrow keys and Enter are left to the page. The site moves focus with the arrows, and it treats Back, Escape, and Tizen key codes 10009 and 461 as back. Keyboard play is not added here.
 
@@ -80,7 +80,7 @@ Create `<certificate-profile>` in Tizen Studio Certificate Manager. Keep the cer
 
 You need a Samsung Apps TV Seller Office account.
 
-Samsung's hosted-application policy says a hosted app is not a normal submission. Contact the Seller Office content manager before upload and tell them the app loads `https://playfitclub.com/tv`. The live page is the product. A packaged copy of the game is not in this repository.
+Samsung's hosted-application policy says a hosted app is not a normal submission. Contact the Seller Office content manager before upload and tell them the app loads `https://playfitclub.com`. The live site is the product. A packaged copy of the game is not in this repository. This app is not in Samsung Seller Office.
 
 When they accept a submission, upload the signed `.wgt`, use `https://playfitclub.com/privacy` as the privacy policy URL, and describe the same limit that page already states: a complete privacy notice is not published yet. The TV app does not use the camera. The phone browser does.
 

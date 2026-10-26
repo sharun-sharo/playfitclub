@@ -6,7 +6,7 @@ plugins {
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 
-val tvStartUrl = (findProperty("TV_START_URL") as String?)?.trim()?.ifEmpty { null } ?: "https://playfitclub.com/tv"
+val tvStartUrl = (findProperty("TV_START_URL") as String?)?.trim()?.ifEmpty { null } ?: "https://playfitclub.com"
 require(tvStartUrl.startsWith("https://")) {
     "TV_START_URL must be an https URL"
 }

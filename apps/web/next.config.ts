@@ -36,6 +36,12 @@ const nextConfig: NextConfig = {
   // Engine.IO requests /socket.io/ with a trailing slash. In dev, keep that slash so
   // the Socket.IO proxy is not turned into a redirect before it reaches the realtime server.
   skipTrailingSlashRedirect: process.env.NODE_ENV !== "production",
+  async redirects() {
+    return [
+      { source: "/tv", destination: "/", permanent: true },
+      { source: "/tv/:path*", destination: "/", permanent: true },
+    ];
+  },
   async rewrites() {
     if (process.env.NODE_ENV === "production") return [];
     const configured = process.env.REALTIME_URL || process.env.NEXT_PUBLIC_REALTIME_URL || "http://127.0.0.1:3001";
