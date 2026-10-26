@@ -291,6 +291,7 @@ describe("camera frame gate", () => {
 
   it("classifies from the animation clock when the camera box is too small to present frames", () => {
     expect(cameraBoxKeepsFrames({ width: 320, height: 180 })).toBe(true);
+    expect(cameraBoxKeepsFrames({ width: 112, height: 96 })).toBe(true);
     expect(cameraBoxKeepsFrames({ width: 1, height: 1 })).toBe(false);
     expect(paintedCameraSampleSource({
       boxKeepsFrames: false,
@@ -379,5 +380,46 @@ describe("camera frame gate", () => {
     });
     expect(next.accept).toBe(true);
     expect(sameCount.accept).toBe(false);
+  });
+
+  it("still classifies a thumbnail when presentedFrames stays 0", () => {
+    expect(cameraBoxKeepsFrames({ width: 112, height: 96 })).toBe(true);
+    expect(paintedCameraSampleSource({
+      boxKeepsFrames: cameraBoxKeepsFrames({ width: 112, height: 96 }),
+      hasVideoFrameCallback: true,
+      videoFrames: 2,
+      elapsedMs: 1_000,
+      sinceVideoFrameMs: 16,
+    })).toBe("video-frame");
+
+    let cursor = emptyVideoCursor();
+    const first = takeVideoFrame(cursor, {
+      callbackNow: 0,
+      metadata: { presentedFrames: 0, mediaTime: 0, presentationTime: 1.25 },
+      arrivedAt: 50_000,
+    });
+    cursor = first.cursor;
+    const second = takeVideoFrame(cursor, {
+      callbackNow: 0,
+      metadata: { presentedFrames: 0, mediaTime: 0, presentationTime: 1.25 },
+      arrivedAt: 50_040,
+    });
+    expect(first.accept).toBe(true);
+    expect(second.accept).toBe(true);
+    expect(first.frameAt).toBe(50_000);
+    expect(second.frameAt).toBe(50_040);
+    const opened = offerCameraFrame(emptyCameraGate(), first.frameAt, 50_000, 800);
+    expect(opened.action).toBe("run");
+    if (opened.action !== "run") return;
+    expect(opened.gate.clockOffset).toBe(0);
+    const followed = offerCameraFrame(
+      { ...opened.gate, busy: false, running: null },
+      second.frameAt,
+      50_040,
+      800,
+    );
+    expect(followed.action).toBe("run");
+    if (followed.action !== "run") return;
+    expect(followed.gate.clockOffset).toBe(opened.gate.clockOffset);
   });
 });

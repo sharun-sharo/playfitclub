@@ -71,6 +71,15 @@ export function fitRunnerPixelRatio(devicePixelRatio: number, television: boolea
 export const TV_DRAW_WIDTH = 960;
 export const TV_DRAW_HEIGHT = 540;
 
+/**
+ * Projection aspect from the canvas CSS box.
+ * A capped drawing buffer must not become the aspect, or the road stretches.
+ */
+export function cameraAspectFromCss(cssWidth: number, cssHeight: number) {
+  if (!Number.isFinite(cssWidth) || !Number.isFinite(cssHeight) || cssWidth < 2 || cssHeight < 2) return null;
+  return cssWidth / cssHeight;
+}
+
 export function fitRunnerDrawingSize(viewportWidth: number, viewportHeight: number, television: boolean) {
   const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 0;
   const height = Number.isFinite(viewportHeight) && viewportHeight > 0 ? viewportHeight : 0;

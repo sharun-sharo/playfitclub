@@ -24,7 +24,7 @@ import {
   type PhoneDrawHysteresis,
   type PhoneDrawPreset,
 } from "@/components/fitrunner-v2/phone-draw";
-import { fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
+import { cameraAspectFromCss, fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
 import { createRunRecorder } from "@/lib/fitrunner-v2/run-recorder";
@@ -1377,7 +1377,8 @@ export async function startFitRunner(
     function resize() {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
-      if (width < 2 || height < 2) return;
+      const aspect = cameraAspectFromCss(width, height);
+      if (aspect === null) return;
       const ratio = drawingPixelRatio();
       const layout = fitRunnerDrawingSize(width, height, television);
       const bufferWidth = Math.floor(layout.width * ratio);
@@ -1396,7 +1397,7 @@ export async function startFitRunner(
       renderer.setSize(layout.width, layout.height, false);
       canvas.dataset.buffer = `${renderer.domElement.width}x${renderer.domElement.height}`;
       if (phoneDraw) canvas.dataset.drawPreset = phonePreset;
-      camera.aspect = width / height;
+      camera.aspect = aspect;
       camera.updateProjectionMatrix();
     }
 
@@ -2057,6 +2058,9 @@ export async function startFitRunner(
     window.addEventListener("resize", resize);
     window.addEventListener("orientationchange", resize);
     window.addEventListener("pointerdown", onPointer);
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", resize);
+    visualViewport?.addEventListener("scroll", resize);
     if (phoneDraw) applyPhoneTextureClarity(scene, phonePreset, renderer.capabilities.getMaxAnisotropy());
     resize();
     publish(tuning.forwardSpeed);
@@ -2098,6 +2102,8 @@ export async function startFitRunner(
         window.removeEventListener("resize", resize);
         window.removeEventListener("orientationchange", resize);
         window.removeEventListener("pointerdown", onPointer);
+        visualViewport?.removeEventListener("resize", resize);
+        visualViewport?.removeEventListener("scroll", resize);
         mixer.stopAllAction();
         fx.dispose();
         tropical.dispose();

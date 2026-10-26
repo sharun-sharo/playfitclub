@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cameraAspectFromCss,
   fitRunnerDrawingBuffer,
   fitRunnerPixelRatio,
   fitRunnerQuality,
@@ -77,6 +78,13 @@ describe("television graphics limits", () => {
   it("lowers quality only for a television", () => {
     expect(fitRunnerQuality(false)).toBe("high");
     expect(fitRunnerQuality(true)).toBe("low");
+  });
+
+  it("takes the camera aspect from the canvas CSS box", () => {
+    expect(cameraAspectFromCss(1920, 980)).toBeCloseTo(1920 / 980);
+    expect(cameraAspectFromCss(844, 390)).toBeCloseTo(844 / 390);
+    expect(cameraAspectFromCss(0, 1080)).toBeNull();
+    expect(cameraAspectFromCss(1920, 1)).toBeNull();
   });
 
   it("names the WebGL 2 limit and a packaged Tizen app as a different runtime", () => {

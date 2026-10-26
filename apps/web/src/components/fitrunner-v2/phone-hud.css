@@ -3,9 +3,14 @@
 .phone-play {
   position: fixed;
   inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
+  height: 100%;
   height: 100dvh;
-  max-width: 100%;
+  max-width: none;
   overflow: hidden;
 }
 
@@ -25,21 +30,29 @@ html:-webkit-full-screen .phone-play,
 }
 
 .phone-play > canvas:not([hidden]) {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1;
   width: 100%;
   height: 100%;
+  height: 100dvh;
+  max-width: none;
 }
 
 .phone-hud-layer {
   position: absolute;
   inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 20;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  max-width: 100%;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
@@ -94,12 +107,14 @@ html:-webkit-full-screen .phone-play,
 }
 
 .phone-score-row {
-  display: flex;
-  justify-content: flex-start;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0.35rem max(0.45rem, env(safe-area-inset-right, 0px)) 0 max(0.45rem, env(safe-area-inset-left, 0px));
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  z-index: 22;
+  width: auto;
+  max-width: 168px;
+  margin: 0;
+  padding: 0;
 }
 
 .phone-play [data-fitrunner-play-hud] {
@@ -107,26 +122,32 @@ html:-webkit-full-screen .phone-play,
   left: auto;
   top: auto;
   z-index: auto;
-  width: 10.25rem;
-  max-width: calc(100% - 0.5rem);
+  box-sizing: border-box;
+  flex: 0 0 168px;
+  align-self: flex-start;
+  width: 168px;
+  max-width: 168px;
+  min-width: 0;
+  max-height: 190px;
   margin: 0;
-  padding: 0.35rem 0.5rem 0.4rem;
+  padding: 8px 10px 10px;
+  overflow: hidden;
   box-shadow: none;
 }
 
 .phone-play [data-fitrunner-play-hud] .font-display {
-  font-size: 1.6rem;
+  font-size: 28px;
   line-height: 1;
 }
 
 .phone-play [data-fitrunner-play-hud] dl {
-  margin-top: 0.3rem;
+  margin-top: 6px;
   font-size: 11px;
-  row-gap: 0.08rem;
+  row-gap: 2px;
 }
 
 .phone-play [data-fitrunner-play-hud] [data-calorie-note] {
-  margin-top: 0.25rem;
+  margin-top: 6px;
   font-size: 10px;
   line-height: 1.25;
 }
@@ -137,16 +158,19 @@ html:-webkit-full-screen .phone-play,
 }
 
 .phone-hud-bottom {
-  flex: 0 0 auto;
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right, 0px));
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  z-index: 22;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0.35rem;
-  width: 100%;
+  width: auto;
   min-width: 0;
-  max-width: 100%;
-  padding: 0 max(0.45rem, env(safe-area-inset-right, 0px)) max(0.4rem, env(safe-area-inset-bottom, 0px))
-    max(0.45rem, env(safe-area-inset-left, 0px));
+  margin: 0;
+  padding: 0;
 }
 
 .phone-lower-pre {
@@ -279,8 +303,8 @@ html:-webkit-full-screen .phone-play,
 }
 
 .phone-play [data-fitrunner-hearts] svg {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 18px;
+  height: 18px;
 }
 
 .phone-actions {
@@ -294,8 +318,8 @@ html:-webkit-full-screen .phone-play,
 }
 
 .phone-actions button {
-  padding: 0.38rem 0.72rem;
-  font-size: 0.8125rem;
+  padding: 6px 12px;
+  font-size: 13px;
   pointer-events: auto;
 }
 
@@ -381,15 +405,52 @@ html:-webkit-full-screen .phone-play,
 
 .phone-camera-park {
   position: absolute;
-  top: 0;
-  left: 0;
-  /* Painted above the canvas so the phone keeps delivering camera frames. */
-  z-index: 2;
-  width: 320px;
-  height: 180px;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  left: auto;
+  /* Above the canvas and the HUD. A covered, opacity 0, or display:none video stops frames on Samsung Internet. */
+  z-index: 24;
+  display: block;
+  width: 112px;
+  height: 96px;
+  min-width: 112px;
+  min-height: 96px;
   overflow: hidden;
   opacity: 1;
+  visibility: visible;
   pointer-events: none;
+  background: #10141c;
+}
+
+.phone-camera-park .phone-cal-flip {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.phone-camera-park video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: block;
+  width: 112px;
+  height: 96px;
+  max-width: 112px;
+  max-height: 96px;
+  opacity: 1;
+  visibility: visible;
+  object-fit: cover;
+}
+
+.phone-camera-park canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 112px;
+  height: 96px;
 }
 
 .phone-cal-stage {

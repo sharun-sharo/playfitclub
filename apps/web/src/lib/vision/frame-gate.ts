@@ -163,9 +163,12 @@ export function takeAnimationSample(input: { now: number; lastSampleAt: number }
 /**
  * A 1×1 camera box does not present new pictures. The animation clock still
  * has to classify, even when the browser keeps calling the video-frame callback.
+ * A thumbnail around 96px is smaller than the calibration preview and still presents.
+ * Treating that box as absent drops jump, squat, left, and right together.
+ * `presentedFrames` staying 0 is not an absent frame: takeVideoFrame still accepts it.
  */
 export function cameraBoxKeepsFrames(box: { width: number; height: number }) {
-  return box.width >= 160 && box.height >= 120;
+  return box.width >= 96 && box.height >= 72;
 }
 
 /** The animation clock samples only while the video-frame callback is absent, quiet, or not actually painted. */

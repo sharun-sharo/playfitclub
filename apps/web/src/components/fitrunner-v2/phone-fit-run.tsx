@@ -21,9 +21,12 @@ import {
 } from "@/components/fitrunner-v2/phone-calibration";
 import {
   applyLocalPose,
+  applyPhonePlayViewport,
   confirmToGameMs,
   dispatchLocalGesture,
   phoneAsksForLandscape,
+  phoneHudCardWidth,
+  phonePlayViewportBox,
   phoneCameraFailure,
   phoneGestureCandidate,
   phoneMotionDiagEnabled,
@@ -224,6 +227,42 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       aliveRef.current = false;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const apply = () => {
+      const root = rootRef.current;
+      const canvas = canvasRef.current;
+      const viewport = window.visualViewport;
+      const box = phonePlayViewportBox({
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        visualWidth: viewport?.width,
+        visualHeight: viewport?.height,
+        offsetLeft: viewport?.offsetLeft,
+        offsetTop: viewport?.offsetTop,
+      });
+      if (root) applyPhonePlayViewport(root, box);
+      if (canvas) applyPhonePlayViewport(canvas, box);
+      const card = root?.querySelector("[data-fitrunner-play-hud]");
+      if (card instanceof HTMLElement) {
+        const width = phoneHudCardWidth(box.width);
+        card.style.width = `${width}px`;
+        card.style.maxWidth = `${width}px`;
+      }
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", apply);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", apply);
+    viewport?.addEventListener("scroll", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+      viewport?.removeEventListener("resize", apply);
+      viewport?.removeEventListener("scroll", apply);
+    };
+  }, [playing, calib.phase]);
 
   useEffect(() => {
     const apply = () => {
@@ -713,7 +752,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   return (
     <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape" data-phone-phase={calib.phase}>
       <canvas ref={canvasRef} data-fitrunner-v2="" aria-label="Fit Run" className="h-full w-full" hidden={Boolean(graphicsError)} />
-      <div className={cameraLarge ? "phone-cal-stage" : "phone-camera-park"} data-phone-preview={cameraLarge ? "shown" : "hidden"}>
+      <div className={cameraLarge ? "phone-cal-stage" : "phone-camera-park"} data-phone-preview={cameraLarge ? "shown" : "thumb"}>
         <div className="phone-cal-flip">
           <video ref={videoRef} className="phone-cal-media" muted playsInline aria-label="Camera preview" />
           <canvas ref={poseCanvasRef} className="phone-cal-media" aria-hidden="true" />

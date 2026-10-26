@@ -25,8 +25,11 @@ import {
   phonePlayQrPayload,
   PHONE_LAPTOP_QR_LINE,
   PHONE_LAPTOP_QR_NAME,
+  PHONE_HUD_CARD_PX,
   PHONE_LIVE_CAMERA,
+  phoneHudCardWidth,
   phoneLiveCameraKeepsFrames,
+  phonePlayViewportBox,
   phoneObstacleCounts,
   phoneRunSeed,
   PHONE_MIRROR_GUIDE,
@@ -206,17 +209,42 @@ describe("phone local gestures", () => {
 
   it("keeps a real camera box so a long frame can still dispatch jump, squat, left, and right", () => {
     expect(phoneLiveCameraKeepsFrames(PHONE_LIVE_CAMERA)).toBe(true);
+    expect(phoneLiveCameraKeepsFrames({ width: 112, height: 96 })).toBe(true);
     expect(phoneLiveCameraKeepsFrames({ width: 1, height: 1 })).toBe(false);
+    expect(PHONE_LIVE_CAMERA.width).toBeGreaterThanOrEqual(96);
+    expect(PHONE_LIVE_CAMERA.width).toBeLessThanOrEqual(120);
+    expect(PHONE_LIVE_CAMERA.height).toBeGreaterThanOrEqual(96);
+    expect(PHONE_LIVE_CAMERA.height).toBeLessThanOrEqual(120);
     const css = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "phone-hud.css"), "utf8");
-    const park = css.slice(css.indexOf(".phone-camera-park"), css.indexOf(".phone-camera-park") + 320);
-    expect(park).toContain("width: 320px");
-    expect(park).toContain("height: 180px");
+    const park = css.slice(css.indexOf(".phone-camera-park {"), css.indexOf(".phone-cal-stage"));
+    expect(park).toContain(`width: ${PHONE_LIVE_CAMERA.width}px`);
+    expect(park).toContain(`height: ${PHONE_LIVE_CAMERA.height}px`);
     expect(park).toContain("opacity: 1");
+    expect(park).toContain("visibility: visible");
     expect(park).not.toContain("width: 1px");
     expect(park).not.toContain("opacity: 0");
-    expect(park).toContain("z-index: 2");
-    const canvasRule = css.slice(css.indexOf(".phone-play > canvas"), css.indexOf(".phone-play > canvas") + 220);
+    expect(park).not.toContain("display: none");
+    expect(park).not.toContain("visibility: hidden");
+    expect(park).toContain("z-index: 24");
+    const canvasRule = css.slice(css.indexOf(".phone-play > canvas"), css.indexOf(".phone-play > canvas") + 280);
+    expect(canvasRule).toContain("position: fixed");
     expect(canvasRule).toContain("z-index: 1");
+    expect(canvasRule).toContain("height: 100dvh");
+    expect(phoneHudCardWidth(1920)).toBe(PHONE_HUD_CARD_PX);
+    expect(phoneHudCardWidth(844)).toBe(PHONE_HUD_CARD_PX);
+    expect(phoneHudCardWidth(120)).toBe(120);
+    expect(phoneHudCardWidth(0)).toBe(PHONE_HUD_CARD_PX);
+    expect(css).toContain(`width: ${PHONE_HUD_CARD_PX}px`);
+    expect(css).toContain(`max-width: ${PHONE_HUD_CARD_PX}px`);
+    expect(phonePlayViewportBox({
+      innerWidth: 1920,
+      innerHeight: 1080,
+      visualWidth: 1920,
+      visualHeight: 980,
+      offsetLeft: 0,
+      offsetTop: 48,
+    })).toEqual({ left: 0, top: 48, width: 1920, height: 980 });
+    expect(phonePlayViewportBox({ innerWidth: 800, innerHeight: 400 })).toEqual({ left: 0, top: 0, width: 800, height: 400 });
     expect(phoneRunSeed(0)).toBe(1);
     expect(phoneRunSeed(0x100000000)).toBe(1);
     expect(phoneRunSeed(42)).toBe(42);

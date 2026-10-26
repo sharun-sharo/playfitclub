@@ -59,14 +59,72 @@ export const PHONE_TEST_CONTROLS_LABEL = "Test controls";
 export const PHONE_PIXEL_RATIO_CAP = 1.5;
 
 /**
- * Camera element once the course is on screen. It sits behind the game canvas.
- * A 1×1, fully transparent box stopped the phone from presenting new frames,
- * so the pose stayed at the ready stance and jump, squat, left, and right never moved.
+ * Painted thumbnail once the course is on screen.
+ * Samsung Internet presents no new camera frames when this video is opacity 0,
+ * visibility hidden, display none, or fully covered by the game canvas.
+ * Jump, squat, left, and right then stay at the ready pose together.
+ * The box stays about 96–120px, in a corner, and on top of the canvas.
  */
-export const PHONE_LIVE_CAMERA = { width: 320, height: 180 } as const;
+export const PHONE_LIVE_CAMERA = { width: 112, height: 96 } as const;
 
+/** A 1×1 box does not present. This thumbnail is smaller than the calibration preview and still does. */
 export function phoneLiveCameraKeepsFrames(box: { width: number; height: number }) {
-  return box.width >= 160 && box.height >= 120;
+  return box.width >= 96 && box.height >= 72;
+}
+
+/** Phone HUD corner. A television width must not stretch this into a side panel. */
+export const PHONE_HUD_CARD_PX = 168;
+
+export function phoneHudCardWidth(viewportWidth: number) {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return PHONE_HUD_CARD_PX;
+  return Math.min(PHONE_HUD_CARD_PX, Math.floor(viewportWidth));
+}
+
+export interface PhoneViewportBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function finiteBox(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * The visible area under the URL bar. `100dvh` is the stylesheet fallback.
+ * Samsung Internet often refuses to hide that bar; the game still fills this box.
+ */
+export function phonePlayViewportBox(input: {
+  innerWidth: number;
+  innerHeight: number;
+  visualWidth?: number;
+  visualHeight?: number;
+  offsetLeft?: number;
+  offsetTop?: number;
+}): PhoneViewportBox {
+  const visualWidth = finiteBox(input.visualWidth);
+  const visualHeight = finiteBox(input.visualHeight);
+  const innerWidth = finiteBox(input.innerWidth);
+  const innerHeight = finiteBox(input.innerHeight);
+  return {
+    left: finiteBox(input.offsetLeft),
+    top: finiteBox(input.offsetTop),
+    width: visualWidth > 0 ? visualWidth : Math.max(0, innerWidth),
+    height: visualHeight > 0 ? visualHeight : Math.max(0, innerHeight),
+  };
+}
+
+/** Pins the play root and the WebGL canvas to the visual viewport. */
+export function applyPhonePlayViewport(node: HTMLElement, box: PhoneViewportBox) {
+  node.style.position = "fixed";
+  node.style.left = `${box.left}px`;
+  node.style.top = `${box.top}px`;
+  node.style.width = `${box.width}px`;
+  node.style.height = `${box.height}px`;
+  node.style.right = "auto";
+  node.style.bottom = "auto";
+  node.style.maxWidth = "none";
 }
 
 /** Same rule as the server seed: 0 is not a seed. The phone course does not wait on Railway. */
