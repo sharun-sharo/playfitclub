@@ -4,7 +4,7 @@ import { CirclePlay, Play } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
-import { PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
+import { PHONE_PLAY_PATH } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
@@ -220,7 +220,7 @@ export function HeroShowcase() {
             Run, fight, dance and play exciting fitness games using your body movements. Play on your phone, then mirror that phone screen to a TV or laptop.
           </p>
           <p className="fp-hero-note fp-hero-rise">
-            The game is on your phone. <a className="fp-text-link" href={PHONE_PLAY_PATH}>{PHONE_PLAY_URL}</a>
+            The game is on your phone. Tap <a className="fp-text-link" href={PHONE_PLAY_PATH}>Play on your phone</a>.
           </p>
         </div>
         <div className="fp-actions">

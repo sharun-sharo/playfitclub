@@ -4,7 +4,7 @@ import { CirclePlay, Play, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
-import { PHONE_PLAY_PATH, PHONE_PLAY_URL } from "@/components/fitrunner-v2/phone-local-play";
+import { PHONE_PLAY_PATH } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 
 const games = [
@@ -91,7 +91,7 @@ export function TvHome() {
           <p className="tv-body">
             Run, fight, dance and play exciting fitness games using your body movements. Play on your phone, then mirror that phone screen to the TV or laptop.
           </p>
-          <p className="tv-note">The game is on your phone. {PHONE_PLAY_URL}</p>
+          <p className="tv-note">The game is on your phone. Tap Play on your phone.</p>
           <p className="tv-note">Smart View, Cast, or Screen Mirroring shows this phone screen. The game is on the phone.</p>
           <div className="tv-actions">
             <Link

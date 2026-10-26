@@ -13,11 +13,11 @@ const questions = [
   },
   {
     q: "Do I need a special controller?",
-    a: "No. There is no console and no extra sensor. The phone runs Fit Run. Open https://playfitclub.com/play/phone, allow the front camera, and mirror that phone screen to a TV or laptop.",
+    a: "No. There is no console and no extra sensor. The phone runs Fit Run. Tap Play on your phone, allow the front camera, and mirror that phone screen to a TV or laptop.",
   },
   {
     q: "Can I play using my phone and a TV?",
-    a: "Yes. Play on your phone at https://playfitclub.com/play/phone, then mirror that phone screen to the TV or laptop with Smart View, Cast, or Screen Mirroring. The game is on the phone. The camera needs a secure page.",
+    a: "Yes. On your phone, tap Play on your phone, then mirror that phone screen to the TV or laptop with Smart View, Cast, or Screen Mirroring. The game is on the phone. The camera needs a secure page.",
   },
   {
     q: "What devices are supported?",

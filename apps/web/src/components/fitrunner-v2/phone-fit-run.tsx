@@ -27,7 +27,6 @@ import {
   phonePlayCalories,
   PHONE_MIRROR_GUIDE,
   PHONE_MIRROR_NOTE,
-  PHONE_PLAY_URL,
   PHONE_TEST_CONTROLS,
   PHONE_TEST_CONTROLS_LABEL,
   renderLoopFps,
@@ -709,7 +708,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
               <li key={line}>{line}</li>
             ))}
           </ul>
-          <p className="mt-3 max-w-md text-sm text-white/70">{PHONE_PLAY_URL}</p>
           {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}
           {startError ? <p className="mt-4 max-w-md text-base text-white">{startError}</p> : null}
           <button type="button" className="phone-start" onClick={() => void startFromTap()}>

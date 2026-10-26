@@ -6,7 +6,7 @@ import { noIndex } from "@/lib/site-metadata";
 
 export const metadata = noIndex(
   "Play Fit Run on your phone",
-  "Play Fit Run on your phone at https://playfitclub.com/play/phone, then mirror that phone screen to a TV or laptop.",
+  "Play Fit Run on your phone, then mirror that phone screen to a TV or laptop.",
 );
 
 export default function PhonePlayPage() {

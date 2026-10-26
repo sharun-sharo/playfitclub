@@ -130,7 +130,7 @@ export default function HomePage() {
                 <h3>Set up</h3>
                 <p>Play on your phone, then mirror that phone screen to the TV or laptop.</p>
                 <p>
-                  Open <a className="fp-text-link" href="/play/phone">https://playfitclub.com/play/phone</a> on your phone. The game is on that phone. Smart View, Cast, or Screen Mirroring shows this phone screen on a TV or laptop.
+                  On your phone, tap <a className="fp-text-link" href="/play/phone">Play on your phone</a>. The game is on that phone. Smart View, Cast, or Screen Mirroring shows this phone screen on a TV or laptop.
                 </p>
               </article>
               <article>

@@ -5,7 +5,6 @@ import { isTelevisionUserAgent } from "./tv-graphics";
 
 /** Phone runs Fit Run here. A TV or laptop shows this screen through the phone's own mirror. */
 export const PHONE_PLAY_PATH = "/play/phone";
-export const PHONE_PLAY_URL = "https://playfitclub.com/play/phone";
 
 /** The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror. */
 export const PHONE_MIRROR_NOTE =
