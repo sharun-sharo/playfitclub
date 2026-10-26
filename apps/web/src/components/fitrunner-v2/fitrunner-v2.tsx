@@ -530,7 +530,7 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           {framingLine}
         </p>
       ) : null}
-      {playing && !gameOver ? <div className="absolute bottom-4 right-4 z-10 flex gap-2">
+      {playing && !gameOver ? <div className="absolute bottom-4 right-4 z-10 flex gap-2" data-fitrunner-controls="">
         {session.phase === "paused" || session.phase === "countdown" ? null : (
           <button
             type="button"

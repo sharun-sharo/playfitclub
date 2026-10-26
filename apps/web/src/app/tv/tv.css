@@ -1,5 +1,9 @@
 .tv-shell {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
   min-height: 100dvh;
+  overflow-x: hidden;
   background: #1c1f24;
   color: #14211a;
   font-family: var(--font-fp-sans), "Segoe UI", sans-serif;
@@ -492,6 +496,7 @@
 
 .tv-status {
   display: grid;
+  min-height: 100vh;
   min-height: 100dvh;
   place-items: center;
   align-content: center;
@@ -551,5 +556,480 @@
   .tv-lead,
   .tv-status p {
     font-size: 1.35rem;
+  }
+}
+
+/*
+  /tv/play mounts FitRunner with Tailwind utilities emitted inside @layer.
+  Television browsers that drop @layer (Chromium 99) also drop those utilities,
+  so the canvas stays at its default 300×150 and the QR, body-init, and score
+  card lose position and type size. The older fallback lived in
+  @supports not (color-mix(...)), which those same browsers ignore with the query.
+  These rules are outside @layer and use only longhands, vh, grid, and rgba.
+  They are scoped to [data-tv-play], so /play/fit-run keeps its laptop layout.
+*/
+body {
+  margin: 0;
+}
+
+[data-tv-play],
+[data-tv-play] * {
+  box-sizing: border-box;
+}
+
+[data-tv-play] {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+[data-tv-play] [data-fitrunner-root] {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  background: #8ec8ea;
+  color: #fff;
+}
+
+[data-tv-play] [data-fitrunner-root] canvas[data-fitrunner-v2]:not([hidden]) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}
+
+[data-tv-play] [data-fitrunner-graphics-error] {
+  right: 12rem;
+  font-size: 1.5rem;
+  line-height: 1.35;
+}
+
+[data-tv-play] a:focus,
+[data-tv-play] button:focus {
+  outline: 4px solid #beff39;
+  outline-offset: 6px;
+}
+
+[data-tv-play] [data-tutorial-step] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  overflow: auto;
+  color: #fff;
+}
+
+[data-tv-play] [data-tutorial-step="screen"],
+[data-tv-play] [data-tutorial-step="scan"],
+[data-tv-play] [data-tutorial-step="camera"],
+[data-tv-play] [data-tutorial-step="howto"] {
+  display: flex;
+  justify-content: center;
+  padding: 2.5rem 3rem 3rem;
+  background: #14171c;
+}
+
+[data-tv-play] [data-tutorial-step="countdown"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: #14171c;
+  text-align: center;
+}
+
+[data-tv-play] [data-tutorial-step="gesture"],
+[data-tv-play] [data-tutorial-step="practice"] {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem 1.5rem 1.5rem;
+  background: transparent;
+}
+
+[data-tv-play] [data-tutorial-step] section {
+  width: 100%;
+  min-width: 0;
+  max-width: 64rem;
+}
+
+[data-tv-play] [data-tutorial-step] section[aria-label="How to play"] {
+  max-width: 48rem;
+}
+
+[data-tv-play] [data-tutorial-step] section[aria-label="FitRunner practice"] {
+  max-width: 36rem;
+  padding: 1.5rem;
+  background: #1c1f24;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+[data-tv-play] [data-tutorial-step] ol {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-gap: 1rem;
+  gap: 1rem;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+[data-tv-play] [data-tutorial-step] ol li {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+[data-tv-play] [data-tutorial-step] ol li[aria-current="step"] {
+  color: #beff39;
+}
+
+[data-tv-play] [data-tutorial-step] ol li span {
+  display: block;
+}
+
+[data-tv-play] [data-tutorial-step] ol li span:first-child {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+[data-tv-play] [data-tutorial-step] ol li[aria-current="step"] span:first-child {
+  font-size: 3.4rem;
+}
+
+[data-tv-play] [data-tutorial-step="screen"] h1,
+[data-tv-play] [data-tutorial-step="scan"] h1,
+[data-tv-play] [data-tutorial-step="camera"] h1,
+[data-tv-play] [data-tutorial-step="howto"] h1 {
+  margin: 1rem 0 0;
+  color: #beff39;
+  font-size: 4.25rem;
+  font-weight: 700;
+  line-height: 0.95;
+}
+
+[data-tv-play] [data-tutorial-step="screen"] p,
+[data-tv-play] [data-tutorial-step="scan"] p,
+[data-tv-play] [data-tutorial-step="camera"] p,
+[data-tv-play] [data-tutorial-step="howto"] p,
+[data-tv-play] [data-tutorial-step="howto"] li {
+  max-width: 40rem;
+  margin: 1rem 0 0;
+  color: #fff;
+  font-size: 1.7rem;
+  line-height: 1.35;
+}
+
+[data-tv-play] [data-tutorial-step="screen"] svg,
+[data-tv-play] [data-tutorial-step="scan"] svg,
+[data-tv-play] [data-tutorial-step="camera"] svg {
+  width: 4rem;
+  height: 4rem;
+}
+
+[data-tv-play] [data-tutorial-step="howto"] svg,
+[data-tv-play] [data-tutorial-step="gesture"] svg {
+  width: 7rem;
+  height: 9rem;
+  flex: none;
+}
+
+[data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div {
+  display: grid;
+  grid-template-columns: 1fr 22rem;
+  grid-gap: 1.5rem 2rem;
+  gap: 1.5rem 2rem;
+  align-items: center;
+  width: 100%;
+  margin-top: 1.75rem;
+}
+
+[data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div > div:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+[data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div > div:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+}
+
+[data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div > div:nth-child(3) {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+[data-tv-play] [data-tutorial-step="scan"] img {
+  display: block;
+  width: 20rem;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 0.85rem;
+  background: #fff;
+}
+
+[data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div > div:nth-child(2) > div {
+  width: 20rem;
+  max-width: 100%;
+  min-height: 20rem;
+}
+
+[data-tv-play] [data-tutorial-step] [data-join-code] {
+  max-width: none;
+  margin-top: 0.25rem;
+  color: #fff;
+  font-size: 3.4rem;
+  line-height: 1;
+  letter-spacing: 0.18em;
+}
+
+[data-tv-play] [data-tutorial-step] button,
+[data-tv-play] [data-fitrunner-controls] button,
+[data-tv-play] [data-game-over] button,
+[data-tv-play] [data-fitrunner-demo-over] a,
+[data-tv-play] [data-results-screen] button,
+[data-tv-play] [data-results-screen] a {
+  min-height: 3.4rem;
+  margin: 0.45rem 0.6rem 0.45rem 0;
+  padding: 0.7rem 1.4rem;
+  border: 2px solid #beff39;
+  border-radius: 999px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+[data-tv-play] [data-tutorial-step="countdown"] p {
+  margin: 0;
+  color: #beff39;
+  font-size: 6rem;
+  line-height: 1;
+}
+
+[data-tv-play] [data-body-init] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  padding: 1.5rem 2.5rem 2rem;
+  background: #16181d;
+  color: #fff;
+  text-align: center;
+}
+
+[data-tv-play] [data-body-init] img {
+  display: block;
+  width: auto;
+  height: 3rem;
+  margin: 0.5rem auto 0;
+}
+
+[data-tv-play] [data-body-init] > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+[data-tv-play] [data-body-init] > div > div {
+  position: relative;
+  width: 12rem;
+  height: 22rem;
+  max-height: 42vh;
+  margin: 1rem auto;
+}
+
+[data-tv-play] [data-body-init] svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+[data-tv-play] [data-body-init] > div > div > div {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+[data-tv-play] [data-body-init] h1,
+[data-tv-play] [data-body-init-title] {
+  max-width: 52rem;
+  margin: 0.5rem auto 0;
+  color: #beff39;
+  font-size: 3rem;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+}
+
+[data-tv-play] [data-body-init] [data-countdown] {
+  margin: 0;
+  color: #beff39;
+  font-size: 8rem;
+  line-height: 1;
+}
+
+[data-tv-play] [data-body-init] [data-body-init-detail] {
+  max-width: 40rem;
+  margin: 0.75rem auto 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 1.45rem;
+  line-height: 1.35;
+}
+
+[data-tv-play] [data-fitrunner-play-hud] {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 10;
+  width: 14rem;
+  padding: 0.85rem 1rem;
+  background: #10141c;
+  color: #fff;
+  border: 1px solid rgba(214, 255, 74, 0.55);
+  border-radius: 1rem;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-tv-play] [data-fitrunner-play-hud] p {
+  margin: 0;
+  color: #d6ff4a;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+}
+
+[data-tv-play] [data-fitrunner-play-hud] p:nth-of-type(2) {
+  margin-top: 0.2rem;
+  color: #fff;
+  font-size: 2.6rem;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+[data-tv-play] [data-fitrunner-play-hud] dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-gap: 0.3rem 0.75rem;
+  gap: 0.3rem 0.75rem;
+  margin: 0.7rem 0 0;
+  color: #d5deea;
+  font-size: 0.95rem;
+}
+
+[data-tv-play] [data-fitrunner-hearts] {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  padding: 0.4rem 0.8rem;
+  background: #10141c;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  translate: none;
+}
+
+[data-tv-play] [data-fitrunner-hearts] svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0 0.12rem;
+}
+
+[data-tv-play] [data-fitrunner-controls] {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  left: auto;
+  z-index: 10;
+}
+
+[data-tv-play] [data-mission-panel] {
+  position: absolute;
+  top: 1rem;
+  left: 16rem;
+  z-index: 10;
+  width: 18rem;
+  padding: 1rem;
+  background: #1c1f24;
+  color: #fff;
+}
+
+[data-tv-play] [data-fitrunner-root] > p[data-countdown] {
+  position: absolute;
+  top: 33%;
+  left: 50%;
+  z-index: 10;
+  margin: 0;
+  color: #d6ff4a;
+  font-size: 6rem;
+  line-height: 1;
+  transform: translateX(-50%);
+  translate: none;
+}
+
+[data-tv-play] [data-game-over],
+[data-tv-play] [data-fitrunner-demo-over],
+[data-tv-play] [data-results-screen] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  overflow: auto;
+  padding: 2.5rem 1.5rem;
+  background: #10141c;
+  color: #fff;
+  text-align: center;
+}
+
+[data-tv-play] [data-game-over] section,
+[data-tv-play] [data-fitrunner-demo-over] section,
+[data-tv-play] [data-results-screen] section {
+  width: 100%;
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: #1c1f24;
+}
+
+@media (max-width: 1100px) {
+  [data-tv-play] [data-tutorial-step="screen"] h1,
+  [data-tv-play] [data-tutorial-step="scan"] h1,
+  [data-tv-play] [data-tutorial-step="camera"] h1,
+  [data-tv-play] [data-tutorial-step="howto"] h1 {
+    font-size: 3.4rem;
+  }
+
+  [data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div {
+    grid-template-columns: 1fr 18rem;
+  }
+
+  [data-tv-play] [data-tutorial-step="scan"] img,
+  [data-tv-play] [data-tutorial-step="scan"] [aria-label="FitRunner setup"] > div > div:nth-child(2) > div {
+    width: 18rem;
   }
 }
