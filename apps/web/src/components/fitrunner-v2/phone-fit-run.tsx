@@ -11,13 +11,19 @@ import {
   phoneCalibMachine,
   phoneFullscreenKeepsPlay,
   phoneStageCaps,
+  phoneStandGuidance,
+  phoneStandHolding,
   startPhonePlay,
   stepPhoneCalibration,
   PHONE_PLAYER_READY,
   PHONE_STABLE_MS,
   PHONE_STAGE_NOTE,
+  PHONE_STAND_OK,
+  PHONE_STAND_QUIET,
+  PHONE_STAND_SENTENCE,
   PHONE_VISIBILITY_FLOOR,
   type PhoneCalibState,
+  type PhoneStandZones,
 } from "@/components/fitrunner-v2/phone-calibration";
 import {
   applyLocalPose,
@@ -68,11 +74,51 @@ function sameCalib(current: PhoneCalibState, next: PhoneCalibState) {
   );
 }
 
-function CalibGuide() {
+function sameZones(current: PhoneStandZones, next: PhoneStandZones) {
+  return current.head === next.head && current.shoulders === next.shoulders && current.knees === next.knees;
+}
+
+function CalibGuide({ zones, holding }: { zones: PhoneStandZones; holding: boolean }) {
+  const shown = holding ? PHONE_STAND_OK : zones;
   return (
-    <svg className="phone-calib-guide" viewBox="0 0 120 220" aria-hidden="true">
-      <ellipse cx="60" cy="28" rx="16" ry="18" fill="none" stroke="white" strokeWidth="3" />
-      <path d="M60 46v74M28 78l32-8 32 8M36 188l24-68 24 68" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" />
+    <svg
+      className="phone-calib-guide"
+      viewBox="-80 0 980 608"
+      role="img"
+      aria-label="Standing guide. Fit your head, shoulders, and knees inside the figure."
+      data-phone-stand={holding ? "hold" : "place"}
+    >
+      <g className="phone-stand-body" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M400 124 V158" />
+        <path d="M292 178 L258 268" />
+        <path d="M508 178 L542 268" />
+        <path d="M400 178 V300" />
+        <path d="M400 300 L318 400" />
+        <path d="M400 300 L482 400" />
+        <path d="M318 468 L286 578" />
+        <path d="M482 468 L514 578" />
+        <path d="M254 578 H318" />
+        <path d="M482 578 H546" />
+      </g>
+      <g data-phone-zone="head" data-phone-zone-state={shown.head}>
+        <ellipse className="phone-zone-spot" cx="400" cy="70" rx="62" ry="66" />
+        <ellipse cx="400" cy="70" rx="46" ry="50" fill="none" stroke="currentColor" strokeWidth="18" />
+        <path d="M450 70 H548" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+        <text x="560" y="86">Head</text>
+      </g>
+      <g data-phone-zone="shoulders" data-phone-zone-state={shown.shoulders}>
+        <rect className="phone-zone-spot" x="276" y="150" width="248" height="52" rx="26" />
+        <path d="M292 178 H508" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" />
+        <path d="M508 178 H548" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+        <text x="560" y="190">Shoulders</text>
+      </g>
+      <g data-phone-zone="knees" data-phone-zone-state={shown.knees}>
+        <rect className="phone-zone-spot" x="286" y="400" width="228" height="68" rx="34" />
+        <circle cx="318" cy="434" r="22" fill="none" stroke="currentColor" strokeWidth="12" />
+        <circle cx="482" cy="434" r="22" fill="none" stroke="currentColor" strokeWidth="12" />
+        <path d="M508 434 H548" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+        <text x="560" y="446">Knees</text>
+      </g>
     </svg>
   );
 }
@@ -159,6 +205,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   });
   const [runId, setRunId] = useState(0);
   const [calib, setCalib] = useState<PhoneCalibState>(() => createPhoneCalibration());
+  const [standZones, setStandZones] = useState<PhoneStandZones>(PHONE_STAND_QUIET);
   const [streamToken, setStreamToken] = useState(0);
   const [started, setStarted] = useState(false);
   const [stageNote, setStageNote] = useState<string | null>(null);
@@ -288,6 +335,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
     calibRef.current = createPhoneCalibration();
     setCalib(calibRef.current);
+    setStandZones(PHONE_STAND_QUIET);
     setPoseCount(0);
     estimatorRef.current?.setMode("calibrate");
     estimatorRef.current?.setRaceLive(false);
@@ -575,6 +623,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       }
       movesRef.current = (next.phase === "running" || next.phase === "warning") && !next.coursePaused;
       setCalib((current) => (sameCalib(current, next) ? current : next));
+      setStandZones((current) => (sameZones(current, reading.zones) ? current : reading.zones));
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
@@ -765,6 +814,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
       calibRef.current = createPhoneCalibration();
       setCalib(calibRef.current);
+      setStandZones(PHONE_STAND_QUIET);
       setPoseCount(0);
       setStreamToken((value) => value + 1);
     } catch (error) {
@@ -795,7 +845,8 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }
 
   const cameraLarge = started && calib.phase !== "running" && calib.phase !== "warning";
-  const guidanceLine = poseCount > 1 ? "One person at a time" : calib.guidance;
+  const holding = poseCount <= 1 && phoneStandHolding(calib);
+  const guidanceLine = phoneStandGuidance(calib, poseCount);
   const showCourseHud = playing && calib.phase !== "reposition" && calib.phase !== "countdown" && calib.phase !== "ready" && calib.phase !== "finding" && calib.phase !== "adjust" && calib.phase !== "calibrating";
 
   return (
@@ -809,36 +860,39 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       </div>
       {cameraLarge ? (
         <div className="phone-cal-stage" data-phone-calibration="black">
-          <CalibGuide />
-          <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} role="status">
-            {calib.status && calib.phase !== "countdown" ? (
-              <p className="phone-calib-status" data-phone-status="">
-                {calib.status}
-              </p>
-            ) : null}
-            {calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
-            {calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
-              <p className="phone-calib-count" data-phone-countdown="">
-                {calib.countdown}
-              </p>
-            ) : null}
-            {guidanceLine ? (
-              <p className="phone-calib-guidance" data-phone-guidance="">
-                {guidanceLine}
-              </p>
-            ) : null}
-            {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
-            {cameraError ? (
-              <p className="phone-calib-note" role="alert">
-                {cameraError}
-              </p>
-            ) : null}
-            {startError ? <p className="phone-calib-note">{startError}</p> : null}
-            {cameraError ? (
-              <button type="button" className="phone-start" onClick={() => void startFromTap()}>
-                Try again
-              </button>
-            ) : null}
+          <div className="phone-stand">
+            <CalibGuide zones={standZones} holding={holding} />
+            <p className="phone-stand-line">{PHONE_STAND_SENTENCE}</p>
+            <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} data-phone-holding={holding ? "1" : "0"} role="status">
+              {calib.status && calib.phase !== "countdown" ? (
+                <p className="phone-calib-status" data-phone-status="">
+                  {calib.status}
+                </p>
+              ) : null}
+              {calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
+              {calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
+                <p className="phone-calib-count" data-phone-countdown="">
+                  {calib.countdown}
+                </p>
+              ) : null}
+              {guidanceLine ? (
+                <p className="phone-calib-guidance" data-phone-guidance="">
+                  {guidanceLine}
+                </p>
+              ) : null}
+              {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
+              {cameraError ? (
+                <p className="phone-calib-note" role="alert">
+                  {cameraError}
+                </p>
+              ) : null}
+              {startError ? <p className="phone-calib-note">{startError}</p> : null}
+              {cameraError ? (
+                <button type="button" className="phone-start" onClick={() => void startFromTap()}>
+                  Try again
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

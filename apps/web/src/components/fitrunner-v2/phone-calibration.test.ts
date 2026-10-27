@@ -6,12 +6,15 @@ import {
   phoneFramingGuidance,
   phoneFullscreenKeepsPlay,
   phoneFullBody,
+  phoneStandGuidance,
+  phoneStandHolding,
   PHONE_ANKLES_NOT_REQUIRED,
   PHONE_CALIB_CONFIG,
   PHONE_LOSS_GRACE_MS,
   PHONE_PLAYER_READY,
   PHONE_PLAY_STARTED_KEY,
   PHONE_STAGE_NOTE,
+  PHONE_STAND_SENTENCE,
   PHONE_START_LANDMARKS,
   PHONE_VISIBILITY_FLOOR,
   readPhonePlayStarted,
@@ -233,6 +236,68 @@ describe("phone calibration", () => {
     expect(phoneFramingGuidance({ framingCode: "move_right", fullBody: false, straight: true, poseCount: 1 })).toBe("Center your body");
     expect(phoneFramingGuidance({ framingCode: "keep_feet", fullBody: false, straight: true, poseCount: 1 })).toBe("Keep your knees visible");
     expect(phoneFramingGuidance({ framingCode: "good", fullBody: true, straight: true, poseCount: 2 })).toBeNull();
+  });
+
+  it("marks the head, shoulders, and knees on the standing figure", () => {
+    expect(PHONE_STAND_SENTENCE).toBe(
+      "Stand so your head and knees fit inside the figure. If your head or a knee would be cut off, step back. If you look tiny, step closer.",
+    );
+    const quiet = { head: "quiet", shoulders: "quiet", knees: "quiet" };
+    const seen = { head: "ok", shoulders: "ok", knees: "ok" };
+    expect(phoneBodyReading({ poseCount: 0, landmarks: null, framingCode: null }).zones).toEqual(quiet);
+    expect(phoneBodyReading({ poseCount: 2, landmarks: standing(), framingCode: "good" }).zones).toEqual(quiet);
+
+    const good = phoneBodyReading({ poseCount: 1, landmarks: standing(), framingCode: null });
+    expect(good.signal).toBe("full");
+    expect(good.zones).toEqual(seen);
+
+    const covered = standing((points) => {
+      points[25] = { x: 0.45, y: 0.72, visibility: 0.2 };
+      points[26] = { x: 0.55, y: 0.72, visibility: 0.95 };
+    });
+    const legs = phoneBodyReading({ poseCount: 1, landmarks: covered, framingCode: null });
+    expect(legs.guidance).toBe("Keep your knees visible");
+    expect(legs.zones).toEqual({ head: "ok", shoulders: "ok", knees: "missing" });
+
+    const noHead = standing((points) => {
+      points[0] = { x: 0.5, y: -0.06, visibility: 0.95 };
+    });
+    const headless = phoneBodyReading({ poseCount: 1, landmarks: noHead, framingCode: null });
+    expect(headless.guidance).toBe("Move farther");
+    expect(headless.zones).toEqual({ head: "missing", shoulders: "ok", knees: "ok" });
+
+    const far = standing((points) => {
+      points[0] = { x: 0.5, y: 0.46, visibility: 0.95 };
+      points[11] = { x: 0.48, y: 0.48, visibility: 0.95 };
+      points[12] = { x: 0.52, y: 0.48, visibility: 0.95 };
+      points[23] = { x: 0.49, y: 0.52, visibility: 0.95 };
+      points[24] = { x: 0.51, y: 0.52, visibility: 0.95 };
+      points[25] = { x: 0.49, y: 0.56, visibility: 0.95 };
+      points[26] = { x: 0.51, y: 0.56, visibility: 0.95 };
+    });
+    const distant = phoneBodyReading({ poseCount: 1, landmarks: far, framingCode: null });
+    expect(distant.guidance).toBe("Move closer");
+    expect(distant.zones).toEqual(seen);
+
+    const dim = standing((points) => {
+      for (const point of points) point.visibility = point.visibility ? 0.2 : 0;
+    });
+    expect(phoneBodyReading({ poseCount: 1, landmarks: dim, framingCode: null }).zones).toEqual(quiet);
+
+    let state = createPhoneCalibration();
+    expect(phoneStandHolding(state)).toBe(false);
+    expect(phoneStandGuidance(state, 1)).toBeNull();
+    state = step(state, full(0));
+    expect(state.status).toBe("Calibrating");
+    expect(phoneStandHolding(state)).toBe(true);
+    expect(phoneStandGuidance(state, 1)).toBe("Hold still");
+    state = step(state, { now: 200, signal: "partial", guidance: "Keep your knees visible" });
+    expect(state.holdStartedAt).toBe(0);
+    expect(phoneStandGuidance(state, 1)).toBe("Hold still");
+    state = step(state, full(2000));
+    expect(state.status).toBe("Ready");
+    expect(phoneStandHolding(state)).toBe(true);
+    expect(phoneStandGuidance(state, 1)).toBe("Full body detected");
   });
 
   it("matches the on-screen line to the body measurement", () => {
