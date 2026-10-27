@@ -12,8 +12,9 @@ import { inCameraFrame } from "../../lib/vision/preview-fit";
  *
  * Ankles (27, 28) are not required. The existing framing GOOD path already
  * accepts covered legs (head, shoulders, and hips) for play. That path does
- * not open this start gate. There is no distance sensor: too close, too far,
- * off center, and missing feet come from the existing framing codes.
+ * not open this start gate. There is no distance sensor. Too close means the
+ * head or a knee is outside the image. Too far means the body is a speck.
+ * Empty space around a visible body is not required.
  */
 export const PHONE_VISIBILITY_FLOOR = DEFAULT_FRAMING_CONFIG.minVisibility;
 
@@ -71,13 +72,14 @@ export type PhoneCalibMachine =
   | "CALIBRATED"
   | "READY_TO_PLAY";
 
-/** Image fractions. Distance is torso length and the head-to-knee box, not pixels or metres. */
+/**
+ * Image fractions. Too far is a tiny torso or head-to-knee span.
+ * A large torso is still in range when the head and knees are inside the image.
+ */
 const PHONE_EDGE = 0.04;
 const PHONE_CENTER_MIN = 0.36;
 const PHONE_CENTER_MAX = 0.64;
-const PHONE_TORSO_CLOSE = 0.46;
 const PHONE_TORSO_FAR = 0.11;
-const PHONE_SPAN_CLOSE = 0.78;
 const PHONE_SPAN_FAR = 0.3;
 
 export type PhoneBodySignal = "none" | "partial" | "full";
@@ -285,21 +287,38 @@ function visibilityOf(landmarks: Array<FramingLandmark | null | undefined> | nul
   return point.visibility ?? 0;
 }
 
-function placedJoint(
+/** Clears the visibility floor. The point may still sit outside the image. */
+function confidentJoint(
   landmarks: Array<FramingLandmark | null | undefined> | null | undefined,
   index: number,
   minVisibility: number,
 ) {
   const point = landmarks?.[index];
   if (!point || (point.visibility ?? 0) < minVisibility) return null;
-  if (!inCameraFrame(point)) return null;
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
   return point;
+}
+
+function placedJoint(
+  landmarks: Array<FramingLandmark | null | undefined> | null | undefined,
+  index: number,
+  minVisibility: number,
+) {
+  const point = confidentJoint(landmarks, index, minVisibility);
+  if (!point || !inCameraFrame(point)) return null;
+  return point;
+}
+
+function cutOff(point: FramingLandmark | null) {
+  return Boolean(point && !inCameraFrame(point));
 }
 
 /**
  * One frame of the phone gate. Ankles are not read.
- * Ready requires one person, head through knees, inside the image, roughly centered,
- * and a torso length that is neither a close crop nor a distant speck.
+ * Ready requires one person, head through knees inside the image, roughly centered,
+ * and a body that is not a distant speck.
+ * Standing closer still passes when those joints are in frame. A large torso is not too close.
+ * Too close means the head or a knee is outside the image.
  */
 export function phoneBodyGate(input: {
   poseCount: number;
@@ -324,7 +343,14 @@ export function phoneBodyGate(input: {
   const rightKnee = placedJoint(input.landmarks, PHONE_START_LANDMARKS.rightKnee, minVisibility);
   const fullBody = Boolean(head && leftShoulder && rightShoulder && leftHip && rightHip && leftKnee && rightKnee);
   const straight = phoneShouldersLevel(input.landmarks, minVisibility);
+  const headCut = cutOff(confidentJoint(input.landmarks, PHONE_START_LANDMARKS.head, minVisibility));
+  const kneesCut =
+    cutOff(confidentJoint(input.landmarks, PHONE_START_LANDMARKS.leftKnee, minVisibility)) ||
+    cutOff(confidentJoint(input.landmarks, PHONE_START_LANDMARKS.rightKnee, minVisibility));
   if (!leftKnee || !rightKnee) {
+    if (kneesCut || headCut) {
+      return { signal: "partial", fullBody: false, straight, guidance: "Move farther", standing: false };
+    }
     return { signal: "partial", fullBody: false, straight, guidance: "Keep your knees visible", standing: false };
   }
   if (!head || !leftShoulder || !rightShoulder || !leftHip || !rightHip) {
@@ -344,11 +370,6 @@ export function phoneBodyGate(input: {
   const torso = Math.hypot(hipX - shoulderX, hipY - shoulderY);
   const span = Math.max(leftKnee.y, rightKnee.y) - head.y;
   const center = (shoulderX + hipX) / 2;
-  const cutTop = head.y <= PHONE_EDGE;
-  const cutBottom = leftKnee.y >= 1 - PHONE_EDGE || rightKnee.y >= 1 - PHONE_EDGE;
-  if (cutTop || cutBottom || torso >= PHONE_TORSO_CLOSE || span >= PHONE_SPAN_CLOSE) {
-    return { signal: "partial", fullBody, straight, guidance: "Move farther", standing: false };
-  }
   if (torso <= PHONE_TORSO_FAR || span <= PHONE_SPAN_FAR) {
     return { signal: "partial", fullBody, straight, guidance: "Move closer", standing: false };
   }

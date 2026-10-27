@@ -19,6 +19,7 @@ import {
   phoneMotionDiagLines,
   phoneMotionLogText,
   phonePreviewFrame,
+  placePhonePreview,
   phonePixelRatio,
   phonePlayCalories,
   phoneSetupLine,
@@ -261,6 +262,14 @@ describe("phone local gestures", () => {
     expect(videoRule).not.toContain("opacity: 0;");
     expect(park).toContain("z-index: 24");
     expect(css.slice(css.indexOf(".phone-camera-park canvas"), css.indexOf(".phone-cal-stage"))).toContain("display: none");
+    const stage = css.slice(css.indexOf(".phone-cal-stage {"), css.indexOf(".phone-cal-stage video.phone-cal-media"));
+    const stageMedia = css.slice(css.indexOf(".phone-cal-stage video.phone-cal-media"), css.indexOf(".phone-calib-guide"));
+    expect(stage).toContain("overflow: hidden");
+    expect(stageMedia).toContain("max-width: none");
+    expect(stageMedia).toContain("opacity: 1");
+    expect(stageMedia).toContain("border: 0");
+    expect(stageMedia).not.toContain("width: 6px");
+    expect(stageMedia).toContain("display: block");
     const preview = phonePreviewFrame(1000, 500, 1920, 1080);
     expect(preview.height).toBeCloseTo(500);
     expect(preview.width).toBeLessThan(1000);
@@ -305,5 +314,20 @@ describe("phone local gestures", () => {
     expect(dispatchLocalGesture("lean_left", game)).toBe(true);
     expect(dispatchLocalGesture("lean_right", game)).toBe(true);
     expect(calls).toEqual(["jump", "roll", "stepLane:-1", "stepLane:1"]);
+  });
+
+  it("covers the calibration stage instead of pinning a camera sliver", () => {
+    const style = { left: "stale", top: "stale", width: "6px", height: "4px", right: "0px", bottom: "0px" };
+    const flip = { style } as unknown as HTMLElement;
+    placePhonePreview(flip, { clientWidth: 844, clientHeight: 390 }, { videoWidth: 720, videoHeight: 1280 }, true);
+    expect(style.width).toBe("100%");
+    expect(style.height).toBe("100%");
+    expect(style.left).toBe("0");
+    expect(style.top).toBe("0");
+    expect(style.width).not.toBe("6px");
+    placePhonePreview(flip, { clientWidth: 844, clientHeight: 390 }, { videoWidth: 6, videoHeight: 4 }, false);
+    expect(style.width).toBe("");
+    expect(style.height).toBe("");
+    expect(style.left).toBe("");
   });
 });

@@ -454,12 +454,17 @@ html:-webkit-full-screen .phone-play,
   position: absolute;
   inset: 0;
   z-index: 30;
+  overflow: hidden;
+  border: 0;
+  outline: none;
   background: #000;
 }
 
 .phone-cal-flip {
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  border: 0;
   transform: scaleX(-1);
 }
 
@@ -472,9 +477,32 @@ html:-webkit-full-screen .phone-play,
   background: #000;
 }
 
-/* The flip box is the camera's own aspect. Fill it. Landmark fractions map onto that bitmap, then the box mirrors. */
-.phone-cal-stage .phone-cal-media {
+/*
+ * Calibration covers the stage. The video and the skeleton canvas share this box,
+ * then the box mirrors. Landmark fractions map onto that bitmap.
+ * Overscan clips the element edge so a hairline, a canvas border, or a leaked
+ * 6×4 sliver cannot sit in the picture. The run sliver is .phone-camera-park.
+ */
+.phone-cal-stage video.phone-cal-media,
+.phone-cal-stage canvas.phone-cal-media {
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  opacity: 1;
   object-fit: fill;
+}
+
+.phone-cal-stage canvas.phone-cal-media {
+  display: block;
+  background: transparent;
 }
 
 .phone-calib-guide {

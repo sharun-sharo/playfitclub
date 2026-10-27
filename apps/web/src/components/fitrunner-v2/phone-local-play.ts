@@ -119,21 +119,26 @@ export function phonePlayViewportBox(input: {
 }
 
 /**
- * Calibration preview box. The video and the skeleton canvas share this rectangle,
- * then CSS mirrors the rectangle. Landmark x and y stay image fractions of the
- * camera bitmap. They are not CSS pixels of the mirrored element.
+ * Largest camera rectangle that fits a stage. Calibration does not use this.
+ * A contained box leaves a vertical edge on the setup screen.
  */
 export function phonePreviewFrame(stageWidth: number, stageHeight: number, mediaWidth: number, mediaHeight: number) {
   return containFrame(stageWidth, stageHeight, mediaWidth, mediaHeight);
 }
 
-/** Pins the shared preview rectangle. Clearing it lets the in-run sliver use its stylesheet size. */
+/**
+ * Calibration covers the stage. The in-run path clears these inline sizes so the
+ * 6×4 stylesheet sliver can paint. A contained camera rectangle is not pinned here:
+ * its right edge showed up as a line beside the stick figure.
+ */
 export function placePhonePreview(
   flip: HTMLElement,
   stage: { clientWidth: number; clientHeight: number },
   video: { videoWidth: number; videoHeight: number },
   shown: boolean,
 ) {
+  void stage;
+  void video;
   if (!shown) {
     flip.style.left = "";
     flip.style.top = "";
@@ -143,13 +148,12 @@ export function placePhonePreview(
     flip.style.bottom = "";
     return;
   }
-  const box = phonePreviewFrame(stage.clientWidth, stage.clientHeight, video.videoWidth, video.videoHeight);
-  flip.style.left = `${box.x}px`;
-  flip.style.top = `${box.y}px`;
-  flip.style.width = `${box.width}px`;
-  flip.style.height = `${box.height}px`;
+  flip.style.left = "0";
+  flip.style.top = "0";
   flip.style.right = "auto";
   flip.style.bottom = "auto";
+  flip.style.width = "100%";
+  flip.style.height = "100%";
 }
 
 /** Pins the play root and the WebGL canvas to the visual viewport. */

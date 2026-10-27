@@ -260,7 +260,19 @@ describe("phone calibration", () => {
       points[25] = { x: 0.36, y: 0.97, visibility: 0.95 };
       points[26] = { x: 0.64, y: 0.97, visibility: 0.95 };
     });
-    expect(phoneBodyReading({ poseCount: 1, landmarks: close, framingCode: "good" }).guidance).toBe("Move farther");
+    const closeReading = phoneBodyReading({ poseCount: 1, landmarks: close, framingCode: "good" });
+    expect(closeReading.signal).toBe("full");
+    expect(closeReading.guidance).toBe("Full body detected");
+    expect(closeReading.guidance).not.toBe("Keep your knees visible");
+
+    const clipped = standing((points) => {
+      points[0] = { x: 0.5, y: -0.04, visibility: 0.95 };
+      points[25] = { x: 0.45, y: 1.08, visibility: 0.95 };
+      points[26] = { x: 0.55, y: 1.05, visibility: 0.95 };
+    });
+    const clippedReading = phoneBodyReading({ poseCount: 1, landmarks: clipped, framingCode: "good" });
+    expect(clippedReading.guidance).toBe("Move farther");
+    expect(clippedReading.guidance).not.toBe("Keep your knees visible");
 
     const off = standing((points) => {
       for (const point of points) {
@@ -274,6 +286,27 @@ describe("phone calibration", () => {
     });
     expect(phoneBodyReading({ poseCount: 1, landmarks: dim, framingCode: null }).guidance).toBe("Improve lighting");
     expect(phoneBodyReading({ poseCount: 2, landmarks: standing(), framingCode: "good" }).signal).toBe("partial");
+  });
+
+  it("accepts a closer stance when the knees stay in frame", () => {
+    const filled = standing((points) => {
+      points[0] = { x: 0.5, y: 0, visibility: 0.45 };
+      points[11] = { x: 0.32, y: 0.22, visibility: 0.45 };
+      points[12] = { x: 0.68, y: 0.22, visibility: 0.45 };
+      points[23] = { x: 0.36, y: 0.7, visibility: 0.45 };
+      points[24] = { x: 0.64, y: 0.7, visibility: 0.45 };
+      points[25] = { x: 0.38, y: 1, visibility: 0.45 };
+      points[26] = { x: 0.62, y: 1, visibility: 0.45 };
+      points[27] = { x: 0.4, y: 1.2, visibility: 0 };
+      points[28] = { x: 0.6, y: 1.2, visibility: 0 };
+    });
+    const reading = phoneBodyReading({ poseCount: 1, landmarks: filled, framingCode: "too_close" });
+    expect(reading.signal).toBe("full");
+    expect(reading.standing).toBe(true);
+    expect(reading.fullBody).toBe(true);
+    expect(reading.guidance).toBe("Full body detected");
+    expect(reading.guidance).not.toBe("Keep your knees visible");
+    expect(reading.guidance).not.toBe("Move farther");
   });
 
   it("waits for the baseline after the 2 second hold and does not treat that wait as a reset", () => {
