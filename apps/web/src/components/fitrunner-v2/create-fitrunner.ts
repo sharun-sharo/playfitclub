@@ -9,6 +9,7 @@ import {
   type ObstacleKind,
   type Token,
 } from "@/components/fitrunner-v2/course";
+import { assignObstacleTheme } from "@/components/fitrunner-v2/obstacle-themes";
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
 import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
@@ -839,6 +840,7 @@ export async function startFitRunner(
         const object = segment.slots[item.kind][slot];
         if (!object) return [];
         object.visible = true;
+        assignObstacleTheme(object);
         const centerZ = -item.distanceM - item.depthM / 2;
         object.position.set(item.lane * tuning.laneSpacing, 0, centerZ - worldZ);
         return [{ id: item.id, kind: item.kind, lane: item.lane, object, resolved: false, hit: false, threatened: false }];
