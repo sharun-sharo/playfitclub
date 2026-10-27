@@ -3,7 +3,9 @@ import {
   classifyFraming,
   createFramingMonitor,
   FRAMING_DISTANCE_HINT,
+  gestureAllowed,
   gestureBlocks,
+  VERTICAL_HIP_MARGIN,
   plainCalibrationCue,
   plainFramingCue,
   plainLimbCue,
@@ -253,6 +255,40 @@ describe("framing classifier", () => {
     expect(gestureBlocks(noHips).squat).toBe(true);
     expect(gestureBlocks(noHips).jump).toBe(true);
     expect(gestureBlocks(noHips).note).toContain("HIPS");
+
+    const justOutside = pose((points) => {
+      points[23] = { ...points[23], y: 1 + VERTICAL_HIP_MARGIN / 2, visibility: 0.95 };
+      points[24] = { ...points[24], y: 1 + VERTICAL_HIP_MARGIN / 2, visibility: 0.95 };
+    });
+    const edge = gestureBlocks(justOutside);
+    expect(edge.jump).toBe(false);
+    expect(edge.squat).toBe(false);
+    expect(gestureAllowed("jump", edge)).toBe(true);
+    expect(gestureAllowed("squat", edge)).toBe(true);
+    expect(gestureAllowed("lean_left", edge)).toBe(true);
+    expect(gestureAllowed("lean_right", edge)).toBe(true);
+
+    const above = pose((points) => {
+      points[23] = { ...points[23], y: -VERTICAL_HIP_MARGIN / 2, visibility: 0.95 };
+      points[24] = { ...points[24], y: -VERTICAL_HIP_MARGIN / 2, visibility: 0.95 };
+    });
+    const risen = gestureBlocks(above);
+    expect(gestureAllowed("jump", risen)).toBe(true);
+    expect(gestureAllowed("squat", risen)).toBe(true);
+
+    const armOut = pose((points) => {
+      points[15] = { ...points[15], y: 1 + VERTICAL_HIP_MARGIN / 2, visibility: 0.95 };
+    });
+    expect(gestureBlocks(armOut).leftArm).toBe(true);
+    expect(gestureAllowed("lean_left", gestureBlocks(armOut))).toBe(false);
+    expect(gestureAllowed("jump", gestureBlocks(armOut))).toBe(true);
+
+    const farOutside = pose((points) => {
+      points[23] = { ...points[23], y: 1.4, visibility: 0.95 };
+      points[24] = { ...points[24], y: 1.4, visibility: 0.95 };
+    });
+    expect(gestureBlocks(farOutside).jump).toBe(true);
+    expect(gestureBlocks(farOutside).squat).toBe(true);
   });
 
   it("pauses a lost body only after the sustained interval, then waits for several good frames", () => {

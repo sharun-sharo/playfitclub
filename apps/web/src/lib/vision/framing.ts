@@ -333,8 +333,16 @@ function toneFor(code: FramingCode): FramingTone {
 }
 
 /**
+ * A hip this far past the image is still the player's hip.
+ * The hard 0–1 box treated that hip as missing and dropped jump and squat.
+ * A lean does not read this box, so left and right still fired.
+ */
+export const VERTICAL_HIP_MARGIN = 0.08;
+
+/**
  * Anatomical sides, matching LEFT ARM UP → MOVE LEFT on the phone.
  * A missing shoulder, elbow, or wrist blocks that arm only.
+ * Jump and squat need both hips visible. A hip a little past the image still counts.
  */
 export function gestureBlocks(
   landmarks: Array<FramingLandmark | null | undefined>,
@@ -342,7 +350,7 @@ export function gestureBlocks(
 ): GestureBlocks {
   const leftArm = !chainVisible(landmarks, [JOINT.leftShoulder, JOINT.leftElbow, JOINT.leftWrist], minVisibility);
   const rightArm = !chainVisible(landmarks, [JOINT.rightShoulder, JOINT.rightElbow, JOINT.rightWrist], minVisibility);
-  const hips = chainVisible(landmarks, [JOINT.leftHip, JOINT.rightHip], minVisibility);
+  const hips = verticalHipsVisible(landmarks, [JOINT.leftHip, JOINT.rightHip], minVisibility);
   const squat = !hips;
   const jump = !hips;
   const notes: string[] = [];
@@ -367,6 +375,24 @@ function chainVisible(
   minVisibility: number,
 ) {
   return indexes.every((index) => joint(landmarks, index, minVisibility));
+}
+
+function verticalHipsVisible(
+  landmarks: Array<FramingLandmark | null | undefined>,
+  indexes: number[],
+  minVisibility: number,
+) {
+  return indexes.every((index) => {
+    const point = landmarks[index];
+    if (!point || (point.visibility ?? 0) < minVisibility) return false;
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+    return (
+      point.x >= -VERTICAL_HIP_MARGIN &&
+      point.x <= 1 + VERTICAL_HIP_MARGIN &&
+      point.y >= -VERTICAL_HIP_MARGIN &&
+      point.y <= 1 + VERTICAL_HIP_MARGIN
+    );
+  });
 }
 
 /** One plain line for the phone. The classifier still owns the decision. */
