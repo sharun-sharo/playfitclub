@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { applyObstacleHit, beginRun, emptyRun, HIT_INVULNERABILITY_MS, RUN_LIVES, type RunLives } from "@fitplay/shared";
+import { createFitRunAudio, fitRunBedAction, hearFitRunMove, type FitRunAudio } from "@/components/fitrunner-v2/fit-run-audio";
 import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
 import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import {
@@ -176,6 +177,9 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const baselineSamplesRef = useRef<NonNullable<ReturnType<typeof neutralFromLandmarks>>[]>([]);
   const motionLogRef = useRef<PhoneMotionLogRecord[]>([]);
   const handleRef = useRef<FitRunnerHandle | null>(null);
+  const audioRef = useRef<FitRunAudio | null>(null);
+  const mutedRef = useRef(false);
+  const endedRef = useRef(false);
   const estimatorRef = useRef<PoseEstimator | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const playScoreRef = useRef<HTMLParagraphElement>(null);
@@ -228,6 +232,8 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     ...phoneFrameDiagLines({ frameMs: null, longFrame: false }),
   ]);
   weightRef.current = weightKg;
+  mutedRef.current = muted;
+  endedRef.current = Boolean(gameOver) || demoOver;
 
   function cameraStreamLive() {
     const tracks = streamRef.current?.getVideoTracks() ?? [];
@@ -253,6 +259,32 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       aliveRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current ?? createFitRunAudio();
+    audioRef.current = audio;
+    audio.preload();
+    return () => {
+      audio.dispose();
+      if (audioRef.current === audio) audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const soundOn = !muted;
+    audio.setSoundOn(soundOn);
+    audio.syncBed(
+      fitRunBedAction({
+        phase: calib.phase,
+        coursePaused: calib.coursePaused,
+        buttonPaused: paused,
+        soundOn,
+        ended: Boolean(gameOver) || demoOver,
+      }),
+    );
+  }, [calib.phase, calib.coursePaused, paused, muted, gameOver, demoOver]);
 
   useLayoutEffect(() => {
     const apply = () => {
@@ -531,15 +563,30 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
               game: {
                 jump: () => {
                   note("jump");
-                  current.localJump(draft.confidence, draft.eventId);
+                  hearFitRunMove(audioRef.current, {
+                    call: "jump",
+                    direction: 0,
+                    accepted: current.localJump(draft.confidence, draft.eventId),
+                    soundOn: !mutedRef.current,
+                  });
                 },
                 roll: () => {
                   note("squat");
-                  current.localRoll(draft.confidence, draft.eventId);
+                  hearFitRunMove(audioRef.current, {
+                    call: "roll",
+                    direction: 0,
+                    accepted: current.localRoll(draft.confidence, draft.eventId),
+                    soundOn: !mutedRef.current,
+                  });
                 },
                 stepLane: (direction) => {
                   note(direction < 0 ? "lean_left" : "lean_right");
-                  current.localStep(direction, draft.confidence, draft.eventId);
+                  hearFitRunMove(audioRef.current, {
+                    call: "step",
+                    direction,
+                    accepted: current.localStep(direction, draft.confidence, draft.eventId),
+                    soundOn: !mutedRef.current,
+                  });
                 },
               },
             });
@@ -784,7 +831,27 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     return () => window.removeEventListener("keydown", onKey);
   }, [motionDiag]);
 
+  function gestureAudio(next: { buttonPaused: boolean; soundOn: boolean }) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.unlock();
+    audio.setSoundOn(next.soundOn);
+    audio.syncBed(
+      fitRunBedAction({
+        phase: calib.phase,
+        coursePaused: calib.coursePaused,
+        buttonPaused: next.buttonPaused,
+        soundOn: next.soundOn,
+        ended: endedRef.current,
+      }),
+    );
+  }
+
   async function startFromTap() {
+    const audio = audioRef.current ?? createFitRunAudio();
+    audioRef.current = audio;
+    audio.preload();
+    audio.unlock();
     const video = videoRef.current;
     const root = rootRef.current;
     if (!video || !root || startingRef.current) return;
@@ -831,15 +898,30 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     dispatchLocalGesture(movementType, {
       jump: () => {
         diagRef.current.confirmed = "jump";
-        handle.localJump();
+        hearFitRunMove(audioRef.current, {
+          call: "jump",
+          direction: 0,
+          accepted: handle.localJump(),
+          soundOn: !mutedRef.current,
+        });
       },
       roll: () => {
         diagRef.current.confirmed = "squat";
-        handle.localRoll();
+        hearFitRunMove(audioRef.current, {
+          call: "roll",
+          direction: 0,
+          accepted: handle.localRoll(),
+          soundOn: !mutedRef.current,
+        });
       },
       stepLane: (direction) => {
         diagRef.current.confirmed = direction < 0 ? "lean_left" : "lean_right";
-        handle.localStep(direction);
+        hearFitRunMove(audioRef.current, {
+          call: "step",
+          direction,
+          accepted: handle.localStep(direction),
+          soundOn: !mutedRef.current,
+        });
       },
     });
   }
@@ -934,12 +1016,22 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
                     aria-pressed={paused}
                     onClick={() => {
                       if (calib.coursePaused) return;
-                      handleRef.current?.setPaused(!paused);
+                      const nextPaused = !paused;
+                      gestureAudio({ buttonPaused: nextPaused, soundOn: !muted });
+                      handleRef.current?.setPaused(nextPaused);
                     }}
                   >
                     {paused ? "Resume" : "Pause"}
                   </button>
-                  <button type="button" aria-pressed={!muted} onClick={() => handleRef.current?.setMuted(!muted)}>
+                  <button
+                    type="button"
+                    aria-pressed={!muted}
+                    onClick={() => {
+                      const nextMuted = !muted;
+                      gestureAudio({ buttonPaused: paused, soundOn: !nextMuted });
+                      handleRef.current?.setMuted(nextMuted);
+                    }}
+                  >
                     {muted ? "Sound off" : "Sound on"}
                   </button>
                 </div>
