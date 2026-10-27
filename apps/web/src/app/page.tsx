@@ -34,8 +34,10 @@ export default function HomePage() {
       </a>
       <SiteNav logo="default" />
       <main id="content">
-        <section className="fp-wrap fp-hero" aria-labelledby="hero-title">
-          <HeroShowcase />
+        <section className="fp-hero" aria-labelledby="hero-title">
+          <div className="fp-wrap">
+            <HeroShowcase />
+          </div>
         </section>
 
         <section className="fp-section fp-statement" aria-labelledby="statement-title">

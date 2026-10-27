@@ -405,6 +405,16 @@ html:has(.fp) {
   --fp-hero-ink: #142019;
   --fp-hero-lime: #beff39;
   --fp-hero-teal: #086b63;
+  min-height: auto;
+  padding: calc(var(--fp-nav-safe) + 0.7rem) 0 1.25rem;
+  background:
+    radial-gradient(520px 200px at 12% 86%, rgba(198, 245, 49, 0.55), transparent 70%),
+    radial-gradient(460px 180px at 92% 8%, rgba(255, 186, 64, 0.48), transparent 68%),
+    linear-gradient(135deg, #d4f3ff 0%, #fff6df 46%, #e9ffe8 100%);
+  color: #142018;
+}
+
+.fp-hero > .fp-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
@@ -412,8 +422,6 @@ html:has(.fp) {
     "stage";
   align-items: start;
   gap: 0.85rem;
-  min-height: auto;
-  padding: calc(var(--fp-nav-safe) + 0.7rem) 0 1.25rem;
 }
 
 .fp-hero-copy {
@@ -1770,7 +1778,7 @@ a.fp-btn-dark:hover {
 }
 
 @media (min-width: 800px) {
-  .fp-hero {
+  .fp-hero > .fp-wrap {
     grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
     grid-template-areas: "copy stage";
     align-items: center;
@@ -1839,7 +1847,7 @@ a.fp-btn-dark:hover {
 }
 
 @media (min-width: 1100px) {
-  .fp-hero {
+  .fp-hero > .fp-wrap {
     grid-template-columns: minmax(0, 1fr) minmax(18rem, 32rem);
     align-items: center;
   }
