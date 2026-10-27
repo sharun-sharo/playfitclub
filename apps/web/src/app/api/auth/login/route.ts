@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     return jsonError(403, "CSRF", error instanceof Error ? error.message : "Blocked");
   }
   const parsed = loginSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return jsonError(400, "INVALID", "Enter a valid email and a password of at least 8 characters.");
+  if (!parsed.success) return jsonError(400, "INVALID", "Enter a valid email and a password of at least 6 characters.");
   const email = parsed.data.email.toLowerCase();
   if (!allowRequest(`login:${requestIp(request)}`, 12, 60_000) || !allowRequest(`login-email:${email}`, 8, 15 * 60_000)) {
     return jsonError(429, "RATE_LIMITED", "Too many sign-in attempts.");

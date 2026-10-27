@@ -137,7 +137,7 @@ export const sessionErrorSchema = z.object({
 
 export const loginSchema = z.object({
   email: z.string().trim().email().max(180),
-  password: z.string().min(8).max(200),
+  password: z.string().min(6).max(200),
 });
 
 export const registerSchema = z.object({

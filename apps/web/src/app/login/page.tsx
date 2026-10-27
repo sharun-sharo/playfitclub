@@ -81,7 +81,7 @@ function LoginForm() {
           </div>
           <div className="fp-field">
             <label htmlFor="password">Password</label>
-            <input id="password" name="password" type="password" autoComplete="current-password" minLength={8} required />
+            <input id="password" name="password" type="password" autoComplete="current-password" minLength={6} required />
           </div>
           {error ? <p className="fp-error">{error}</p> : null}
         </div>
