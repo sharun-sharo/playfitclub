@@ -178,7 +178,11 @@ describe("phone local gestures", () => {
     expect(phonePlayCalories({ weightKg: undefined, cameraActiveMs: 60_000, cameraLive: true }).text).toBe("—");
     expect(phonePlayCalories({ weightKg: 70, cameraActiveMs: 60_000, cameraLive: true }).text).toBe("4 kcal");
     expect(phoneMotionDiagEnabled("")).toBe(false);
-    expect(phoneMotionDiagEnabled("?motiondiag=1")).toBe(true);
+    expect(phoneMotionDiagEnabled("?motiondiag=1")).toBe(false);
+    expect(phoneMotionDiagEnabled("?motiondiag=1", "localhost")).toBe(true);
+    expect(phoneMotionDiagEnabled("?motiondiag=1", "127.0.0.1")).toBe(true);
+    expect(phoneMotionDiagEnabled("?motiondiag=1", "playfitclub.com")).toBe(false);
+    expect(phoneMotionDiagEnabled("", "localhost")).toBe(false);
     expect(PHONE_TEST_CONTROLS_LABEL).toBe("Test controls");
     expect(PHONE_TEST_CONTROLS_LABEL).not.toMatch(/play with keyboard/i);
     const lines = phoneMotionDiagLines({
@@ -208,6 +212,14 @@ describe("phone local gestures", () => {
       "confirmed jump",
       "confirm to call 18 ms",
       "reject none",
+      "state —",
+      "t pose —",
+      "t gesture —",
+      "t infer start —",
+      "t infer end —",
+      "t call —",
+      "candidate to emit —",
+      "end to call —",
     ]);
     const log = phoneMotionLogText([
       {
@@ -289,6 +301,14 @@ describe("phone local gestures", () => {
     expect(fitRun).not.toContain(">Ankles<");
     expect(fitRun).toContain("PHONE_STAND_SENTENCE");
     expect(fitRun).not.toContain("drawConnectors");
+    const actions = fitRun.slice(fitRun.indexOf('className="phone-actions"'), fitRun.indexOf('data-phone-mirror=""'));
+    expect(actions).toContain("Pause");
+    expect(actions).toContain("Sound on");
+    expect(actions).not.toMatch(/jump/i);
+    const spaceAt = fitRun.indexOf('event.code === "Space"');
+    const keyGuard = fitRun.lastIndexOf("if (!motionDiag) return;", spaceAt);
+    expect(keyGuard).toBeGreaterThan(-1);
+    expect(fitRun.slice(keyGuard, spaceAt)).toContain("function onKey");
     const preview = phonePreviewFrame(1000, 500, 1920, 1080);
     expect(preview.height).toBeCloseTo(500);
     expect(preview.width).toBeLessThan(1000);

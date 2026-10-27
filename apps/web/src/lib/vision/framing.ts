@@ -333,16 +333,24 @@ function toneFor(code: FramingCode): FramingTone {
 }
 
 /**
- * A hip this far past the image is still the player's hip.
- * The hard 0–1 box treated that hip as missing and dropped jump and squat.
- * A lean does not read this box, so left and right still fired.
+ * The first band past the image. Commit f8fa0dd let a hip this far out count.
+ * The takeoff and the bottom of a squat still sat just past it, so that confirm
+ * frame was dropped and the phone waited for a later picture.
  */
 export const VERTICAL_HIP_MARGIN = 0.08;
 
 /**
+ * Jump and squat confirm on the sample that already shows the takeoff or the drop.
+ * A hip just outside the 0.08 band is still that sample. It is not held for a
+ * later frame whose hips have left the picture.
+ * A missing hip, or one further out than this, still blocks. Leans do not use it.
+ */
+export const VERTICAL_HIP_CONFIRM = 0.18;
+
+/**
  * Anatomical sides, matching LEFT ARM UP → MOVE LEFT on the phone.
  * A missing shoulder, elbow, or wrist blocks that arm only.
- * Jump and squat need both hips visible. A hip a little past the image still counts.
+ * Jump and squat use the confirm band, not the old 0.08 box.
  */
 export function gestureBlocks(
   landmarks: Array<FramingLandmark | null | undefined>,
@@ -386,11 +394,12 @@ function verticalHipsVisible(
     const point = landmarks[index];
     if (!point || (point.visibility ?? 0) < minVisibility) return false;
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+    const limit = Math.max(VERTICAL_HIP_MARGIN, VERTICAL_HIP_CONFIRM);
     return (
-      point.x >= -VERTICAL_HIP_MARGIN &&
-      point.x <= 1 + VERTICAL_HIP_MARGIN &&
-      point.y >= -VERTICAL_HIP_MARGIN &&
-      point.y <= 1 + VERTICAL_HIP_MARGIN
+      point.x >= -limit &&
+      point.x <= 1 + limit &&
+      point.y >= -limit &&
+      point.y <= 1 + limit
     );
   });
 }

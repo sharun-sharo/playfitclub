@@ -5,6 +5,7 @@ import {
   FRAMING_DISTANCE_HINT,
   gestureAllowed,
   gestureBlocks,
+  VERTICAL_HIP_CONFIRM,
   VERTICAL_HIP_MARGIN,
   plainCalibrationCue,
   plainFramingCue,
@@ -289,6 +290,24 @@ describe("framing classifier", () => {
     });
     expect(gestureBlocks(farOutside).jump).toBe(true);
     expect(gestureBlocks(farOutside).squat).toBe(true);
+
+    const pastOld = VERTICAL_HIP_MARGIN + 0.04;
+    expect(pastOld).toBeGreaterThan(VERTICAL_HIP_MARGIN);
+    expect(pastOld).toBeLessThanOrEqual(VERTICAL_HIP_CONFIRM);
+    const takeoff = pose((points) => {
+      points[23] = { ...points[23], y: -pastOld, visibility: 0.95 };
+      points[24] = { ...points[24], y: -pastOld, visibility: 0.95 };
+    });
+    expect(gestureAllowed("jump", gestureBlocks(takeoff))).toBe(true);
+    expect(gestureAllowed("squat", gestureBlocks(takeoff))).toBe(true);
+    const bottom = pose((points) => {
+      points[23] = { ...points[23], y: 1 + pastOld, visibility: 0.95 };
+      points[24] = { ...points[24], y: 1 + pastOld, visibility: 0.95 };
+    });
+    expect(gestureAllowed("jump", gestureBlocks(bottom))).toBe(true);
+    expect(gestureAllowed("squat", gestureBlocks(bottom))).toBe(true);
+    expect(gestureAllowed("lean_left", gestureBlocks(takeoff))).toBe(true);
+    expect(gestureAllowed("lean_right", gestureBlocks(bottom))).toBe(true);
   });
 
   it("pauses a lost body only after the sustained interval, then waits for several good frames", () => {

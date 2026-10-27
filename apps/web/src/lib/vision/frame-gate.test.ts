@@ -3,12 +3,14 @@ import {
   COMMAND_STALE_MS,
   createDetector,
   DEFAULT_THRESHOLDS,
+  JUMP_RISE_DISPLACEMENT,
   neutralFromLandmarks,
   pushPose,
   setNeutral,
   type Landmark,
   type PoseFrame,
 } from "@fitplay/game";
+import { gestureAllowed, gestureBlocks, VERTICAL_HIP_CONFIRM, VERTICAL_HIP_MARGIN } from "./framing";
 import {
   cameraBoxKeepsFrames,
   cameraSampleSource,
@@ -108,6 +110,13 @@ function classifyPhoneFrames(count: number, presentedFrames: number | "increment
   return stamps;
 }
 
+function placeHips(frame: PoseFrame, y: number): PoseFrame {
+  return {
+    timestampMs: frame.timestampMs,
+    landmarks: frame.landmarks.map((point, index) => (point && (index === 23 || index === 24) ? { ...point, y } : point)),
+  };
+}
+
 function play(times: number[], build: (index: number, time: number) => PoseFrame, smoothingAlpha = 1) {
   const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
   if (!neutral) throw new Error("Failed to build a neutral pose");
@@ -119,6 +128,26 @@ function play(times: number[], build: (index: number, time: number) => PoseFrame
     events.push(...update.events);
   }
   return events;
+}
+
+/** Same phone path as pose-estimator: the hip box runs on the frame that emitted. */
+function playKept(times: number[], build: (index: number, time: number) => PoseFrame) {
+  const neutral = neutralFromLandmarks(pose({ time: 0 }).landmarks);
+  if (!neutral) throw new Error("Failed to build a neutral pose");
+  let state = setNeutral(createDetector({ mirror: false, smoothingAlpha: 1, cooldownMs: 200 }), neutral);
+  const raw: string[] = [];
+  const kept: string[] = [];
+  for (let index = 0; index < times.length; index += 1) {
+    const frame = build(index, times[index] ?? 0);
+    const update = pushPose(state, frame);
+    state = update.state;
+    const blocks = gestureBlocks(frame.landmarks);
+    for (const event of update.events) {
+      raw.push(event.movementType);
+      if (gestureAllowed(event.movementType, blocks)) kept.push(event.movementType);
+    }
+  }
+  return { raw, kept };
 }
 
 describe("camera frame gate", () => {
@@ -270,6 +299,64 @@ describe("camera frame gate", () => {
 
     const lean = play(stuck, (index, time) => pose({ time, shoulderLean: index >= 2 ? -0.045 : 0 }));
     expect(lean.map((event) => event.movementType)).toEqual(["lean_left"]);
+  });
+
+  it("emits one jump when takeoff hips sit just outside the old box, and a 2mm shake does not", () => {
+    expect(DEFAULT_THRESHOLDS.jumpRise).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.squatEnterDrop).toBe(0.1);
+    expect(DEFAULT_THRESHOLDS.dipClassifyMs).toBe(160);
+    expect(DEFAULT_THRESHOLDS.jumpPrepMaxDrop).toBe(0.32);
+    expect(DEFAULT_THRESHOLDS.torsoLeanEnter).toBe(0.16);
+    expect(DEFAULT_THRESHOLDS.torsoLeanNeutral).toBe(0.07);
+    expect((DEFAULT_THRESHOLDS.torsoLeanEnter + DEFAULT_THRESHOLDS.torsoLeanNeutral) / 2).toBeCloseTo(0.115, 5);
+    expect(JUMP_RISE_DISPLACEMENT).toBe(0.011);
+    expect(0.002 / 0.2).toBeLessThan(JUMP_RISE_DISPLACEMENT);
+
+    const times = Array.from({ length: 8 }, (_, index) => index * 33);
+    const pastOld = VERTICAL_HIP_MARGIN + 0.04;
+    expect(pastOld).toBeGreaterThan(VERTICAL_HIP_MARGIN);
+    expect(pastOld).toBeLessThanOrEqual(VERTICAL_HIP_CONFIRM);
+
+    const takeoff = playKept(times, (index, time) => {
+      const dip = index === 3 || index === 4;
+      const frame = pose({
+        time,
+        hipDrop: dip || index === 5 ? 0.03 : 0,
+        rise: index === 5 ? 0.008 : 0,
+      });
+      return index === 5 ? placeHips(frame, -pastOld) : frame;
+    });
+    expect(takeoff.raw.filter((type) => type === "jump")).toEqual(["jump"]);
+    expect(takeoff.kept.filter((type) => type === "jump")).toEqual(["jump"]);
+    expect(takeoff.kept.filter((type) => type === "squat")).toEqual([]);
+
+    const squat = playKept(times, (index, time) => {
+      const frame = pose({
+        time,
+        hipDrop: index < 2 ? 0 : 0.22,
+        kneeForward: index < 2 ? 0.01 : 0.1,
+      });
+      return index >= 2 ? placeHips(frame, 1 + pastOld) : frame;
+    });
+    expect(squat.raw.filter((type) => type === "squat")).toEqual(["squat"]);
+    expect(squat.kept.filter((type) => type === "squat")).toEqual(["squat"]);
+    expect(squat.kept.filter((type) => type === "jump")).toEqual([]);
+
+    const shake = playKept(times, (index, time) => pose({ time, rise: index === 3 ? 0.002 : 0 }));
+    expect(shake.raw.filter((type) => type === "jump")).toEqual([]);
+    expect(shake.kept.filter((type) => type === "jump")).toEqual([]);
+
+    const far = playKept(times, (index, time) => {
+      const dip = index === 3 || index === 4;
+      const frame = pose({
+        time,
+        hipDrop: dip || index === 5 ? 0.03 : 0,
+        rise: index === 5 ? 0.008 : 0,
+      });
+      return index === 5 ? placeHips(frame, -0.5) : frame;
+    });
+    expect(far.raw.filter((type) => type === "jump")).toEqual(["jump"]);
+    expect(far.kept.filter((type) => type === "jump")).toEqual([]);
   });
 
   it("classifies on the animation clock after a long video frame is ignored", () => {
