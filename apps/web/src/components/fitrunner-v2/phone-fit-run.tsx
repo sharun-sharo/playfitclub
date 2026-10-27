@@ -38,7 +38,6 @@ import {
   phoneObstacleCounts,
   phonePlayCalories,
   phoneRunSeed,
-  placePhonePreview,
   PHONE_LAPTOP_QR_LINE,
   PHONE_LAPTOP_QR_NAME,
   PHONE_MIRROR_GUIDE,
@@ -155,8 +154,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const poseCanvasRef = useRef<HTMLCanvasElement>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
-  const flipRef = useRef<HTMLDivElement>(null);
   const baselineSamplesRef = useRef<NonNullable<ReturnType<typeof neutralFromLandmarks>>[]>([]);
   const motionLogRef = useRef<PhoneMotionLogRecord[]>([]);
   const handleRef = useRef<FitRunnerHandle | null>(null);
@@ -580,16 +577,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
         estimator.clearSessionBaseline();
         baselineSamplesRef.current = [];
       }
-      const preview = previewRef.current;
-      const flip = flipRef.current;
-      const video = videoRef.current;
-      const showPreview = next.phase !== "running" && next.phase !== "warning";
-      if (preview) {
-        preview.classList.toggle("phone-cal-stage", showPreview);
-        preview.classList.toggle("phone-camera-park", !showPreview);
-        preview.dataset.phonePreview = showPreview ? "shown" : "sliver";
-      }
-      if (preview && flip && video) placePhonePreview(flip, preview, video, showPreview);
       calibRef.current = next;
       const handle = handleRef.current;
       if (next.startCourse) pendingCourseRef.current = "start";
@@ -847,54 +834,47 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   return (
     <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape" data-phone-phase={calib.phase}>
       <canvas ref={canvasRef} data-fitrunner-v2="" aria-label="Fit Run" className="h-full w-full" hidden={Boolean(graphicsError)} />
-      <div ref={previewRef} className={cameraLarge ? "phone-cal-stage" : "phone-camera-park"} data-phone-preview={cameraLarge ? "shown" : "sliver"}>
-        <div ref={flipRef} className="phone-cal-flip">
-          <video
-            ref={videoRef}
-            className="phone-cal-media"
-            muted
-            playsInline
-            aria-label="Camera preview"
-            aria-hidden={cameraLarge ? undefined : true}
-          />
+      <div className="phone-camera-park" data-phone-preview="sliver">
+        <div className="phone-cal-flip">
+          <video ref={videoRef} className="phone-cal-media" muted playsInline aria-hidden="true" />
           <canvas ref={poseCanvasRef} className="phone-cal-media" aria-hidden="true" />
         </div>
-        {cameraLarge ? (
-          <>
-            <CalibGuide />
-            <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} role="status">
-              {calib.status && calib.phase !== "countdown" ? (
-                <p className="phone-calib-status" data-phone-status="">
-                  {calib.status}
-                </p>
-              ) : null}
-              {calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
-              {calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
-                <p className="phone-calib-count" data-phone-countdown="">
-                  {calib.countdown}
-                </p>
-              ) : null}
-              {guidanceLine ? (
-                <p className="phone-calib-guidance" data-phone-guidance="">
-                  {guidanceLine}
-                </p>
-              ) : null}
-              {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
-              {cameraError ? (
-                <p className="phone-calib-note" role="alert">
-                  {cameraError}
-                </p>
-              ) : null}
-              {startError ? <p className="phone-calib-note">{startError}</p> : null}
-              {cameraError ? (
-                <button type="button" className="phone-start" onClick={() => void startFromTap()}>
-                  Try again
-                </button>
-              ) : null}
-            </div>
-          </>
-        ) : null}
       </div>
+      {cameraLarge ? (
+        <div className="phone-cal-stage" data-phone-calibration="black">
+          <CalibGuide />
+          <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} role="status">
+            {calib.status && calib.phase !== "countdown" ? (
+              <p className="phone-calib-status" data-phone-status="">
+                {calib.status}
+              </p>
+            ) : null}
+            {calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
+            {calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
+              <p className="phone-calib-count" data-phone-countdown="">
+                {calib.countdown}
+              </p>
+            ) : null}
+            {guidanceLine ? (
+              <p className="phone-calib-guidance" data-phone-guidance="">
+                {guidanceLine}
+              </p>
+            ) : null}
+            {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
+            {cameraError ? (
+              <p className="phone-calib-note" role="alert">
+                {cameraError}
+              </p>
+            ) : null}
+            {startError ? <p className="phone-calib-note">{startError}</p> : null}
+            {cameraError ? (
+              <button type="button" className="phone-start" onClick={() => void startFromTap()}>
+                Try again
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {calib.countdown === "GO" ? (
         <p className="phone-go" data-phone-countdown="">
           GO

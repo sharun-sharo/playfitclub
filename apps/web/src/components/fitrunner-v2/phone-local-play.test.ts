@@ -262,14 +262,21 @@ describe("phone local gestures", () => {
     expect(videoRule).not.toContain("opacity: 0;");
     expect(park).toContain("z-index: 24");
     expect(css.slice(css.indexOf(".phone-camera-park canvas"), css.indexOf(".phone-cal-stage"))).toContain("display: none");
-    const stage = css.slice(css.indexOf(".phone-cal-stage {"), css.indexOf(".phone-cal-stage video.phone-cal-media"));
-    const stageMedia = css.slice(css.indexOf(".phone-cal-stage video.phone-cal-media"), css.indexOf(".phone-calib-guide"));
+    const stage = css.match(/\.phone-cal-stage \{[^}]+\}/)?.[0] ?? "";
     expect(stage).toContain("overflow: hidden");
-    expect(stageMedia).toContain("max-width: none");
-    expect(stageMedia).toContain("opacity: 1");
-    expect(stageMedia).toContain("border: 0");
-    expect(stageMedia).not.toContain("width: 6px");
-    expect(stageMedia).toContain("display: block");
+    expect(stage).toContain("background: #000");
+    expect(stage).not.toContain("object-fit: cover");
+    expect(stage).not.toContain("object-fit: fill");
+    expect(css).not.toContain(".phone-cal-stage video");
+    expect(css).not.toContain(".phone-cal-stage canvas");
+    const parkZ = Number(park.match(/z-index:\s*(\d+)/)?.[1]);
+    const stageZ = Number(stage.match(/z-index:\s*(\d+)/)?.[1]);
+    expect(parkZ).toBe(24);
+    expect(stageZ).toBeGreaterThan(1);
+    expect(parkZ).toBeGreaterThan(stageZ);
+    const guide = css.slice(css.indexOf(".phone-calib-guide {"), css.indexOf(".phone-calib-copy"));
+    expect(guide).toContain("width: min(28vh, 34vw)");
+    expect(guide).not.toContain("100%");
     const preview = phonePreviewFrame(1000, 500, 1920, 1080);
     expect(preview.height).toBeCloseTo(500);
     expect(preview.width).toBeLessThan(1000);
@@ -316,15 +323,17 @@ describe("phone local gestures", () => {
     expect(calls).toEqual(["jump", "roll", "stepLane:-1", "stepLane:1"]);
   });
 
-  it("covers the calibration stage instead of pinning a camera sliver", () => {
-    const style = { left: "stale", top: "stale", width: "6px", height: "4px", right: "0px", bottom: "0px" };
+  it("keeps the camera off the black calibration stage", () => {
+    const style = { left: "0px", top: "0px", width: "100%", height: "100%", right: "auto", bottom: "auto" };
     const flip = { style } as unknown as HTMLElement;
     placePhonePreview(flip, { clientWidth: 844, clientHeight: 390 }, { videoWidth: 720, videoHeight: 1280 }, true);
-    expect(style.width).toBe("100%");
-    expect(style.height).toBe("100%");
-    expect(style.left).toBe("0");
-    expect(style.top).toBe("0");
-    expect(style.width).not.toBe("6px");
+    expect(style.width).toBe("");
+    expect(style.height).toBe("");
+    expect(style.left).toBe("");
+    expect(style.top).toBe("");
+    expect(style.right).toBe("");
+    expect(style.bottom).toBe("");
+    expect(style.width).not.toBe("100%");
     placePhonePreview(flip, { clientWidth: 844, clientHeight: 390 }, { videoWidth: 6, videoHeight: 4 }, false);
     expect(style.width).toBe("");
     expect(style.height).toBe("");

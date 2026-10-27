@@ -450,10 +450,16 @@ html:-webkit-full-screen .phone-play,
   display: none;
 }
 
+/*
+ * Black calibration screen. The camera and the pose canvas stay in .phone-camera-park
+ * (about 6×4, opacity at least 0.02, z-index above this stage and above the WebGL canvas).
+ * Samsung Internet stops frames when that video is covered, opacity 0, visibility hidden,
+ * or display none. This stage does not show the picture or MediaPipe lines.
+ */
 .phone-cal-stage {
   position: absolute;
   inset: 0;
-  z-index: 30;
+  z-index: 22;
   overflow: hidden;
   border: 0;
   outline: none;
@@ -475,34 +481,6 @@ html:-webkit-full-screen .phone-play,
   height: 100%;
   object-fit: contain;
   background: #000;
-}
-
-/*
- * Calibration covers the stage. The video and the skeleton canvas share this box,
- * then the box mirrors. Landmark fractions map onto that bitmap.
- * Overscan clips the element edge so a hairline, a canvas border, or a leaked
- * 6×4 sliver cannot sit in the picture. The run sliver is .phone-camera-park.
- */
-.phone-cal-stage video.phone-cal-media,
-.phone-cal-stage canvas.phone-cal-media {
-  inset: -2px;
-  width: calc(100% + 4px);
-  height: calc(100% + 4px);
-  min-width: 0;
-  min-height: 0;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  border: 0;
-  outline: none;
-  box-shadow: none;
-  opacity: 1;
-  object-fit: fill;
-}
-
-.phone-cal-stage canvas.phone-cal-media {
-  display: block;
-  background: transparent;
 }
 
 .phone-calib-guide {

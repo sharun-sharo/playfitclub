@@ -119,17 +119,17 @@ export function phonePlayViewportBox(input: {
 }
 
 /**
- * Largest camera rectangle that fits a stage. Calibration does not use this.
- * A contained box leaves a vertical edge on the setup screen.
+ * Largest camera rectangle that fits a stage. The phone calibration screen does not use this.
+ * A contained box on that screen left a vertical edge beside the stick figure.
  */
 export function phonePreviewFrame(stageWidth: number, stageHeight: number, mediaWidth: number, mediaHeight: number) {
   return containFrame(stageWidth, stageHeight, mediaWidth, mediaHeight);
 }
 
 /**
- * Calibration covers the stage. The in-run path clears these inline sizes so the
- * 6×4 stylesheet sliver can paint. A contained camera rectangle is not pinned here:
- * its right edge showed up as a line beside the stick figure.
+ * The phone camera stays the stylesheet 6×4 sliver. Calibration is a separate black
+ * stage and must not pin this element over the screen. A full-bleed box showed the
+ * picture; a contained box showed up as a line beside the stick figure.
  */
 export function placePhonePreview(
   flip: HTMLElement,
@@ -139,21 +139,13 @@ export function placePhonePreview(
 ) {
   void stage;
   void video;
-  if (!shown) {
-    flip.style.left = "";
-    flip.style.top = "";
-    flip.style.width = "";
-    flip.style.height = "";
-    flip.style.right = "";
-    flip.style.bottom = "";
-    return;
-  }
-  flip.style.left = "0";
-  flip.style.top = "0";
-  flip.style.right = "auto";
-  flip.style.bottom = "auto";
-  flip.style.width = "100%";
-  flip.style.height = "100%";
+  void shown;
+  flip.style.left = "";
+  flip.style.top = "";
+  flip.style.width = "";
+  flip.style.height = "";
+  flip.style.right = "";
+  flip.style.bottom = "";
 }
 
 /** Pins the play root and the WebGL canvas to the visual viewport. */
