@@ -75,63 +75,71 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
   }
 
   return (
-    <header className="fp-nav">
-      <BrandLogo href={prefix || "/"} variant={logo} />
-      <nav className="fp-nav-desktop" aria-label="Primary">
-        {links.map((link) => {
-          const href = hrefFor(link.href, prefix);
-          return (
-            <NavLink key={link.label} href={href} current={isCurrent(href, pathname)}>
-              {link.label}
-            </NavLink>
-          );
-        })}
-        <Link className="fp-btn fp-btn-primary" href="/games" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
-          Play Now
-        </Link>
-      </nav>
-      <button
-        ref={toggleRef}
-        type="button"
-        className="fp-menu-toggle"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
-        <span className="fp-burger" data-open={open} aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
-      </button>
-      {open ? (
-        <div ref={panelRef} id={menuId} className="fp-menu" role="dialog" aria-modal="true" aria-label="Mobile">
-          <nav aria-label="Mobile">
-            {links.map((link) => {
-              const href = hrefFor(link.href, prefix);
-              return (
-                <NavLink key={link.label} href={href} current={isCurrent(href, pathname)} onClick={close}>
-                  {link.label}
-                </NavLink>
-              );
-            })}
-            <Link
-              className="fp-btn fp-btn-primary"
-              href="/games"
-              onClick={() => {
-                trackEvent("play_clicked", { surface: "nav" });
-                close();
-              }}
-            >
-              Play Now
-            </Link>
-          </nav>
-          <button type="button" className="fp-btn fp-btn-ghost" onClick={close}>
-            Close menu
-          </button>
-        </div>
-      ) : null}
+    <header className="fp-nav fp-nav-market">
+      <div className="fp-announce">
+        <p>
+          <span className="fp-announce-text">PlayFit Club is coming to iOS & Android!</span>
+          <span className="fp-announce-label">Launching Soon</span>
+        </p>
+      </div>
+      <div className="fp-nav-bar">
+        <BrandLogo href={prefix || "/"} variant={logo} />
+        <nav className="fp-nav-desktop" aria-label="Primary">
+          {links.map((link) => {
+            const href = hrefFor(link.href, prefix);
+            return (
+              <NavLink key={link.label} href={href} current={isCurrent(href, pathname)}>
+                {link.label}
+              </NavLink>
+            );
+          })}
+          <Link className="fp-btn fp-btn-primary" href="/games" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
+            Play Now
+          </Link>
+        </nav>
+        <button
+          ref={toggleRef}
+          type="button"
+          className="fp-menu-toggle"
+          aria-expanded={open}
+          aria-controls={menuId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
+          <span className="fp-burger" data-open={open} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </button>
+        {open ? (
+          <div ref={panelRef} id={menuId} className="fp-menu" role="dialog" aria-modal="true" aria-label="Mobile">
+            <nav aria-label="Mobile">
+              {links.map((link) => {
+                const href = hrefFor(link.href, prefix);
+                return (
+                  <NavLink key={link.label} href={href} current={isCurrent(href, pathname)} onClick={close}>
+                    {link.label}
+                  </NavLink>
+                );
+              })}
+              <Link
+                className="fp-btn fp-btn-primary"
+                href="/games"
+                onClick={() => {
+                  trackEvent("play_clicked", { surface: "nav" });
+                  close();
+                }}
+              >
+                Play Now
+              </Link>
+            </nav>
+            <button type="button" className="fp-btn fp-btn-ghost" onClick={close}>
+              Close menu
+            </button>
+          </div>
+        ) : null}
+      </div>
     </header>
   );
 }
