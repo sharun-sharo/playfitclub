@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { fitBox, fitHeight, prepareMaterials } from "@/components/fitrunner-v2/mesh-fit";
+import { COTTAGE_PIECES, SIDE_FIT_HEIGHT, sidePlacements, type SidePropId } from "@/components/fitrunner-v2/side-scenery";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 
 const SPAN = tuning.tileSize * 1.08;
@@ -83,6 +84,18 @@ export type TropicalAssets = {
   flowerRed: THREE.Object3D;
   grass: THREE.Object3D;
   tree: THREE.Object3D;
+  /** Static Kenney kit meshes. Cloned as side dressing, never as obstacles. */
+  side: {
+    wall: THREE.Object3D;
+    window: THREE.Object3D;
+    doorway: THREE.Object3D;
+    column: THREE.Object3D;
+    crate: THREE.Object3D;
+    vehicle: THREE.Object3D;
+    flag: THREE.Object3D;
+    locomotive: THREE.Object3D;
+    container: THREE.Object3D;
+  };
 };
 
 type PalmSlot = {
@@ -128,6 +141,27 @@ function boxProp(source: THREE.Object3D, target: { x: number; y: number; z: numb
   const clone = source.clone(true);
   prepareMaterials(clone, { cast: true, receive: true });
   return fitBox(clone, target);
+}
+
+function sideCottage(side: TropicalAssets["side"]) {
+  for (const source of [side.wall, side.window, side.doorway, side.column]) {
+    prepareMaterials(source, { cast: true, receive: true });
+  }
+  const parts = {
+    wall: side.wall,
+    window: side.window,
+    doorway: side.doorway,
+    column: side.column,
+  } as const;
+  const group = new THREE.Group();
+  for (const piece of COTTAGE_PIECES) {
+    const mesh = parts[piece.part].clone(true);
+    mesh.position.set(piece.x, piece.y, piece.z);
+    mesh.rotation.y = piece.yaw;
+    mesh.scale.set(piece.sx, piece.sy, piece.sz);
+    group.add(mesh);
+  }
+  return fitHeight(group, SIDE_FIT_HEIGHT.cottage);
 }
 
 function signTemplate(label: string, background: string, foreground: string) {
@@ -437,6 +471,12 @@ export function createTropical(
     fruitSign: signTemplate("FRUIT", "#e25b45", "#fff6ea"),
     surfSign: signTemplate("RUN", "#147a86", "#f3fffd"),
     iceSign: signTemplate("ICE", "#dff6ff", "#16324a"),
+    locomotive: heightProp(assets.side.locomotive, SIDE_FIT_HEIGHT.locomotive),
+    container: heightProp(assets.side.container, SIDE_FIT_HEIGHT.container),
+    cottage: sideCottage(assets.side),
+    vehicle: heightProp(assets.side.vehicle, SIDE_FIT_HEIGHT.vehicle),
+    crate: heightProp(assets.side.crate, SIDE_FIT_HEIGHT.crate),
+    flag: heightProp(assets.side.flag, SIDE_FIT_HEIGHT.flag),
   };
 
   const made: SegmentDressing[] = [];
@@ -517,7 +557,15 @@ export function createTropical(
       surf: take(templates.surfSign, 0),
       ice: take(templates.iceSign, 0),
     };
-    const all = Object.values(props);
+    const kit: Record<SidePropId, Prop> = {
+      locomotive: take(templates.locomotive, 0),
+      container: take(templates.container, 0),
+      cottage: take(templates.cottage, 0),
+      vehicle: take(templates.vehicle, 0),
+      crate: take(templates.crate, 1),
+      flag: take(templates.flag, 1),
+    };
+    const all = [...Object.values(props), ...Object.values(kit)];
 
     const piece: SegmentDressing = {
       group,
@@ -554,6 +602,12 @@ export function createTropical(
           if (!allows(prop.tier, quality)) return;
           prop.object.visible = true;
           prop.object.position.set(aside(x), 0, z);
+          prop.object.rotation.y = yaw;
+        };
+        const showExact = (prop: Prop, x: number, z: number, yaw = 0) => {
+          if (!allows(prop.tier, quality)) return;
+          prop.object.visible = true;
+          prop.object.position.set(x, 0, z);
           prop.object.rotation.y = yaw;
         };
         const faceRoad = (x: number) => (x > 0 ? -Math.PI / 2 : Math.PI / 2);
@@ -615,6 +669,9 @@ export function createTropical(
           show(props.flowerA, 9.6, 0.85);
         }
         placePalms(id, palms);
+        for (const placement of sidePlacements(spawn)) {
+          showExact(kit[placement.id], placement.x, placement.z, placement.yaw);
+        }
       },
     };
     made.push(piece);
