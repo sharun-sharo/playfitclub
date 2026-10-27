@@ -70,7 +70,7 @@ export default function HomePage() {
 
         <section className="fp-section" id="experience" aria-labelledby="experience-title">
           <div className="fp-wrap fp-experience">
-            <Reveal>
+            <Reveal className="fp-experience-copy">
               <p className="fp-kicker">The experience</p>
               <h2 id="experience-title">This is what movement looks like now.</h2>
               <p className="fp-lead">
@@ -90,18 +90,15 @@ export default function HomePage() {
                 </TrackedLink>
               </div>
             </Reveal>
-            <Reveal delay={1}>
-              <figure className="fp-still">
-                <img
-                  src="/marketing/fit-run-coast-key-art.jpg"
-                  alt="Fit Run game scene: a low-poly runner on a coastal road, with palm trees, lanes, and one hurdle ahead."
-                  width={1280}
-                  height={720}
-                  loading="lazy"
-                  decoding="async"
-                />
-                <figcaption>Fit Run on your phone.</figcaption>
-              </figure>
+            <Reveal delay={1} className="fp-experience-art">
+              <img
+                src="/marketing/play-with-your-moves.jpg"
+                alt="An illustration of Fit Run on a phone mirrored to a TV, with steps to calibrate, move left, move right, and squat."
+                width={1024}
+                height={576}
+                loading="lazy"
+                decoding="async"
+              />
             </Reveal>
           </div>
         </section>

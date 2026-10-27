@@ -928,6 +928,26 @@ a.fp-btn-dark:hover {
   gap: 1.5rem;
 }
 
+#experience .fp-experience {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fp-experience-copy {
+  max-width: 42rem;
+}
+
+.fp-experience-art {
+  min-width: 0;
+}
+
+.fp-experience-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  background: #07110f;
+}
+
 .fp-media {
   position: relative;
   aspect-ratio: 16 / 9;
