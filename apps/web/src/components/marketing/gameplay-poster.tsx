@@ -2,14 +2,13 @@ export function GameplayPoster({ id = "watch" }: { id?: string }) {
   return (
     <figure className="fp-poster" id={id}>
       <img
-        src="/marketing/fit-run.jpg"
-        alt="Illustration of a woman running in a living room. A phone shows a body outline and a television shows a running game."
-        width={960}
-        height={890}
+        src="/marketing/watch-gameplay.jpg"
+        alt="An illustration of Fit Run on a TV with a phone in front, labeled Watch Gameplay."
+        width={1024}
+        height={576}
         loading="lazy"
         decoding="async"
       />
-      <figcaption>Fit Run at home. The game runs on the phone.</figcaption>
     </figure>
   );
 }

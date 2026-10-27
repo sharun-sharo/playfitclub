@@ -3,6 +3,7 @@ import Link from "next/link";
 import { TrackedLink } from "@/components/analytics/tracked-link";
 import { FaqList } from "@/components/marketing/faq-list";
 import { GameLibrary } from "@/components/marketing/game-library";
+import { GameplayPoster } from "@/components/marketing/gameplay-poster";
 import { HeroShowcase } from "@/components/marketing/hero-carousel";
 import { MarketingFrame } from "@/components/marketing/frame";
 import { motionBootScript } from "@/components/marketing/motion-css";
@@ -100,6 +101,17 @@ export default function HomePage() {
                 decoding="async"
               />
             </Reveal>
+          </div>
+        </section>
+
+        <section className="fp-section" aria-labelledby="watch-title">
+          <div className="fp-wrap">
+            <Reveal>
+              <h2 id="watch-title" className="fp-wide">
+                Don&apos;t just watch. Get in the game.
+              </h2>
+            </Reveal>
+            <GameplayPoster />
           </div>
         </section>
 

@@ -3252,19 +3252,16 @@ html:has(.fp-console) body {
 }
 
 .fp-poster {
-  position: relative;
   margin: 1.5rem 0 0;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
   border: 1px solid var(--fp-line);
-  background: #fffdf8;
+  background: #07110f;
 }
 
 .fp-poster img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
 }
 
 .fp-poster figcaption {
