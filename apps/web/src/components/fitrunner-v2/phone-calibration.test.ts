@@ -347,7 +347,7 @@ describe("phone calibration", () => {
     ).resolves.toEqual({ fullscreen: true, orientationLocked: true, note: null });
   });
 
-  it("requests the camera and leaves the intro when orientation lock and fullscreen reject", async () => {
+  it("requests fullscreen and landscape lock before the camera, and still starts when the lock hangs", async () => {
     const events: string[] = [];
     let releaseLock: () => void = () => undefined;
     const lock = new Promise<void>((resolve) => {
@@ -371,13 +371,37 @@ describe("phone calibration", () => {
       onLeaveIntro: () => events.push("intro"),
     });
     expect(started.leftIntro).toBe(true);
-    expect(events).toEqual(["intro", "camera", "fullscreen"]);
+    expect(events).toEqual(["fullscreen", "lock", "intro", "camera"]);
     await expect(started.camera).resolves.toBe("front-camera");
-    expect(events).toEqual(["intro", "camera", "fullscreen", "lock"]);
+    expect(events).toEqual(["fullscreen", "lock", "intro", "camera"]);
     releaseLock();
     await lock;
     await Promise.resolve();
-    expect(events).toEqual(["intro", "camera", "fullscreen", "lock"]);
+    expect(events).toEqual(["fullscreen", "lock", "intro", "camera"]);
+  });
+
+  it("starts calibration when fullscreen never settles", () => {
+    const events: string[] = [];
+    const started = startPhonePlay({
+      requestCamera: () => {
+        events.push("camera");
+        return "front-camera";
+      },
+      stage: {
+        fullscreen: () => {
+          events.push("fullscreen");
+          return new Promise(() => undefined);
+        },
+        orientationLock: (orientation) => {
+          events.push(`lock:${orientation}`);
+          return Promise.resolve();
+        },
+      },
+      onLeaveIntro: () => events.push("intro"),
+      onStage: () => events.push("stage"),
+    });
+    expect(started.leftIntro).toBe(true);
+    expect(events).toEqual(["fullscreen", "lock:landscape", "intro", "camera"]);
   });
 
   it("leaves the intro when the camera throws before fullscreen and orientation lock reject", async () => {
@@ -401,7 +425,7 @@ describe("phone calibration", () => {
       onStage: () => events.push("stage"),
     });
     expect(started.leftIntro).toBe(true);
-    expect(events.slice(0, 3)).toEqual(["intro", "camera", "fullscreen"]);
+    expect(events.slice(0, 4)).toEqual(["fullscreen", "lock", "intro", "camera"]);
     await expect(started.camera).rejects.toThrow("blocked");
     await Promise.resolve();
     await Promise.resolve();

@@ -11,12 +11,9 @@ import {
   phoneCalibMachine,
   phoneFullscreenKeepsPlay,
   phoneStageCaps,
-  readPhonePlayStarted,
-  rememberPhonePlayStarted,
   startPhonePlay,
   stepPhoneCalibration,
   PHONE_PLAYER_READY,
-  PHONE_PLAY_STARTED_KEY,
   PHONE_STABLE_MS,
   PHONE_STAGE_NOTE,
   PHONE_VISIBILITY_FLOOR,
@@ -114,30 +111,6 @@ function PhoneLaptopQr() {
   );
 }
 
-let phonePlayEngaged = false;
-
-function phoneSessionEngaged() {
-  if (phonePlayEngaged) return true;
-  if (typeof window === "undefined") return false;
-  return readPhonePlayStarted(window.sessionStorage);
-}
-
-function engagePhoneSession() {
-  phonePlayEngaged = true;
-  if (typeof window === "undefined") return;
-  rememberPhonePlayStarted(window.sessionStorage);
-}
-
-function clearPhoneSession() {
-  phonePlayEngaged = false;
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(PHONE_PLAY_STARTED_KEY);
-  } catch {
-    /* private mode */
-  }
-}
-
 const emptyDiag = (): PhoneMotionDiag => ({
   buffer: null,
   renderFps: null,
@@ -179,7 +152,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const movesRef = useRef(false);
   const startingRef = useRef(false);
   const aliveRef = useRef(true);
-  const startFromTapRef = useRef<() => Promise<void>>(async () => undefined);
   const poseRef = useRef<{ poseCount: number; framingCode: FramingCode | null; framingPause: boolean }>({
     poseCount: 0,
     framingCode: null,
@@ -230,7 +202,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
 
   useLayoutEffect(() => {
     aliveRef.current = true;
-    if (phoneSessionEngaged() && !streamRef.current && !startingRef.current) void startFromTapRef.current();
     return () => {
       aliveRef.current = false;
     };
@@ -769,18 +740,16 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     const root = rootRef.current;
     if (!video || !root || startingRef.current) return;
     startingRef.current = true;
-    const repeat = phoneSessionEngaged();
     const play = startPhonePlay({
       requestCamera: () => openCamera(video),
-      stage: repeat ? null : phoneStageCaps(root),
+      stage: phoneStageCaps(root),
       onLeaveIntro: () => {
-        engagePhoneSession();
         setCameraError("");
         setStarted(true);
-        if (phoneAsksForLandscape(window.innerWidth, window.innerHeight)) setStageNote(PHONE_STAGE_NOTE);
+        setStageNote(PHONE_STAGE_NOTE);
       },
       onStage: (stage) => {
-        if (!aliveRef.current || repeat) return;
+        if (!aliveRef.current) return;
         setStageNote(stage.note);
       },
     });
@@ -805,8 +774,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       startingRef.current = false;
     }
   }
-
-  startFromTapRef.current = startFromTap;
 
   function runTest(movementType: (typeof PHONE_TEST_CONTROLS)[number]["movementType"]) {
     const handle = handleRef.current;
@@ -1006,7 +973,6 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
           saved={null}
           onAgain={() => setRunId((value) => value + 1)}
           onExit={() => {
-            clearPhoneSession();
             window.location.assign("/games");
           }}
         />

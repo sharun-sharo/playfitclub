@@ -181,7 +181,8 @@ function callPhoneFullscreen(node: PhoneFullscreenTarget): Promise<void> | null 
 /**
  * Fullscreen starts in this turn. The game root is preferred so the canvas covers the screen.
  * navigationUI hide is passed when that options object is accepted. A node that cannot go
- * fullscreen falls through to the document element. The returned promise may still reject.
+ * fullscreen falls through to webkitRequestFullscreen, then the document element.
+ * The returned promise may still reject. Callers must not wait on it before calibration.
  */
 export function requestPhoneFullscreen(root: PhoneFullscreenTarget | null | undefined, documentElement?: PhoneFullscreenTarget | null): Promise<void> {
   const started = (root ? callPhoneFullscreen(root) : null) ?? (documentElement ? callPhoneFullscreen(documentElement) : null);
@@ -662,7 +663,10 @@ type PhonePlayStore = {
   setItem?(key: string, value: string): void;
 };
 
-/** Survives an orientation reload. A React remount reads this and must not return to Play. */
+/**
+ * Optional mark that Play was tapped. /play/phone does not read it.
+ * A reload still opens on the Play button, because fullscreen cannot survive navigation.
+ */
 export function rememberPhonePlayStarted(storage: PhonePlayStore | null | undefined) {
   try {
     storage?.setItem?.(PHONE_PLAY_STARTED_KEY, "1");
@@ -680,17 +684,21 @@ export function readPhonePlayStarted(storage: PhonePlayStore | null | undefined)
 }
 
 /**
- * Play tap. Leaves the intro in this turn and requests the camera before any
- * await. Fullscreen and landscape lock run beside that. A rejection or a hung
- * lock must not skip the camera and must not keep the caller on the intro.
+ * Play tap. In this turn, before any await that can hang: fullscreen, then
+ * landscape lock, then the camera. Leaving the intro is the same turn, so
+ * calibration starts even when fullscreen or the lock rejects or never settles.
  */
 export function startPhonePlay<T>(input: {
   requestCamera: () => Promise<T> | T;
-  /** null skips a second fullscreen or orientation request after this session already asked. */
+  /** null skips fullscreen and orientation. The phone Play button does not pass null. */
   stage?: PhoneStageCaps | null;
   onLeaveIntro: () => void;
   onStage?: (result: { fullscreen: boolean; orientationLocked: boolean; note: string | null }) => void;
 }): { camera: Promise<T>; leftIntro: true } {
+  if (input.stage !== null) {
+    const stage = requestPhoneStage(input.stage ?? {});
+    if (input.onStage) void stage.then((result) => input.onStage?.(result));
+  }
   input.onLeaveIntro();
   let camera: Promise<T>;
   try {
@@ -698,35 +706,36 @@ export function startPhonePlay<T>(input: {
   } catch (error) {
     camera = Promise.reject(error);
   }
-  if (input.stage !== null) {
-    const stage = requestPhoneStage(input.stage ?? {});
-    if (input.onStage) void stage.then((result) => input.onStage?.(result));
-  }
   return { camera, leftIntro: true };
 }
 
-/** Fullscreen and landscape lock only when the browser offers them. A failure is one honest line. */
-export async function requestPhoneStage(caps: PhoneStageCaps): Promise<{ fullscreen: boolean; orientationLocked: boolean; note: string | null }> {
-  let fullscreen = false;
-  let orientationLocked = false;
-  if (typeof caps.fullscreen === "function") {
-    try {
-      await caps.fullscreen();
-      fullscreen = true;
-    } catch {
-      fullscreen = false;
-    }
+function settleStageCall(call: (() => Promise<void> | void) | undefined): Promise<boolean> {
+  if (typeof call !== "function") return Promise.resolve(false);
+  try {
+    return Promise.resolve(call()).then(
+      () => true,
+      () => false,
+    );
+  } catch {
+    return Promise.resolve(false);
   }
-  if (typeof caps.orientationLock === "function") {
-    try {
-      await caps.orientationLock("landscape");
-      orientationLocked = true;
-    } catch {
-      orientationLocked = false;
-    }
-  }
-  const note = fullscreen && orientationLocked ? null : PHONE_STAGE_NOTE;
-  return { fullscreen, orientationLocked, note };
+}
+
+/**
+ * Fullscreen and landscape lock are both invoked in this turn. A hung fullscreen
+ * must not delay the lock. The returned promise waits to report the outcome and
+ * may never settle; callers still start calibration.
+ */
+export function requestPhoneStage(caps: PhoneStageCaps): Promise<{ fullscreen: boolean; orientationLocked: boolean; note: string | null }> {
+  const fullscreen = settleStageCall(caps.fullscreen);
+  const orientationLocked = settleStageCall(
+    typeof caps.orientationLock === "function" ? () => caps.orientationLock!("landscape") : undefined,
+  );
+  return Promise.all([fullscreen, orientationLocked]).then(([full, locked]) => ({
+    fullscreen: full,
+    orientationLocked: locked,
+    note: full && locked ? null : PHONE_STAGE_NOTE,
+  }));
 }
 
 export function phoneStageCaps(root: PhoneFullscreenTarget | null | undefined): PhoneStageCaps {

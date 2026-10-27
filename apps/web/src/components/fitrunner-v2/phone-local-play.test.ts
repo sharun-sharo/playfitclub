@@ -284,6 +284,7 @@ describe("phone local gestures", () => {
     const canvasRule = css.slice(css.indexOf(".phone-play > canvas"), css.indexOf(".phone-play > canvas") + 280);
     expect(canvasRule).toContain("position: fixed");
     expect(canvasRule).toContain("z-index: 1");
+    expect(canvasRule).toContain("width: 100dvw");
     expect(canvasRule).toContain("height: 100dvh");
     expect(phoneHudCardWidth(1920)).toBe(PHONE_HUD_CARD_PX);
     expect(phoneHudCardWidth(844)).toBe(PHONE_HUD_CARD_PX);
