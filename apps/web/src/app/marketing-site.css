@@ -330,6 +330,38 @@ html:has(.fp-site) body {
   }
 }
 
+.fp-site .fp-legal h1,
+.fp-site .fp-legal h2 {
+  color: #f4fbf6;
+}
+
+.fp-site .fp-legal h2 {
+  margin: 2.2rem 0 0.35rem;
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  line-height: 1.15;
+}
+
+.fp-site .fp-legal ul {
+  max-width: 42rem;
+  margin: 0.6rem 0 0;
+  padding-left: 1.15rem;
+  color: #c9d7ce;
+  line-height: 1.7;
+}
+
+.fp-site .fp-legal li + li {
+  margin-top: 0.35rem;
+}
+
+.fp-site .fp-legal a {
+  color: #c6f531;
+}
+
+.fp-site .fp-legal a:hover,
+.fp-site .fp-legal a:focus-visible {
+  color: #f4fbf6;
+}
+
 @media (min-width: 1000px) {
   .fp-site .fp-step-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));

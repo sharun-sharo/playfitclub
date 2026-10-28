@@ -82,7 +82,7 @@ export const gymsMetadata: Metadata = {
 export const privacyMetadata: Metadata = {
   title: segmentTitle("Privacy"),
   description:
-    "Pose tracking runs in the phone browser. Camera frames are not uploaded or stored. PlayFit Club does not keep images, recordings, or biometric templates.",
+    "PlayFit Club privacy notice. The front camera detects jumps, squats, and lane moves on the phone. Video is not stored or sent to the server.",
   robots: INDEXABLE,
 };
 
