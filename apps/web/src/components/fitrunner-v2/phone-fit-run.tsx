@@ -1050,12 +1050,12 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
                 <li key={line}>{line}</li>
               ))}
             </ul>
-            <PhoneLaptopQr />
             {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}
             {startError ? <p className="mt-4 max-w-md text-base text-white">{startError}</p> : null}
             <button type="button" className="phone-start" onClick={() => void startFromTap()}>
               {cameraError ? "Try again" : "Play"}
             </button>
+            <PhoneLaptopQr />
           </div>
         </div>
       ) : null}
