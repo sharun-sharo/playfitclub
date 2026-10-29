@@ -515,12 +515,12 @@ export function createTropical(
     LEFT_GRASS_PATCH_URL,
     (gltf) => {
       if (!grassAlive) return;
-      let found: THREE.Mesh | null = null;
+      const meshes: THREE.Mesh[] = [];
       gltf.scene.traverse((object) => {
         const mesh = object as THREE.Mesh;
-        if (mesh.isMesh && !found) found = mesh;
+        if (mesh.isMesh) meshes.push(mesh);
       });
-      const source = found;
+      const source = meshes[0];
       if (!source) return;
       source.updateWorldMatrix(true, true);
       dressGrass(source);
