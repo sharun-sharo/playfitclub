@@ -1,14 +1,18 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { fitBox, seat } from "./mesh-fit";
 import { assignObstacleTheme, type PaintRole } from "./obstacle-themes";
 import { fitRunnerTuning as tuning } from "./tuning";
 
 export type ObstacleKind = "rock" | "log" | "fence";
 
 /**
- * Static arcade meshes. The mesh named "hit" is the only collider and keeps
- * the previous box size. Extra parts are visual. Phone realtime shadows stay
- * off: these meshes do not enable a shadow map. The ground mark is a blob.
+ * Static arcade meshes. The mesh named "hit" is the only collider.
+ * Hurdles and gates keep their previous box size. A lane car scales that
+ * collider to the visible body. Extra parts are visual. Phone realtime
+ * shadows stay off: these meshes do not enable a shadow map. The ground
+ * mark is a blob. The lane blocker picture is a shared road-block model.
  */
 
 const hitMaterial = new THREE.MeshBasicMaterial({
@@ -68,6 +72,7 @@ export function createObstacle(kind: ObstacleKind) {
   }
 
   assignObstacleTheme(group);
+  if (kind === "rock") mountRoadBlock(group);
   return group;
 }
 
@@ -169,137 +174,229 @@ function buildGate(): Template {
   };
 }
 
-/** Tall one-lane cargo block. Bevels, rails, and stripes sit inside the same hit box. */
+/**
+ * Pictures that replace the cargo crate. Shared geometry, cached materials.
+ * Each car keeps its shape: wheels on the road, length down the lane.
+ * Roof height is a normal car. Width stays inside one lane.
+ * The hidden hit mesh is scaled to that visible body.
+ * The road-closed sign stays on disk and out of this rotation so it does not
+ * take a turn away from the cars.
+ */
+const SIGN_BLOCK = "road-closed-sign";
+const LANE_CARS = ["old-rusty-car", "old-car-vaz-2107", "car-scene", "destroyed-car-07"] as const;
+
+/** Roof of a lane car, in meters. Uniform scale, so the body is not stretched. */
+export const LANE_CAR_HEIGHT_M = 1.5;
+
+/**
+ * Widest a lane car may be, in meters.
+ * Lanes are 3 m apart, so this still clears a step into the next lane.
+ */
+export const LANE_CAR_MAX_WIDTH_M = 2.05;
+
+export const ROAD_BLOCK_MODELS = LANE_CARS.map((name) => ({
+  url: `/assets/fitrunner/road-blocks/${name}.glb`,
+  name,
+  flip: false,
+}));
+
+/**
+ * Which car a lane blocker shows. The first one in a run is a car.
+ * With four cars loaded, the next blocker is always a different car.
+ * Spawn timing does not use this.
+ */
+export function roadBlockNameForOrdinal(ordinal: number) {
+  const index = ((ordinal % LANE_CARS.length) + LANE_CARS.length) % LANE_CARS.length;
+  return LANE_CARS[index] ?? LANE_CARS[0];
+}
+
+const blockerVisuals: THREE.Object3D[] = [];
+const blockerWaiting = new Set<THREE.Group>();
+let blockerLoad: Promise<void> | null = null;
+
+/** Lane blocker. The picture is loaded separately and the hit mesh is fit to it. */
 function buildBlocker(): Template {
   const width = tuning.props.blocker.x;
   const height = tuning.props.blocker.y;
   const depth = tuning.props.blocker.z;
-  const chamfer = 0.085;
-  const bevelThick = 0.062;
-  const bevelSpan = chamfer * Math.SQRT2;
-  const faceZ = depth / 2 - chamfer + 0.028;
-  const bevelInset = Math.SQRT1_2 * (bevelThick / 2);
-  const shell = chamfer;
-  const parts = bag();
-
-  put(parts.body, boxGeo(width - shell * 2, height - shell * 2, depth - shell * 2), 0, height / 2, 0);
-  put(parts.panel, boxGeo(width - 0.28, 0.028, depth - 0.24), 0, height - chamfer - 0.01, 0);
-  put(parts.panel, boxGeo(width * 0.64, height * 0.42, 0.036), 0, height * 0.5, faceZ - 0.01);
-  for (const sideX of [-1, 1]) {
-    put(parts.panel, boxGeo(0.03, height * 0.55, depth * 0.46), sideX * (width / 2 - 0.07), height * 0.52, 0);
-  }
-
-  const bevelY = boxGeo(bevelSpan, height - chamfer * 2, bevelThick);
-  const collar = boxGeo(bevelSpan * 0.92, 0.16, bevelThick * 1.08);
-  const guardFace = boxGeo(0.16, 0.22, 0.022);
-  const guardSide = boxGeo(0.022, 0.22, 0.14);
-  for (const sideX of [-1, 1]) {
-    for (const sideZ of [-1, 1]) {
-      const x = sideX * (width / 2 - chamfer / 2 - bevelInset);
-      const z = sideZ * (depth / 2 - chamfer / 2 - bevelInset);
-      const yaw = Math.atan2(sideX, sideZ);
-      put(parts.frame, bevelY, x, height / 2, z, (object) => {
-        object.rotation.y = yaw;
-      });
-      for (const sideY of [-1, 1]) {
-        const guardY = sideY > 0 ? height - chamfer - 0.11 : chamfer + 0.11;
-        put(parts.frame, collar, x, sideY > 0 ? height - chamfer - 0.04 : chamfer + 0.04, z, (object) => {
-          object.rotation.y = yaw;
-        });
-        put(parts.frame, guardFace, sideX * (width / 2 - chamfer - 0.08), guardY, sideZ * (depth / 2 - 0.016));
-        put(parts.frame, guardSide, sideX * (width / 2 - 0.016), guardY, sideZ * (depth / 2 - chamfer - 0.07));
-      }
-    }
-  }
-
-  const bevelX = boxGeo(width - chamfer * 2, bevelSpan, bevelThick);
-  for (const sideY of [-1, 1]) {
-    for (const sideZ of [-1, 1]) {
-      const outerY = sideY > 0 ? height : 0;
-      put(parts.frame, bevelX, 0, outerY - sideY * (chamfer / 2 + bevelInset), sideZ * (depth / 2 - chamfer / 2 - bevelInset), (object) => {
-        object.rotation.x = -Math.atan2(sideY, sideZ);
-      });
-    }
-  }
-  const bevelZ = boxGeo(bevelThick, bevelSpan, depth - chamfer * 2);
-  for (const sideX of [-1, 1]) {
-    for (const sideY of [-1, 1]) {
-      const outerY = sideY > 0 ? height : 0;
-      put(parts.frame, bevelZ, sideX * (width / 2 - chamfer / 2 - bevelInset), outerY - sideY * (chamfer / 2 + bevelInset), 0, (object) => {
-        object.rotation.z = Math.atan2(sideY, sideX);
-      });
-    }
-  }
-
-  const railX = boxGeo(width - chamfer * 2 - 0.16, 0.04, 0.028);
-  const revealX = boxGeo(width - chamfer * 2 - 0.24, 0.018, 0.014);
-  const railY = boxGeo(0.04, height - chamfer * 2 - 0.2, 0.028);
-  const revealY = boxGeo(0.018, height - chamfer * 2 - 0.28, 0.014);
-  for (const sideZ of [-1, 1]) {
-    for (const alongTop of [true, false]) {
-      const railCenter = alongTop ? height - chamfer - 0.042 : chamfer + 0.042;
-      const revealCenter = alongTop ? height - chamfer - 0.085 : chamfer + 0.085;
-      put(parts.frame, railX, 0, railCenter, sideZ * (depth / 2 - 0.026));
-      put(parts.stripeAlt, revealX, 0, revealCenter, sideZ * (depth / 2 - chamfer + 0.012));
-    }
-    for (const sideX of [-1, 1]) {
-      put(parts.frame, railY, sideX * (width / 2 - chamfer - 0.038), height / 2, sideZ * (depth / 2 - 0.026));
-      put(parts.stripeAlt, revealY, sideX * (width / 2 - chamfer - 0.078), height / 2, sideZ * (depth / 2 - chamfer + 0.012));
-    }
-  }
-  const railZ = boxGeo(0.028, 0.04, depth - chamfer * 2 - 0.1);
-  const revealZ = boxGeo(0.014, 0.018, depth - chamfer * 2 - 0.14);
-  for (const sideX of [-1, 1]) {
-    for (const alongTop of [true, false]) {
-      const railCenter = alongTop ? height - chamfer - 0.042 : chamfer + 0.042;
-      const revealCenter = alongTop ? height - chamfer - 0.085 : chamfer + 0.085;
-      put(parts.frame, railZ, sideX * (width / 2 - 0.02), railCenter, 0);
-      put(parts.stripeAlt, revealZ, sideX * (width / 2 - chamfer + 0.01), revealCenter, 0);
-    }
-  }
-
-  const slat = boxGeo(width * 0.58, 0.026, 0.016);
-  for (let index = 0; index < 5; index += 1) {
-    put(parts.frame, slat, 0, 0.98 + index * 0.18, faceZ + 0.012);
-  }
-  const bolt = cylGeo(0.026, 0.018);
-  for (const sideX of [-1, 1]) {
-    for (const sideY of [-1, 1]) {
-      put(parts.bolt, bolt, sideX * width * 0.3, height * 0.5 + sideY * height * 0.2, faceZ + 0.02, (object) => {
-        object.rotation.x = Math.PI / 2;
-      });
-    }
-  }
-  const stripe = boxGeo(0.34, 0.05, 0.016);
-  for (const side of [-1, 1]) {
-    for (let index = -1; index <= 1; index += 1) {
-      const role = index === 0 ? parts.stripeAlt : parts.stripe;
-      put(role, stripe, side * 0.62, 0.36, faceZ, (object) => {
-        object.rotation.z = side * 0.62;
-        object.translateY(index * 0.082);
-      });
-    }
-  }
-  const lamp = boxGeo(0.1, 0.07, 0.045);
-  for (const sideX of [-1, 1]) {
-    put(parts.accent, lamp, sideX * width * 0.34, height - 0.2, faceZ);
-  }
-  put(parts.stripe, lamp, 0, height - 0.2, faceZ);
-  put(parts.accent, boxGeo(width * 0.7, 0.04, 0.018), 0, 0.62, faceZ + 0.016);
-
-  const label = { geometry: planeGeo(0.96, 0.22), matrix: new THREE.Matrix4() };
-  scratch.position.set(0, height * 0.78, faceZ + 0.01);
-  scratch.rotation.set(0, 0, 0);
-  scratch.scale.set(1, 1, 1);
-  scratch.updateMatrix();
-  label.matrix.copy(scratch.matrix);
-
   return {
     name: "blocker",
     hit: { geometry: boxGeo(width, height, depth), y: height / 2 },
     shadow: planeGeo(width * 0.92, depth * 0.96),
-    painted: paint(parts, label),
+    painted: [],
   };
+}
+
+function mountRoadBlock(group: THREE.Group) {
+  if (group.userData.roadBlockOrdinal === undefined) group.userData.roadBlockOrdinal = 0;
+  if (blockerVisuals.length) {
+    mountPicture(group);
+    return;
+  }
+  blockerWaiting.add(group);
+  ensureRoadBlocks();
+}
+
+/** Swap the picture when this pooled mesh is placed. The pool slot is not the picture. */
+export function presentRoadBlock(object: THREE.Object3D, ordinal: number) {
+  object.userData.roadBlockOrdinal = ordinal;
+  const group = object as THREE.Group;
+  if (!blockerVisuals.length) {
+    blockerWaiting.add(group);
+    ensureRoadBlocks();
+    return;
+  }
+  mountPicture(group);
+}
+
+function ensureRoadBlocks() {
+  if (blockerLoad || blockerVisuals.length) return;
+  if (typeof window === "undefined") return;
+  blockerLoad = loadRoadBlocks().catch((error: unknown) => {
+    blockerLoad = null;
+    console.warn("Fit Run road blocks failed to load.", error);
+  });
+}
+
+async function loadRoadBlocks() {
+  const loader = new GLTFLoader();
+  const loaded: THREE.Object3D[] = [];
+  for (const model of ROAD_BLOCK_MODELS) {
+    try {
+      const gltf = await loader.loadAsync(model.url);
+      prepareRoadBlock(gltf.scene);
+      const fitted = layoutRoadBlock(gltf.scene, model);
+      fitted.name = "road-block";
+      fitted.userData.modelName = model.name;
+      loaded.push(fitted);
+    } catch (error) {
+      console.warn("Fit Run road block skipped.", model.url, error);
+    }
+  }
+  blockerVisuals.push(...loaded);
+  const waiting = [...blockerWaiting];
+  blockerWaiting.clear();
+  for (const group of waiting) mountPicture(group);
+}
+
+/** Sign fills the hit box, facing the runner. Every car stays a car in the lane. */
+export function layoutRoadBlock(scene: THREE.Object3D, model: { name: string; flip: boolean }) {
+  if (model.name !== SIGN_BLOCK) return placeCar(scene);
+  return fitRoadBlock(scene, model.flip);
+}
+
+/**
+ * Uniform scale, wheels on the road, length down the lane, centered on the blocker.
+ * Height stays near a normal roof. Width stays inside one lane.
+ */
+function placeCar(scene: THREE.Object3D) {
+  scene.rotation.set(0, 0, 0);
+  scene.position.set(0, 0, 0);
+  scene.scale.set(1, 1, 1);
+  scene.updateWorldMatrix(true, true);
+  const size = new THREE.Box3().setFromObject(scene).getSize(new THREE.Vector3());
+  if (size.x > size.z) scene.rotation.y = Math.PI / 2;
+  const holder = new THREE.Group();
+  holder.add(scene);
+  holder.updateWorldMatrix(true, true);
+  const oriented = new THREE.Box3().setFromObject(holder).getSize(new THREE.Vector3());
+  const heightScale = LANE_CAR_HEIGHT_M / Math.max(oriented.y, 0.0001);
+  const widthScale = LANE_CAR_MAX_WIDTH_M / Math.max(oriented.x, 0.0001);
+  holder.scale.setScalar(Math.min(heightScale, widthScale));
+  return seat(holder, "bottom").wrapper;
+}
+
+/** Scale the hidden hit mesh, and its ground mark, to the visible car. */
+export function fitLaneCarHit(group: THREE.Group) {
+  const visual = group.getObjectByName("road-block");
+  const hit = group.getObjectByName("hit") as THREE.Mesh | undefined;
+  if (!visual || !hit || !(hit.geometry instanceof THREE.BoxGeometry)) return;
+  const box = boundsIn(visual, group);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  if (size.x < 0.05 || size.y < 0.05 || size.z < 0.05) return;
+  const params = hit.geometry.parameters;
+  hit.scale.set(size.x / Math.max(params.width, 0.0001), size.y / Math.max(params.height, 0.0001), size.z / Math.max(params.depth, 0.0001));
+  hit.position.copy(center);
+  const shadow = group.getObjectByName("shadow") as THREE.Mesh | undefined;
+  if (!shadow || !(shadow.geometry instanceof THREE.PlaneGeometry)) return;
+  const plane = shadow.geometry.parameters;
+  shadow.scale.set(size.x / Math.max(plane.width, 0.0001), size.z / Math.max(plane.height, 0.0001), 1);
+  shadow.position.set(center.x, shadow.position.y, center.z);
+}
+
+function boundsIn(object: THREE.Object3D, space: THREE.Object3D) {
+  object.updateWorldMatrix(true, true);
+  space.updateWorldMatrix(true, false);
+  const box = new THREE.Box3().setFromObject(object);
+  box.applyMatrix4(space.matrixWorld.clone().invert());
+  return box;
+}
+
+function prepareRoadBlock(root: THREE.Object3D) {
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    if (!mesh.isMesh || !mesh.material) return;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) material.side = THREE.DoubleSide;
+  });
+}
+
+/** Turn the broad face toward the runner, then scale the picture into the hit box. */
+function fitRoadBlock(scene: THREE.Object3D, flip: boolean) {
+  scene.rotation.set(0, 0, 0);
+  scene.position.set(0, 0, 0);
+  scene.scale.set(1, 1, 1);
+  scene.updateWorldMatrix(true, true);
+  const size = new THREE.Box3().setFromObject(scene).getSize(new THREE.Vector3());
+  if (size.x < size.z) scene.rotation.y = Math.PI / 2;
+  if (flip) scene.rotation.y += Math.PI;
+  const holder = new THREE.Group();
+  holder.add(scene);
+  return fitBox(holder, tuning.props.blocker);
+}
+
+function roadBlockOrdinal(group: THREE.Object3D) {
+  const ordinal = group.userData.roadBlockOrdinal;
+  return typeof ordinal === "number" ? ordinal : 0;
+}
+
+function modelIndexFor(ordinal: number) {
+  const name = roadBlockNameForOrdinal(ordinal);
+  const match = blockerVisuals.findIndex((item) => item.userData.modelName === name);
+  if (match >= 0) return match;
+  const cars = blockerVisuals
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.userData.modelName !== SIGN_BLOCK);
+  if (!cars.length) return 0;
+  return cars[((ordinal % cars.length) + cars.length) % cars.length]?.index ?? 0;
+}
+
+function mountPicture(group: THREE.Group) {
+  const name = roadBlockNameForOrdinal(roadBlockOrdinal(group));
+  const current = group.getObjectByName("road-block");
+  if (current?.userData.modelName === name) return;
+  if (current) group.remove(current);
+  attachRoadBlock(group);
+}
+
+function attachRoadBlock(group: THREE.Group) {
+  if (!blockerVisuals.length || group.getObjectByName("road-block")) return;
+  const source = blockerVisuals[modelIndexFor(roadBlockOrdinal(group))];
+  if (!source) return;
+  const visual = source.clone(true);
+  visual.name = "road-block";
+  visual.userData.modelName = source.userData.modelName;
+  visual.traverse((child) => {
+    child.frustumCulled = false;
+    child.castShadow = false;
+    child.receiveShadow = false;
+  });
+  group.add(visual);
+  fitLaneCarHit(group);
 }
 
 function bag(): Bag {
@@ -407,3 +504,5 @@ function blobTexture() {
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
+
+if (typeof window !== "undefined") ensureRoadBlocks();

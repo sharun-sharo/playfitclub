@@ -1,10 +1,33 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { fitBox, fitHeight, prepareMaterials } from "@/components/fitrunner-v2/mesh-fit";
-import { COTTAGE_PIECES, SIDE_FIT_HEIGHT, sidePlacements, type SidePropId } from "@/components/fitrunner-v2/side-scenery";
+import { roadLayout } from "@/components/fitrunner-v2/road-width";
+import { ROADSIDE_PLANTS, roadsidePlantX, roadsideVariant } from "@/components/fitrunner-v2/roadside-plants";
+import { SIDE_FIT_HEIGHT, SIDE_PROP_IDS, sidePlacements, type SidePropId } from "@/components/fitrunner-v2/side-scenery";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 
 const SPAN = tuning.tileSize * 1.08;
-const ROAD_EDGE = tuning.tileSize + (tuning.tileSize * 1.02) / 2;
+/**
+ * Asphalt, lip, and ground distances from the road center.
+ * Both sides use these magnitudes. Lanes stay at ±laneSpacing.
+ */
+const road = roadLayout();
+const ROAD_EDGE = road.roadEdge;
+const VERGE_WIDTH = road.vergeWidth;
+const GROUND_EDGE = road.groundEdge;
+const SHOULDER_INNER = road.shoulderInner;
+const SHOULDER_OUTER = road.shoulderOuter;
+const SHOULDER_WIDTH = road.shoulderWidth;
+/** White edge line, kept on the asphalt just inside the lip. */
+const EDGE_LINE_INSET = 0.15;
+/** GrassPatch_Square from the side-area folder. Repeated across the left green plane. */
+const LEFT_GRASS_PATCH_URL = "/assets/fitrunner/side-area/grass-patch.glb";
+/** Width of the left field, measured from the grass line outward. */
+const GREEN_WIDTH = 46;
+/** World x where the left grass starts. Mirrors the right sand line. */
+const LEFT_GRASS_EDGE = -GROUND_EDGE;
+const LEFT_FIELD_EDGE = LEFT_GRASS_EDGE - GREEN_WIDTH;
+const LEFT_FIELD_WIDTH = LEFT_GRASS_EDGE - LEFT_FIELD_EDGE;
 const MODULES = ["beachfront", "market", "garden", "boardwalk"] as const;
 
 export function coastModule(spawn: number) {
@@ -83,19 +106,8 @@ export type TropicalAssets = {
   flowerYellow: THREE.Object3D;
   flowerRed: THREE.Object3D;
   grass: THREE.Object3D;
-  tree: THREE.Object3D;
-  /** Static Kenney kit meshes. Cloned as side dressing, never as obstacles. */
-  side: {
-    wall: THREE.Object3D;
-    window: THREE.Object3D;
-    doorway: THREE.Object3D;
-    column: THREE.Object3D;
-    crate: THREE.Object3D;
-    vehicle: THREE.Object3D;
-    flag: THREE.Object3D;
-    locomotive: THREE.Object3D;
-    container: THREE.Object3D;
-  };
+  /** Static city meshes. Cloned as side dressing, never as obstacles. Geometry is shared. */
+  side: Record<SidePropId, THREE.Object3D>;
 };
 
 type PalmSlot = {
@@ -112,28 +124,86 @@ type PalmSlot = {
 
 type PalmPlacement = Omit<PalmSlot, "id" | "index" | "active"> & { variant: number };
 
-function bakePalm(source: THREE.Object3D) {
-  const clone = source.clone(true);
-  prepareMaterials(clone, { cast: true, receive: false });
-  const fitted = fitHeight(clone, 4.8);
-  fitted.updateWorldMatrix(true, true);
-  const parts: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
-  fitted.traverse((object) => {
-    const candidate = object as THREE.Mesh;
-    if (!candidate.isMesh || !candidate.geometry) return;
-    const geometry = candidate.geometry.clone();
-    geometry.applyMatrix4(candidate.matrixWorld);
-    const material = Array.isArray(candidate.material) ? candidate.material[0] : candidate.material;
-    if (!material) return;
-    parts.push({ geometry, material });
-  });
-  if (parts.length === 0) throw new Error("Palm model has no mesh.");
-  return parts;
+const PLANT_INSTANCES = 160;
+
+function bakedGeometry(mesh: THREE.Mesh, start = 0, count = mesh.geometry.getAttribute("position")?.count ?? 0) {
+  const source = mesh.geometry;
+  const position = source.getAttribute("position");
+  const normal = source.getAttribute("normal");
+  const uv = source.getAttribute("uv");
+  if (!position) throw new Error("Roadside plant is missing positions.");
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const normals = normal ? new Float32Array(count * 3) : null;
+  const uvs = uv ? new Float32Array(count * 2) : null;
+  const vertex = new THREE.Vector3();
+  const norm = new THREE.Vector3();
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+  for (let index = 0; index < count; index += 1) {
+    vertex.fromBufferAttribute(position, start + index).applyMatrix4(mesh.matrixWorld);
+    positions[index * 3] = vertex.x;
+    positions[index * 3 + 1] = vertex.y;
+    positions[index * 3 + 2] = vertex.z;
+    if (normals && normal) {
+      norm.fromBufferAttribute(normal, start + index).applyMatrix3(normalMatrix).normalize();
+      normals[index * 3] = norm.x;
+      normals[index * 3 + 1] = norm.y;
+      normals[index * 3 + 2] = norm.z;
+    }
+    if (uvs && uv) {
+      uvs[index * 2] = uv.getX(start + index);
+      uvs[index * 2 + 1] = uv.getY(start + index);
+    }
+  }
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  if (normals) geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  if (uvs) geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+  return geometry;
 }
 
-function heightProp(source: THREE.Object3D, height: number) {
+/**
+ * Static scenery meshes. Geometry is shared by every instance of that plant.
+ * Skinned meshes are refused: scaling a skeleton breaks the bind pose.
+ * These models are already meter-scale, so they are not fit to one height.
+ */
+function bakePlant(source: THREE.Object3D) {
+  prepareMaterials(source, { cast: false, receive: false });
+  source.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(source);
+  const halfReach = Math.hypot((box.max.x - box.min.x) / 2, (box.max.z - box.min.z) / 2);
+  if (!Number.isFinite(halfReach) || halfReach > 12) throw new Error("Roadside plant extent is not in meters.");
+  const identity = new THREE.Matrix4();
+  const parts: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
+  source.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    if ((mesh as THREE.SkinnedMesh).isSkinnedMesh) {
+      throw new Error("Roadside plant is skinned. Geometry is not rescaled.");
+    }
+    const materials = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).filter(
+      (material): material is THREE.Material => Boolean(material),
+    );
+    const groups = materials.length > 1 && mesh.geometry.groups.length > 0 ? mesh.geometry.groups : null;
+    if (!groups) {
+      const material = materials[0];
+      if (!material) return;
+      const geometry = mesh.matrixWorld.equals(identity) ? mesh.geometry : bakedGeometry(mesh);
+      parts.push({ geometry, material });
+      return;
+    }
+    for (const group of groups) {
+      const material = materials[group.materialIndex ?? 0] ?? materials[0];
+      if (!material) continue;
+      parts.push({ geometry: bakedGeometry(mesh, group.start, group.count), material });
+    }
+  });
+  if (parts.length === 0) throw new Error("Roadside plant has no mesh.");
+  return { parts, halfReach };
+}
+
+function heightProp(source: THREE.Object3D, height: number, shadows: { cast: boolean; receive: boolean } = { cast: true, receive: true }) {
   const clone = source.clone(true);
-  prepareMaterials(clone, { cast: true, receive: true });
+  prepareMaterials(clone, shadows);
   return fitHeight(clone, height);
 }
 
@@ -141,27 +211,6 @@ function boxProp(source: THREE.Object3D, target: { x: number; y: number; z: numb
   const clone = source.clone(true);
   prepareMaterials(clone, { cast: true, receive: true });
   return fitBox(clone, target);
-}
-
-function sideCottage(side: TropicalAssets["side"]) {
-  for (const source of [side.wall, side.window, side.doorway, side.column]) {
-    prepareMaterials(source, { cast: true, receive: true });
-  }
-  const parts = {
-    wall: side.wall,
-    window: side.window,
-    doorway: side.doorway,
-    column: side.column,
-  } as const;
-  const group = new THREE.Group();
-  for (const piece of COTTAGE_PIECES) {
-    const mesh = parts[piece.part].clone(true);
-    mesh.position.set(piece.x, piece.y, piece.z);
-    mesh.rotation.y = piece.yaw;
-    mesh.scale.set(piece.sx, piece.sy, piece.sz);
-    group.add(mesh);
-  }
-  return fitHeight(group, SIDE_FIT_HEIGHT.cottage);
 }
 
 function signTemplate(label: string, background: string, foreground: string) {
@@ -223,21 +272,6 @@ function boardTemplate() {
   mesh.position.y = 0.05;
   const group = new THREE.Group();
   group.add(mesh);
-  return group;
-}
-
-function marketTemplate(assets: TropicalAssets) {
-  const stall = heightProp(assets.stall, tuning.props.stallHeight);
-  const fruit = heightProp(assets.fruit, tuning.props.marketHeight);
-  fruit.position.set(1.55, 0, 0.35);
-  const bread = heightProp(assets.bread, tuning.props.marketHeight);
-  bread.position.set(-1.4, 0, 0.4);
-  const shelf = heightProp(assets.shelf, tuning.props.marketHeight + 0.3);
-  shelf.position.set(0.1, 0, -1.05);
-  const basket = heightProp(assets.basket, tuning.props.basketHeight);
-  basket.position.set(1.4, 0, 1.05);
-  const group = new THREE.Group();
-  group.add(stall, fruit, bread, shelf, basket);
   return group;
 }
 
@@ -372,7 +406,7 @@ export function createTropical(
   catcher.receiveShadow = true;
   scene.add(catcher);
 
-  const grassGeo = new THREE.PlaneGeometry(46, SPAN);
+  const grassGeo = new THREE.PlaneGeometry(LEFT_FIELD_WIDTH, SPAN);
   grassGeo.rotateX(-Math.PI / 2);
   const sandGeo = new THREE.PlaneGeometry(14, SPAN);
   sandGeo.rotateX(-Math.PI / 2);
@@ -381,9 +415,11 @@ export function createTropical(
   const grassMat = new THREE.MeshStandardMaterial({ color: "#6eae45", roughness: 0.94, metalness: 0 });
   const sandMat = new THREE.MeshStandardMaterial({ color: "#efd29a", roughness: 0.92, metalness: 0 });
   const wetMat = new THREE.MeshStandardMaterial({ color: "#d2b06a", roughness: 0.88, metalness: 0 });
+  const shoulderMat = new THREE.MeshStandardMaterial({ color: "#6a7168", roughness: 0.94, metalness: 0 });
   const dashGeo = new THREE.BoxGeometry(0.042, 0.008, 0.56);
   const tickGeo = new THREE.BoxGeometry(0.16, 0.008, 0.04);
-  const vergeGeo = new THREE.BoxGeometry(1.15, 0.016, tuning.tileSize);
+  const vergeGeo = new THREE.BoxGeometry(VERGE_WIDTH, 0.016, tuning.tileSize);
+  const shoulderGeo = new THREE.BoxGeometry(SHOULDER_WIDTH, 0.02, tuning.tileSize);
   const edgeGeo = new THREE.BoxGeometry(0.04, 0.008, 1.05);
   const paintMat = new THREE.MeshStandardMaterial({
     color: "#f4f7f2",
@@ -403,12 +439,115 @@ export function createTropical(
     polygonOffsetUnits: -2,
   });
 
-  const palmSets = assets.palms.map((palm) =>
-    bakePalm(palm).map((part) => {
-      const mesh = new THREE.InstancedMesh(part.geometry, part.material, 96);
+  /**
+   * Left grass, from just outside the asphalt out to the far field.
+   * Tiles of the grass patch fill that span. The right side stays plain sand.
+   */
+  type LeftGrass = { group: THREE.Group; patch: THREE.InstancedMesh | null; spawn: () => number };
+  const leftGrass: LeftGrass[] = [];
+  let grassGeometry: THREE.BufferGeometry | null = null;
+  let grassSurface: THREE.Material | null = null;
+  let grassWidth = 2;
+  let grassCenterX = 0;
+  let grassTiles = 1;
+  let grassAlive = true;
+  const grassMark = new THREE.Object3D();
+
+  function grassField() {
+    return { right: LEFT_GRASS_EDGE, left: LEFT_FIELD_EDGE };
+  }
+
+  function parkGrass(entry: LeftGrass) {
+    const patch = entry.patch;
+    if (!patch) return;
+    const spawn = entry.spawn();
+    const { right, left } = grassField();
+    const count = patch.count;
+    const step = count <= 1 ? 0 : (right - left - grassWidth) / (count - 1);
+    for (let index = 0; index < count; index += 1) {
+      const tileRight = right - index * step;
+      const flip = Math.abs(spawn + index) % 2 === 1;
+      grassMark.position.set(tileRight - grassWidth / 2 - grassCenterX, 0.02, 0);
+      grassMark.rotation.set(0, flip ? Math.PI : 0, 0);
+      grassMark.scale.set(1, 1, 1);
+      grassMark.updateMatrix();
+      patch.setMatrixAt(index, grassMark.matrix);
+    }
+    patch.instanceMatrix.needsUpdate = true;
+  }
+
+  function dressGrass(root: THREE.Object3D) {
+    root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+        // The blade color lives in the texture. Its alpha is only a partial mask
+        // and would throw away most of the patch, so the blades stay opaque.
+        material.alphaTest = 0;
+        material.transparent = false;
+        material.opacity = 1;
+        material.depthWrite = true;
+        material.side = THREE.DoubleSide;
+        material.metalness = 0;
+        material.roughness = 0.94;
+        material.needsUpdate = true;
+      }
+    });
+  }
+
+  function mountGrass(entry: LeftGrass) {
+    if (!grassGeometry || !grassSurface || entry.patch) return;
+    const patch = new THREE.InstancedMesh(grassGeometry, grassSurface, grassTiles);
+    patch.castShadow = false;
+    patch.receiveShadow = false;
+    patch.frustumCulled = true;
+    entry.group.add(patch);
+    entry.patch = patch;
+    parkGrass(entry);
+  }
+
+  const grassLoader = new GLTFLoader();
+  grassLoader.load(
+    LEFT_GRASS_PATCH_URL,
+    (gltf) => {
+      if (!grassAlive) return;
+      let found: THREE.Mesh | null = null;
+      gltf.scene.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.isMesh && !found) found = mesh;
+      });
+      const source = found;
+      if (!source) return;
+      source.updateWorldMatrix(true, true);
+      dressGrass(source);
+      const box = new THREE.Box3().setFromObject(source);
+      grassWidth = Math.max(0.001, box.max.x - box.min.x);
+      grassCenterX = (box.min.x + box.max.x) / 2;
+      const field = grassField();
+      grassTiles = Math.max(1, Math.ceil((field.right - field.left) / grassWidth));
+      grassGeometry = source.geometry;
+      grassSurface = Array.isArray(source.material) ? source.material[0] ?? null : source.material;
+      if (!grassSurface) return;
+      for (const entry of leftGrass) mountGrass(entry);
+    },
+    undefined,
+    () => {
+      grassGeometry = null;
+    },
+  );
+
+  const bakedPlants = assets.palms.map((plant) => bakePlant(plant));
+  const plantReach = bakedPlants.map((plant) => plant.halfReach);
+  const palmSets = bakedPlants.map((plant) =>
+    plant.parts.map((part) => {
+      const mesh = new THREE.InstancedMesh(part.geometry, part.material, PLANT_INSTANCES);
       mesh.count = 0;
       mesh.frustumCulled = false;
-      mesh.castShadow = quality !== "low";
+      mesh.castShadow = false;
       mesh.receiveShadow = false;
       scene.add(mesh);
       return mesh;
@@ -454,7 +593,6 @@ export function createTropical(
   }
 
   const templates = {
-    bush: heightProp(assets.bush, tuning.props.bushHeight),
     rock: heightProp(assets.rock, 0.9),
     rockSmall: heightProp(assets.rockSmall, 0.42),
     log: boxProp(assets.log, { x: 1.45, y: 0.32, z: 0.5 }),
@@ -464,20 +602,15 @@ export function createTropical(
     flowerYellow: heightProp(assets.flowerYellow, 0.42),
     flowerRed: heightProp(assets.flowerRed, 0.4),
     grass: heightProp(assets.grass, 0.62),
-    tree: heightProp(assets.tree, 4.4),
-    market: marketTemplate(assets),
     umbrella: umbrellaTemplate(),
     board: boardTemplate(),
-    fruitSign: signTemplate("FRUIT", "#e25b45", "#fff6ea"),
     surfSign: signTemplate("RUN", "#147a86", "#f3fffd"),
     iceSign: signTemplate("ICE", "#dff6ff", "#16324a"),
-    locomotive: heightProp(assets.side.locomotive, SIDE_FIT_HEIGHT.locomotive),
-    container: heightProp(assets.side.container, SIDE_FIT_HEIGHT.container),
-    cottage: sideCottage(assets.side),
-    vehicle: heightProp(assets.side.vehicle, SIDE_FIT_HEIGHT.vehicle),
-    crate: heightProp(assets.side.crate, SIDE_FIT_HEIGHT.crate),
-    flag: heightProp(assets.side.flag, SIDE_FIT_HEIGHT.flag),
   };
+  const sideTemplates = {} as Record<SidePropId, THREE.Object3D>;
+  for (const id of SIDE_PROP_IDS) {
+    sideTemplates[id] = heightProp(assets.side[id], SIDE_FIT_HEIGHT[id], { cast: false, receive: false });
+  }
 
   const made: SegmentDressing[] = [];
   let nextId = 0;
@@ -488,10 +621,10 @@ export function createTropical(
     const group = new THREE.Group();
     anchors.set(id, group);
     const grass = new THREE.Mesh(grassGeo, grassMat);
-    grass.position.set(-(ROAD_EDGE - 0.65) - 23, 0, 0);
+    grass.position.set((LEFT_FIELD_EDGE + LEFT_GRASS_EDGE) / 2, 0, 0);
     grass.receiveShadow = true;
     const sand = new THREE.Mesh(sandGeo, sandMat);
-    sand.position.set(ROAD_EDGE - 0.65 + 7, 0, 0);
+    sand.position.set(GROUND_EDGE + 7, 0, 0);
     sand.receiveShadow = true;
     const wet = new THREE.Mesh(wetGeo, wetMat);
     wet.position.set(17.4, -0.07, 0);
@@ -522,13 +655,24 @@ export function createTropical(
       group.add(edge);
       edges.push(edge);
     }
+    const shoulderY = -0.004;
+    const shoulderX = (SHOULDER_INNER + SHOULDER_OUTER) / 2;
+    const leftShoulder = new THREE.Mesh(shoulderGeo, shoulderMat);
+    const rightShoulder = new THREE.Mesh(shoulderGeo, shoulderMat);
+    leftShoulder.position.set(-shoulderX, shoulderY, 0);
+    rightShoulder.position.set(shoulderX, shoulderY, 0);
+    leftShoulder.receiveShadow = true;
+    rightShoulder.receiveShadow = true;
+    leftShoulder.castShadow = false;
+    rightShoulder.castShadow = false;
+    const vergeX = ROAD_EDGE + VERGE_WIDTH / 2;
     const grassVerge = new THREE.Mesh(vergeGeo, grassMat);
     const sandVerge = new THREE.Mesh(vergeGeo, sandMat);
-    grassVerge.position.set(-(ROAD_EDGE - 0.42), 0.018, 0);
-    sandVerge.position.set(ROAD_EDGE - 0.42, 0.018, 0);
+    grassVerge.position.set(-vergeX, 0.018, 0);
+    sandVerge.position.set(vergeX, 0.018, 0);
     grassVerge.receiveShadow = true;
     sandVerge.receiveShadow = true;
-    group.add(grassVerge, sandVerge);
+    group.add(leftShoulder, rightShoulder, grassVerge, sandVerge);
 
     const take = (object: THREE.Object3D, tier: number): Prop => {
       const clone = object.clone(true);
@@ -537,8 +681,6 @@ export function createTropical(
       return { object: clone, tier };
     };
     const props = {
-      bushA: take(templates.bush, 1),
-      bushB: take(templates.bush, 2),
       rockA: take(templates.rock, 0),
       rockB: take(templates.rockSmall, 1),
       log: take(templates.log, 0),
@@ -549,22 +691,13 @@ export function createTropical(
       flowerA: take(templates.flowerYellow, 1),
       flowerB: take(templates.flowerRed, 2),
       grass: take(templates.grass, 1),
-      tree: take(templates.tree, 1),
-      market: take(templates.market, 0),
       umbrella: take(templates.umbrella, 0),
       board: take(templates.board, 0),
-      fruit: take(templates.fruitSign, 0),
       surf: take(templates.surfSign, 0),
       ice: take(templates.iceSign, 0),
     };
-    const kit: Record<SidePropId, Prop> = {
-      locomotive: take(templates.locomotive, 0),
-      container: take(templates.container, 0),
-      cottage: take(templates.cottage, 0),
-      vehicle: take(templates.vehicle, 0),
-      crate: take(templates.crate, 1),
-      flag: take(templates.flag, 1),
-    };
+    const kit = {} as Record<SidePropId, Prop>;
+    for (const id of SIDE_PROP_IDS) kit[id] = take(sideTemplates[id], 0);
     const all = [...Object.values(props), ...Object.values(kit)];
 
     const piece: SegmentDressing = {
@@ -589,9 +722,8 @@ export function createTropical(
         edges.forEach((edge, index) => {
           const side = index < 2 ? -1 : 1;
           const slot = index % 2;
-          edge.position.set(side * 3.52, 0.026, (slot === 0 ? -0.62 : 0.62) + shift * 0.6);
+          edge.position.set(side * (ROAD_EDGE - EDGE_LINE_INSET), 0.026, (slot === 0 ? -0.62 : 0.62) + shift * 0.6);
         });
-        sandVerge.scale.x = moduleName === "boardwalk" ? 1.08 : moduleName === "garden" ? 0.94 : 1;
         for (const prop of all) prop.object.visible = false;
         const aside = (x: number) => {
           const mag = Math.abs(x);
@@ -612,46 +744,39 @@ export function createTropical(
         };
         const faceRoad = (x: number) => (x > 0 ? -Math.PI / 2 : Math.PI / 2);
         const palms: PalmPlacement[] = [];
-        const palm = (x: number, z: number, tier: number) => {
+        let plantOrdinal = 0;
+        const placePlant = (side: -1 | 1, z: number) => {
+          const variant = roadsideVariant(spawn, plantOrdinal, palmSets.length);
+          plantOrdinal += 1;
+          const scale = 0.96 + random() * 0.1;
           palms.push({
-            variant: Math.floor(random() * palmSets.length),
-            x: aside(x),
-            z: z + (random() - 0.5) * 0.35,
+            variant,
+            x: roadsidePlantX(side, plantReach[variant] ?? 1, scale),
+            z,
             yaw: random() * Math.PI * 2,
-            scale: 0.8 + random() * 0.5,
+            scale,
             phase: random() * Math.PI * 2,
-            tier,
+            tier: ROADSIDE_PLANTS[variant]?.tier ?? 0,
           });
         };
+        const zShift = moduleName === "garden" ? 0.16 : moduleName === "market" ? -0.12 : 0;
+        placePlant(1, -0.62 + zShift);
+        placePlant(1, 0.58 + zShift);
+        placePlant(-1, -0.28 + zShift);
+        placePlant(-1, 0.84 + zShift);
 
         if (moduleName === "beachfront") {
-          palm(8.6, 0.15, 0);
-          palm(11.4, -0.45, 1);
-          palm(-8.4, 0.2, 0);
           show(props.rockA, 12.6, 0.7, random() * 3);
           show(props.rockB, 6.9, -0.55, 0.4);
           show(props.log, 10.4, 0.85, 0.8);
           show(props.umbrella, 9.1, -0.15);
           show(props.board, 7.35, 0.45, 0.6);
-          show(props.bushA, -6.8, 0.35, 1);
           show(props.surf, 6.55, -0.95, faceRoad(6.55));
         } else if (moduleName === "market") {
-          show(props.market, -8.7, 0, Math.PI / 2);
-          show(props.fruit, -6.45, 1.05, faceRoad(-6.45));
           show(props.ice, 8.5, 0.15, faceRoad(8.5));
-          palm(10.8, -0.35, 0);
-          palm(-12.2, 0.25, 1);
           show(props.fenceA, 6.35, 0, Math.PI / 2);
-          show(props.bushB, 7.4, 0.9, 0.2);
           show(props.rockB, 12.2, -0.7, 1);
         } else if (moduleName === "garden") {
-          palm(-7.6, 0.1, 0);
-          palm(-10.6, -0.4, 1);
-          palm(8.3, 0.25, 0);
-          palm(11.5, -0.2, 2);
-          show(props.tree, -9.4, 0.55, random() * 4);
-          show(props.bushA, -6.7, -0.45, 0.5);
-          show(props.bushB, 7.1, 0.6, 1.2);
           show(props.flowerA, -6.4, 0.7);
           show(props.flowerB, 6.8, -0.35);
           show(props.grass, 9.4, 0.8, random());
@@ -662,18 +787,19 @@ export function createTropical(
           show(props.fenceB, 8.55, 0);
           show(props.fenceC, 5.85, 0);
           show(props.surf, 6.2, 0.15, faceRoad(6.2));
-          palm(11.2, -0.25, 0);
-          palm(-8.5, 0.3, 1);
           show(props.rockA, 13.2, 0.65, 0.9);
-          show(props.bushA, -6.9, -0.4, 0.3);
           show(props.flowerA, 9.6, 0.85);
         }
         placePalms(id, palms);
         for (const placement of sidePlacements(spawn)) {
           showExact(kit[placement.id], placement.x, placement.z, placement.yaw);
         }
+        parkGrass(grassEntry);
       },
     };
+    const grassEntry: LeftGrass = { group, patch: null, spawn: () => piece.spawn };
+    leftGrass.push(grassEntry);
+    mountGrass(grassEntry);
     made.push(piece);
     return piece;
   }
@@ -689,7 +815,10 @@ export function createTropical(
     }
     oceanUniforms.uDetail.value = quality === "low" ? 0.4 : quality === "medium" ? 0.75 : 1;
     for (const parts of palmSets) {
-      for (const mesh of parts) mesh.castShadow = quality !== "low";
+      for (const mesh of parts) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+      }
     }
   }
   applyShadowQuality();
@@ -736,18 +865,28 @@ export function createTropical(
       for (const piece of made) piece.apply(piece.spawn);
     },
     dispose() {
+      grassAlive = false;
       grassGeo.dispose();
       sandGeo.dispose();
       wetGeo.dispose();
       dashGeo.dispose();
       tickGeo.dispose();
       vergeGeo.dispose();
+      shoulderGeo.dispose();
       edgeGeo.dispose();
       grassMat.dispose();
       sandMat.dispose();
       wetMat.dispose();
+      shoulderMat.dispose();
       paintMat.dispose();
       tickMat.dispose();
+      for (const entry of leftGrass) entry.patch?.dispose();
+      grassGeometry?.dispose();
+      if (grassSurface) {
+        const textured = grassSurface as THREE.MeshStandardMaterial;
+        textured.map?.dispose();
+        grassSurface.dispose();
+      }
       for (const parts of palmSets) {
         for (const mesh of parts) {
           mesh.geometry.dispose();

@@ -311,9 +311,14 @@ export function phonePlayCalories(input: {
   });
 }
 
-/** Developer overlay only. `?motiondiag=1`. Development mode alone does not open it. */
-export function phoneMotionDiagEnabled(search: string) {
-  return readMotionDiagFlag(search);
+/**
+ * Developer overlay only. `?motiondiag=1` on localhost or 127.0.0.1.
+ * Development mode alone does not open it. A production host does not open it.
+ */
+export function phoneMotionDiagEnabled(search: string, host = "") {
+  if (!readMotionDiagFlag(search)) return false;
+  const bare = host.trim().toLowerCase().split(":")[0] ?? "";
+  return bare === "localhost" || bare === "127.0.0.1";
 }
 
 export function renderLoopFps(samples: readonly number[]) {
@@ -344,6 +349,22 @@ export type PhoneMotionDiag = {
   confirmed: string | null;
   confirmToCallMs: number | null;
   reject: string | null;
+  /** Performance clock when detectForVideo started. A queued frame's wait is not in this stamp. */
+  inferStartMs?: number | null;
+  /** Performance clock when detectForVideo returned. The gesture emit runs after this, in the same turn. */
+  inferEndMs?: number | null;
+  /** Performance clock of localJump, localRoll, or localStep. */
+  callAtMs?: number | null;
+  /** Classification clock of this pose sample. */
+  poseAtMs?: number | null;
+  /** Classification clock of the last emitted gesture. Not the wall time localJump ran. */
+  gestureAtMs?: number | null;
+  candidateAtMs?: number | null;
+  /** gestureAtMs minus candidateAtMs, on the classification clock. */
+  candidateToEmitMs?: number | null;
+  /** localJump clock minus detectForVideo return. Same performance clock. */
+  endToCallMs?: number | null;
+  recognition?: string | null;
   camera?: string | null;
   confidence?: number | null;
   stability?: string | null;
@@ -369,6 +390,14 @@ export interface PhoneMotionLogRecord {
   poseFps: number | null;
   inferenceMs: number | null;
   confirmToCallMs: number | null;
+  inferStartMs?: number | null;
+  inferEndMs?: number | null;
+  callAtMs?: number | null;
+  poseAtMs?: number | null;
+  gestureAtMs?: number | null;
+  candidateToEmitMs?: number | null;
+  endToCallMs?: number | null;
+  recognition?: string | null;
 }
 
 /** Local download only. Timestamps and decisions. No picture, name, or token. */
@@ -402,6 +431,16 @@ function diagNumber(value: number | null | undefined, digits = 3) {
   return value.toFixed(digits);
 }
 
+function diagStamp(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${Math.round(value)}`;
+}
+
+function diagGap(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${Math.round(value)} ms`;
+}
+
 export function phoneMotionDiagLines(input: PhoneMotionDiag) {
   const fps = input.renderFps === null || !Number.isFinite(input.renderFps) ? "—" : input.renderFps.toFixed(1);
   const pose = input.poseFps === null || !Number.isFinite(input.poseFps) ? "—" : input.poseFps.toFixed(1);
@@ -425,6 +464,14 @@ export function phoneMotionDiagLines(input: PhoneMotionDiag) {
     `confirmed ${input.confirmed || "none"}`,
     `confirm to call ${lag}`,
     `reject ${input.reject || "none"}`,
+    `state ${input.recognition || "—"}`,
+    `t pose ${diagStamp(input.poseAtMs)}`,
+    `t gesture ${diagStamp(input.gestureAtMs)}`,
+    `t infer start ${diagStamp(input.inferStartMs)}`,
+    `t infer end ${diagStamp(input.inferEndMs)}`,
+    `t call ${diagStamp(input.callAtMs)}`,
+    `candidate to emit ${diagGap(input.candidateToEmitMs)}`,
+    `end to call ${diagGap(input.endToCallMs)}`,
   ];
 }
 

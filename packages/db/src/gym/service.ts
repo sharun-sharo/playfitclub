@@ -282,6 +282,19 @@ async function activeMemberGym(userId: string) {
   });
 }
 
+/** Active member seat, owner membership, or a gym this account owns. Staff-only seats do not count. */
+export async function hasPlayerGymLink(userId: string) {
+  const prisma = getPrisma();
+  const [membership, owned] = await Promise.all([
+    prisma.gymMembership.findFirst({
+      where: { userId, status: "ACTIVE", role: { in: ["MEMBER", "OWNER"] } },
+      select: { id: true },
+    }),
+    prisma.gym.findFirst({ where: { ownerId: userId }, select: { id: true } }),
+  ]);
+  return Boolean(membership || owned);
+}
+
 export async function resolveOwnerGym(userId: string, role: string, requestedGymId?: string | null) {
   const ownedGymIdValue = role === "GYM_OWNER" ? await ownedGymIdFor(userId) : null;
   return ownerGymId({ role, ownedGymId: ownedGymIdValue, requestedGymId });

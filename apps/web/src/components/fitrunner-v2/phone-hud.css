@@ -132,7 +132,7 @@ html:-webkit-full-screen .phone-play,
   width: 168px;
   max-width: 168px;
   min-width: 0;
-  max-height: 190px;
+  max-height: 280px;
   margin: 0;
   padding: 8px 10px 10px;
   overflow: hidden;
@@ -147,7 +147,8 @@ html:-webkit-full-screen .phone-play,
 .phone-play [data-fitrunner-play-hud] dl {
   margin-top: 6px;
   font-size: 11px;
-  row-gap: 2px;
+  line-height: 1.2;
+  row-gap: 1px;
 }
 
 .phone-play [data-fitrunner-play-hud] [data-calorie-note] {

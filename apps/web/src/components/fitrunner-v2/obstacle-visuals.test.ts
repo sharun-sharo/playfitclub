@@ -1,7 +1,19 @@
 import { CARGO_HIT_M, OBSTACLE_DEPTH_M } from "@fitplay/shared";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { createObstacle, type ObstacleKind } from "./obstacle-meshes";
+import {
+  createObstacle,
+  fitLaneCarHit,
+  LANE_CAR_HEIGHT_M,
+  LANE_CAR_MAX_WIDTH_M,
+  layoutRoadBlock,
+  ROAD_BLOCK_MODELS,
+  roadBlockNameForOrdinal,
+  type ObstacleKind,
+} from "./obstacle-meshes";
 import {
   applyObstacleTheme,
   isCuratedObstacleHex,
@@ -42,6 +54,52 @@ function painted(root: THREE.Object3D, role: string) {
   });
   if (!found) throw new Error(`missing ${role}`);
   return found;
+}
+
+function meshFromGlb(fileName: string) {
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../public/assets/fitrunner/road-blocks", fileName);
+  const data = fs.readFileSync(file);
+  let offset = 12;
+  let json: {
+    accessors: Array<{ bufferView?: number; byteOffset?: number; count: number; componentType: number; type: string }>;
+    bufferViews: Array<{ byteOffset?: number; byteLength: number; byteStride?: number }>;
+    meshes?: Array<{ primitives?: Array<{ attributes?: { POSITION?: number } }> }>;
+  } | null = null;
+  let bin: Buffer | null = null;
+  while (offset + 8 <= data.length) {
+    const length = data.readUInt32LE(offset);
+    const type = data.toString("utf8", offset + 4, offset + 8);
+    offset += 8;
+    const chunk = data.subarray(offset, offset + length);
+    offset += length;
+    if (type === "JSON") json = JSON.parse(chunk.toString("utf8"));
+    if (type === "BIN\u0000") bin = chunk;
+  }
+  if (!json || !bin) throw new Error(`missing glb chunks in ${fileName}`);
+  const group = new THREE.Group();
+  const primitives = (json.meshes ?? []).flatMap((mesh) => mesh.primitives ?? []);
+  for (const primitive of primitives) {
+    const accessorIndex = primitive.attributes?.POSITION;
+    if (accessorIndex === undefined) continue;
+    const accessor = json.accessors[accessorIndex];
+    if (!accessor || accessor.bufferView === undefined) continue;
+    const view = json.bufferViews[accessor.bufferView];
+    if (!view) continue;
+    const start = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+    const stride = view.byteStride ?? 12;
+    const positions = new Float32Array(accessor.count * 3);
+    for (let index = 0; index < accessor.count; index += 1) {
+      const at = start + index * stride;
+      positions[index * 3] = bin.readFloatLE(at);
+      positions[index * 3 + 1] = bin.readFloatLE(at + 4);
+      positions[index * 3 + 2] = bin.readFloatLE(at + 8);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    group.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()));
+  }
+  if (!group.children.length) throw new Error(`missing positions in ${fileName}`);
+  return group;
 }
 
 function standardColors(root: THREE.Object3D) {
@@ -105,8 +163,94 @@ describe("fit run obstacle visuals", () => {
     expect(obstacleMaterialCacheSize()).toBeGreaterThanOrEqual(before);
   });
 
+  it("keeps the lane blocker on the road-block pictures without resizing the hit box", () => {
+    expect(ROAD_BLOCK_MODELS.map((model) => model.url)).toEqual([
+      "/assets/fitrunner/road-blocks/old-rusty-car.glb",
+      "/assets/fitrunner/road-blocks/old-car-vaz-2107.glb",
+      "/assets/fitrunner/road-blocks/car-scene.glb",
+      "/assets/fitrunner/road-blocks/destroyed-car-07.glb",
+    ]);
+    const names = Array.from({ length: 8 }, (_, ordinal) => roadBlockNameForOrdinal(ordinal));
+    expect(names).toEqual([
+      "old-rusty-car",
+      "old-car-vaz-2107",
+      "car-scene",
+      "destroyed-car-07",
+      "old-rusty-car",
+      "old-car-vaz-2107",
+      "car-scene",
+      "destroyed-car-07",
+    ]);
+    for (let ordinal = 1; ordinal < names.length; ordinal += 1) {
+      expect(names[ordinal]).not.toBe(names[ordinal - 1]);
+    }
+    const publicRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../public");
+    for (const model of ROAD_BLOCK_MODELS) {
+      const file = path.join(publicRoot, model.url.slice(1));
+      expect(fs.existsSync(file), file).toBe(true);
+      expect(fs.statSync(file).size).toBeGreaterThan(10_000);
+    }
+
+    const first = createObstacle("rock");
+    const second = createObstacle("rock");
+    expect(first.name).toBe("blocker");
+    expect(hitMesh(first).geometry).toBe(hitMesh(second).geometry);
+    expect(hitMesh(first).position.y).toBeCloseTo(2.78 / 2, 5);
+    let paintedRoles = 0;
+    first.traverse((child) => {
+      if (child.userData.paint) paintedRoles += 1;
+    });
+    expect(paintedRoles).toBe(0);
+    expect((hitMesh(first).geometry as THREE.BoxGeometry).parameters).toMatchObject({
+      width: 2.2,
+      height: 2.78,
+      depth: 1.18,
+    });
+  });
+
+  it("sits each car in one lane and fits the hit box to the visible body", () => {
+    for (const model of ROAD_BLOCK_MODELS) {
+      const car = meshFromGlb(`${model.name}.glb`);
+      const placed = layoutRoadBlock(car, model);
+      placed.name = "road-block";
+      const obstacle = createObstacle("rock");
+      const existing = obstacle.getObjectByName("road-block");
+      if (existing) obstacle.remove(existing);
+      obstacle.add(placed);
+      fitLaneCarHit(obstacle);
+      obstacle.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(placed);
+      const size = box.getSize(new THREE.Vector3());
+      const scaled = placed.children[0] as THREE.Object3D;
+      expect(scaled.scale.x, model.name).toBeCloseTo(scaled.scale.y, 5);
+      expect(scaled.scale.y, model.name).toBeCloseTo(scaled.scale.z, 5);
+      expect(size.y, model.name).toBeGreaterThanOrEqual(1.4);
+      expect(size.y, model.name).toBeLessThanOrEqual(LANE_CAR_HEIGHT_M + 0.001);
+      expect(size.x, model.name).toBeGreaterThan(1.1);
+      expect(size.x, model.name).toBeLessThanOrEqual(LANE_CAR_MAX_WIDTH_M + 0.001);
+      expect(size.z, model.name).toBeGreaterThan(size.x);
+      expect(size.y, model.name).toBeLessThan(2);
+      expect(box.min.y, model.name).toBeCloseTo(0, 2);
+      expect((box.min.x + box.max.x) / 2, model.name).toBeCloseTo(0, 2);
+      expect((box.min.z + box.max.z) / 2, model.name).toBeCloseTo(0, 2);
+      expect(size.x / 2 + 0.55, model.name).toBeLessThan(fitRunnerTuning.laneSpacing);
+
+      const hit = hitMesh(obstacle);
+      if (!hit.geometry.boundingBox) hit.geometry.computeBoundingBox();
+      const local = hit.geometry.boundingBox;
+      if (!local) throw new Error("missing hit bounds");
+      const hitBox = local.clone().applyMatrix4(hit.matrixWorld);
+      expect(hitBox.min.x, model.name).toBeCloseTo(box.min.x, 2);
+      expect(hitBox.max.x, model.name).toBeCloseTo(box.max.x, 2);
+      expect(hitBox.min.y, model.name).toBeCloseTo(box.min.y, 2);
+      expect(hitBox.max.y, model.name).toBeCloseTo(box.max.y, 2);
+      expect(hitBox.min.z, model.name).toBeCloseTo(box.min.z, 2);
+      expect(hitBox.max.z, model.name).toBeCloseTo(box.max.z, 2);
+    }
+  });
+
   it("lets a recycled obstacle take a new curated theme without recoloring another", () => {
-    const recycled = createObstacle("rock");
+    const recycled = createObstacle("log");
     const neighbor = createObstacle("fence");
     const hitGeometry = hitMesh(recycled).geometry;
     const hitY = hitMesh(recycled).position.y;

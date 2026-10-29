@@ -74,7 +74,7 @@ export const fitRunnerTuning = {
     log: { x: 2.05, y: 0.4, z: 0.16 },
     /** Tall bar. Lifted by fenceGap so a roll fits underneath and a jump does not clear the top. */
     fence: { x: 2.05, y: 1.62, z: 0.18 },
-    /** Lane cargo crate. Outer size is the hit volume: one lane wide, taller than a jump. */
+    /** Unscaled lane-blocker mesh. A car scales this hit box to the visible body. */
     blocker: { x: 2.2, y: 2.78, z: 1.18 },
   },
   /** Bottom of the lane fence, in meters. The roll stays under this; a jump does not clear the top. */

@@ -7,6 +7,11 @@ export function PlayScoreCard({
   scoreRef,
   distanceRef,
   timeRef,
+  jumpRef,
+  squatRef,
+  rightRef,
+  leftRef,
+  coinsRef,
   calories,
   note,
   keyboard,
@@ -16,6 +21,11 @@ export function PlayScoreCard({
   scoreRef: Ref<HTMLParagraphElement>;
   distanceRef: Ref<HTMLElement>;
   timeRef: Ref<HTMLElement>;
+  jumpRef: Ref<HTMLElement>;
+  squatRef: Ref<HTMLElement>;
+  rightRef: Ref<HTMLElement>;
+  leftRef: Ref<HTMLElement>;
+  coinsRef: Ref<HTMLElement>;
   calories: string;
   note: string | null;
   keyboard: boolean;
@@ -38,6 +48,26 @@ export function PlayScoreCard({
         <dd ref={timeRef}>0:00</dd>
         <dt>Calories burned</dt>
         <dd data-calories="">{calories}</dd>
+        <dt>Jump</dt>
+        <dd ref={jumpRef} data-jumps="">
+          0
+        </dd>
+        <dt>Squat</dt>
+        <dd ref={squatRef} data-squats="">
+          0
+        </dd>
+        <dt>Right</dt>
+        <dd ref={rightRef} data-lane-right="">
+          0
+        </dd>
+        <dt>Left</dt>
+        <dd ref={leftRef} data-lane-left="">
+          0
+        </dd>
+        <dt>Coins</dt>
+        <dd ref={coinsRef} data-coins="">
+          0
+        </dd>
       </dl>
       {note ? (
         <p className="mt-3 text-[10px] leading-relaxed text-[#9aa8bd]" data-calorie-note="">

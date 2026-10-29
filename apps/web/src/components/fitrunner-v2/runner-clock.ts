@@ -57,6 +57,59 @@ export function runStepMeters(elapsedSeconds: number, dt: number, speed: RunSpee
 }
 
 /**
+ * A hurdle can shove most of a step back and leave a slow slide.
+ * Observed creep is about 1.2–1.5 m/s while the pace label stays near 8 m/s.
+ * Progress below half the attempted step is that slide, not travel.
+ */
+const CLEAR_STEP_SHARE = 0.5;
+
+/**
+ * Meters this frame may add to distance and score.
+ * Forward is a decrease in Z. A clear step adds the attempted meters.
+ * Stuck, shoved backward, or only a slow slide through a block adds nothing.
+ * Never credits more than the body actually advanced.
+ */
+export function creditedForwardMeters(attemptedMeters: number, zBefore: number, zAfter: number) {
+  const attempted = Number.isFinite(attemptedMeters) ? Math.max(0, attemptedMeters) : 0;
+  if (!(attempted > 0) || !(Number.isFinite(zBefore) && Number.isFinite(zAfter))) return 0;
+  const forward = zBefore - zAfter;
+  if (!(forward > 0)) return 0;
+  if (forward < attempted * CLEAR_STEP_SHARE) return 0;
+  return Math.min(attempted, forward);
+}
+
+/**
+ * A hurdle can miss the hit test for a frame, credit a full step, then shove
+ * the body back. That step stays pending until another clear frame follows.
+ * A block or a slow slide drops it, so the 1.2–1.5 m/s creep does not accumulate.
+ * Pause leaves the score where it is.
+ */
+export type ForwardCredit = {
+  committed: number;
+  pending: number;
+};
+
+export function settleForwardCredit(
+  state: ForwardCredit,
+  frame: {
+    attemptedMeters: number;
+    zBefore: number;
+    zAfter: number;
+    blocked: boolean;
+    paused?: boolean;
+  },
+): ForwardCredit {
+  if (frame.paused) return state;
+  const kept = frame.blocked ? 0 : creditedForwardMeters(frame.attemptedMeters, frame.zBefore, frame.zAfter);
+  if (!(kept > 0)) return { committed: state.committed, pending: 0 };
+  return { committed: state.committed + state.pending, pending: kept };
+}
+
+export function forwardCreditMeters(state: ForwardCredit) {
+  return state.committed + state.pending;
+}
+
+/**
  * Forward meters for a clean run. `frameDeltas` are real seconds between displayed frames.
  * Television spends each gap. The laptop keeps the single clamped step.
  */

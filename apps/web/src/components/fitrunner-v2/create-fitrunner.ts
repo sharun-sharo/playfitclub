@@ -4,6 +4,7 @@ import {
   createCourseFx,
   createObstacle,
   createToken,
+  presentRoadBlock,
   tokenLayout,
   tokenRadius,
   type ObstacleKind,
@@ -11,11 +12,13 @@ import {
 } from "@/components/fitrunner-v2/course";
 import { assignObstacleTheme } from "@/components/fitrunner-v2/obstacle-themes";
 import { prepareMaterials, seat } from "@/components/fitrunner-v2/mesh-fit";
+import { SIDE_PROP_IDS, type SidePropId } from "@/components/fitrunner-v2/side-scenery";
+import { ROADSIDE_PLANTS } from "@/components/fitrunner-v2/roadside-plants";
 import { coastModule, createTropical, type SegmentDressing } from "@/components/fitrunner-v2/tropical";
 import { COMMAND_SLICE_S, jumpDuringRoll, laneHitShift, laneSlideFraction, releaseStuckClip, remainingMotionDt, replayClip, sideStepPose, sideStepTravel, verticalCommandReady } from "@/components/fitrunner-v2/course-body";
 import { beginJumpArc, jumpClipTime, jumpPlaybackClip, RUNNING_JUMP_CLIP, RUNNING_JUMP_LEAVE_S, RUNNING_JUMP_RETURN_S, runningJumpClipTime, sampleJump, stepJumpArc, type JumpArc } from "@/components/fitrunner-v2/jump-arc";
 import { COURSE_CAMERA_FAR, obstaclesForTile, PROVISIONAL_COURSE_SEED } from "@/components/fitrunner-v2/course-place";
-import { noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices, runnerUsesCatchUp } from "@/components/fitrunner-v2/runner-clock";
+import { forwardCreditMeters, noteLongFrame, releaseLiveCommand, runPace, runStepMeters, runnerFrameSlices, runnerUsesCatchUp, settleForwardCredit, type ForwardCredit } from "@/components/fitrunner-v2/runner-clock";
 import { applyPhoneTextureClarity } from "@/components/fitrunner-v2/phone-clarity";
 import {
   createPhoneDrawHysteresis,
@@ -45,12 +48,7 @@ const ASSETS = {
   pulse: "/assets/fitrunner/pulse-robot.glb",
   runningJump: "/assets/fitrunner/running-jump.glb",
   roads: ["/assets/fitrunner/kenney/road/roadTile_162.gltf"],
-  palms: [
-    "/assets/fitrunner/kenney/nature/tree_palm.glb",
-    "/assets/fitrunner/kenney/nature/tree_palmShort.glb",
-    "/assets/fitrunner/kenney/nature/tree_palmBend.glb",
-    "/assets/fitrunner/kenney/nature/tree_palmTall.glb",
-  ],
+  palms: ROADSIDE_PLANTS.map((plant) => plant.url),
   bush: "/assets/fitrunner/kenney/nature/plant_bushLarge.glb",
   rock: "/assets/fitrunner/kenney/fantasy/rock-large.glb",
   rockSmall: "/assets/fitrunner/kenney/nature/rock_smallA.glb",
@@ -66,17 +64,21 @@ const ASSETS = {
   flowerYellow: "/assets/fitrunner/kenney/nature/flower_yellowA.glb",
   flowerRed: "/assets/fitrunner/kenney/nature/flower_redA.glb",
   grass: "/assets/fitrunner/kenney/nature/grass_large.glb",
-  tree: "/assets/fitrunner/kenney/nature/tree_oak.glb",
-  sideWall: "/assets/fitrunner/kenney/prototype/wall.glb",
-  sideWindow: "/assets/fitrunner/kenney/prototype/wall-window-medium.glb",
-  sideDoor: "/assets/fitrunner/kenney/prototype/wall-doorway.glb",
-  sideColumn: "/assets/fitrunner/kenney/prototype/column.glb",
-  sideCrate: "/assets/fitrunner/kenney/prototype/crate.glb",
-  sideVehicle: "/assets/fitrunner/kenney/prototype/vehicle.glb",
-  sideFlag: "/assets/fitrunner/kenney/prototype/flag.glb",
-  sideLoco: "/assets/fitrunner/kenney/train/train-locomotive-a.glb",
-  sideContainer: "/assets/fitrunner/kenney/train/train-carriage-container-red.glb",
 } as const;
+
+const SIDE_CITY_URLS = {
+  clinic: "/assets/fitrunner/city/clinic.glb",
+  housing: "/assets/fitrunner/city/housing.glb",
+  laundry: "/assets/fitrunner/city/laundry.glb",
+  pawn: "/assets/fitrunner/city/pawn.glb",
+  liquor: "/assets/fitrunner/city/liquor.glb",
+  paramount: "/assets/fitrunner/city/paramount.glb",
+  gunshop: "/assets/fitrunner/city/gunshop.glb",
+  apartments: "/assets/fitrunner/city/apartments.glb",
+  factory: "/assets/fitrunner/city/factory.glb",
+  projects: "/assets/fitrunner/city/projects.glb",
+  lamp: "/assets/fitrunner/city/lamp.glb",
+} as const satisfies Record<SidePropId, string>;
 
 const CLIPS = ["Run", "JumpUp", "ForwardRoll", "LongJump", "StandUp", "WipeSweat"] as const;
 type ClipName = (typeof CLIPS)[number];
@@ -93,6 +95,10 @@ export type FitRunnerHud = {
   distance: HTMLElement | null;
   time: HTMLElement | null;
   tokens: HTMLElement | null;
+  jumps?: HTMLElement | null;
+  squats?: HTMLElement | null;
+  laneLeft?: HTMLElement | null;
+  laneRight?: HTMLElement | null;
   combo: HTMLElement | null;
   demoTime?: HTMLElement | null;
   /** Development readout. Production leaves this null. */
@@ -452,6 +458,7 @@ export async function startFitRunner(
   scene.add(sun.target);
 
   try {
+    const sideLoad = Promise.all(SIDE_PROP_IDS.map((id) => loadAsset(SIDE_CITY_URLS[id])));
     const [
       xbot,
       jumpGltf,
@@ -470,16 +477,6 @@ export async function startFitRunner(
       flowerYellowGltf,
       flowerRedGltf,
       grassGltf,
-      treeGltf,
-      sideWallGltf,
-      sideWindowGltf,
-      sideDoorGltf,
-      sideColumnGltf,
-      sideCrateGltf,
-      sideVehicleGltf,
-      sideFlagGltf,
-      sideLocoGltf,
-      sideContainerGltf,
       ...rest
     ] = await Promise.all([
       loadRunner(),
@@ -499,19 +496,16 @@ export async function startFitRunner(
       loadAsset(ASSETS.flowerYellow),
       loadAsset(ASSETS.flowerRed),
       loadAsset(ASSETS.grass),
-      loadAsset(ASSETS.tree),
-      loadAsset(ASSETS.sideWall),
-      loadAsset(ASSETS.sideWindow),
-      loadAsset(ASSETS.sideDoor),
-      loadAsset(ASSETS.sideColumn),
-      loadAsset(ASSETS.sideCrate),
-      loadAsset(ASSETS.sideVehicle),
-      loadAsset(ASSETS.sideFlag),
-      loadAsset(ASSETS.sideLoco),
-      loadAsset(ASSETS.sideContainer),
       ...ASSETS.roads.map((url) => loadAsset(url)),
       ...ASSETS.palms.map((url) => loadAsset(url)),
     ]);
+    const sideGltfs = await sideLoad;
+    const sideScenes = {} as Record<SidePropId, THREE.Object3D>;
+    SIDE_PROP_IDS.forEach((id, index) => {
+      const scene = sideGltfs[index]?.scene;
+      if (!scene) throw new Error(`City side scenery did not load: ${id}.`);
+      sideScenes[id] = scene;
+    });
 
     const roadGltfs = rest.slice(0, ASSETS.roads.length);
     const palmGltfs = rest.slice(ASSETS.roads.length);
@@ -706,18 +700,7 @@ export async function startFitRunner(
         flowerYellow: flowerYellowGltf.scene,
         flowerRed: flowerRedGltf.scene,
         grass: grassGltf.scene,
-        tree: treeGltf.scene,
-        side: {
-          wall: sideWallGltf.scene,
-          window: sideWindowGltf.scene,
-          doorway: sideDoorGltf.scene,
-          column: sideColumnGltf.scene,
-          crate: sideCrateGltf.scene,
-          vehicle: sideVehicleGltf.scene,
-          flag: sideFlagGltf.scene,
-          locomotive: sideLocoGltf.scene,
-          container: sideContainerGltf.scene,
-        },
+        side: sideScenes,
       },
       renderer,
       sun,
@@ -825,6 +808,15 @@ export async function startFitRunner(
       return segment;
     }
 
+    /** Order of this rock among rocks in the current course. Stable across a refill. */
+    function rockOrdinal(index: number) {
+      let ordinal = 0;
+      for (const item of courseObstacles) {
+        if (item.kind === "rock" && item.index < index) ordinal += 1;
+      }
+      return ordinal;
+    }
+
     function refill(segment: Segment, spawn: number) {
       segment.spawn = spawn;
       segment.dressing.apply(spawn);
@@ -841,6 +833,7 @@ export async function startFitRunner(
         if (!object) return [];
         object.visible = true;
         assignObstacleTheme(object);
+        if (item.kind === "rock") presentRoadBlock(object, rockOrdinal(item.index));
         const centerZ = -item.distanceM - item.depthM / 2;
         object.position.set(item.lane * tuning.laneSpacing, 0, centerZ - worldZ);
         return [{ id: item.id, kind: item.kind, lane: item.lane, object, resolved: false, hit: false, threatened: false }];
@@ -912,6 +905,7 @@ export async function startFitRunner(
       return courseMode === "live" ? elapsed : previewTime;
     }
     let distance = 0;
+    let forwardCredit: ForwardCredit = { committed: 0, pending: 0 };
     let coins = 0;
     let liveSpeed = tuning.forwardSpeed;
     let lastSource: InputSource = "keyboard";
@@ -1349,6 +1343,7 @@ export async function startFitRunner(
       if (finished || demoOver) return;
       finished = true;
       stopped = true;
+      canvas.dataset.finished = "1";
       window.cancelAnimationFrame(frame);
       const snap = recorder.stats();
       const score = liveScore(snap.clearancePoints);
@@ -1476,6 +1471,10 @@ export async function startFitRunner(
       if (hud.time) hud.time.textContent = formatTime(elapsed);
       if (hud.demoTime && demoLimit !== null) hud.demoTime.textContent = formatRemaining(demoLimit, elapsed);
       if (hud.tokens) hud.tokens.textContent = String(coins);
+      if (hud.jumps) hud.jumps.textContent = String(snap.jumps);
+      if (hud.squats) hud.squats.textContent = String(snap.squats);
+      if (hud.laneLeft) hud.laneLeft.textContent = String(snap.laneLeft);
+      if (hud.laneRight) hud.laneRight.textContent = String(snap.laneRight);
       if (hud.combo) hud.combo.textContent = snap.multiplier > 0 ? `x${snap.multiplier}` : "—";
       if (hud.courseDebug) {
         const cueLane = Math.max(-1, Math.min(1, Math.round(visualLane))) as -1 | 0 | 1;
@@ -1616,6 +1615,7 @@ export async function startFitRunner(
     }
 
     function collide() {
+      let blocked = false;
       for (const segment of segments) {
         segment.tokens.forEach((token, index) => {
           if (!token.active) return;
@@ -1676,6 +1676,7 @@ export async function startFitRunner(
             struck = true;
             push = Math.max(push, bounds.max.z + 0.12 - body.min.z);
           }
+          if (struck) blocked = true;
           if (struck && push > 0) runner.position.z += push;
           if (struck && invuln <= 0 && !placed.hit) {
             placed.hit = true;
@@ -1721,6 +1722,7 @@ export async function startFitRunner(
         }
       }
       syncColliderGizmo(body, shownBounds);
+      return blocked;
     }
 
     const playerHit = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color("#7dffb2"));
@@ -1878,6 +1880,7 @@ export async function startFitRunner(
       elapsed = 0;
       previewTime = 0;
       distance = 0;
+      forwardCredit = { committed: 0, pending: 0 };
       runDistance = 0;
       clock.getDelta();
       canvas.dataset.course = "live";
@@ -1912,7 +1915,7 @@ export async function startFitRunner(
     }
 
     function tick(now = performance.now()) {
-      if (stopped) return;
+      if (stopped || finished || canvas.dataset.finished === "1") return;
       frame = window.requestAnimationFrame(tick);
       notePhoneFrame(now);
       hud.onFrame?.(now);
@@ -1973,6 +1976,8 @@ export async function startFitRunner(
 
       const speed = runPace(elapsed, tuning, speedMul);
       liveSpeed = speed;
+      const zBefore = runner.position.z;
+      let attemptedForward = 0;
       if (motion === "roll") {
         if (actions.ForwardRoll.time > rollEndTime) {
           actions.ForwardRoll.time = rollEndTime;
@@ -1982,13 +1987,13 @@ export async function startFitRunner(
         const traveled = sampleCurve(roots.ForwardRoll.times, roots.ForwardRoll.z, rollTime);
         const step = traveled - rollCursor;
         runner.position.z -= step;
-        distance += Math.max(0, step);
+        attemptedForward = Math.max(0, step);
         rollCursor = traveled;
         frameStep = Math.max(0, step);
       } else {
         const step = runStepMeters(elapsed, dt, tuning, speedMul);
         runner.position.z -= step;
-        distance += step;
+        attemptedForward = Math.max(0, step);
         frameStep = step;
       }
       const mixerDt = remainingMotionDt(dt, shownMixer);
@@ -1999,7 +2004,17 @@ export async function startFitRunner(
       runDistance = distance;
       ensureCourse(distance);
       recycle();
-      collide();
+      const blocked = collide();
+      // A body still in a hurdle, or only sliding a fraction of the step, does not score that frame.
+      // A full step that the next block shoves back stays pending and is dropped, so the slide cannot creep.
+      forwardCredit = settleForwardCredit(forwardCredit, {
+        attemptedMeters: attemptedForward,
+        zBefore,
+        zAfter: runner.position.z,
+        blocked,
+      });
+      distance = forwardCreditMeters(forwardCredit);
+      runDistance = distance;
       paintFlash();
 
       for (const segment of segments) {

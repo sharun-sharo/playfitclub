@@ -65,6 +65,11 @@ describe("play score card", () => {
         scoreRef: null,
         distanceRef: null,
         timeRef: null,
+        jumpRef: null,
+        squatRef: null,
+        rightRef: null,
+        leftRef: null,
+        coinsRef: null,
         calories: props.calories,
         note: props.note,
         keyboard: props.keyboard,
@@ -78,6 +83,16 @@ describe("play score card", () => {
     expect(html).toContain("Distance");
     expect(html).toContain("Time");
     expect(html).toContain("Calories burned");
+    expect(html).toContain("Jump");
+    expect(html).toContain("Squat");
+    expect(html).toContain("Right");
+    expect(html).toContain("Left");
+    expect(html).toContain("Coins");
+    expect(html).toContain('data-jumps=""');
+    expect(html).toContain('data-squats=""');
+    expect(html).toContain('data-lane-right=""');
+    expect(html).toContain('data-lane-left=""');
+    expect(html).toContain('data-coins=""');
     expect(html).toContain(">—<");
     expect(html).toContain(CALORIE_NEEDS_NOTE);
     expect(html).not.toContain("Demo");

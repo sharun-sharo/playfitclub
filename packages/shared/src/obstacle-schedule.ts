@@ -98,7 +98,13 @@ export const LEVEL_RAMP_S: Record<CourseLevel, { intermediate: number; advanced:
   advanced: { intermediate: 30, advanced: 80 },
 };
 
-const SCRIPT: ScheduledAction[] = ["jump", "squat", "jump", "lane", "lane", "jump", "squat", "lane"];
+/**
+ * Four squat gates in eight beats. The previous loop had two.
+ * A lane car, or the opening jump, always sits between gates, so squats are
+ * spread through the run and never share a beat with a hurdle.
+ * Jump↔squat still waits at least 3s (PAIR_FLOOR_S).
+ */
+const SCRIPT: ScheduledAction[] = ["jump", "squat", "lane", "squat", "lane", "squat", "lane", "squat"];
 
 export type ScheduledObstacle = {
   id: string;

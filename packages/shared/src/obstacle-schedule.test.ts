@@ -50,14 +50,13 @@ describe("fitrunner obstacle schedule", () => {
       expect(course.valid, course.reasons.join(",")).toBe(true);
       expect(pairGaps(course.obstacles, "jump", "squat").length).toBeGreaterThan(0);
       expect(pairGaps(course.obstacles, "squat", "jump").length).toBeGreaterThan(0);
-      expect(pairGaps(course.obstacles, "lane", "lane").length).toBeGreaterThan(0);
-      expect(pairGaps(course.obstacles, "lane", "jump").length).toBeGreaterThan(0);
-      expect(pairGaps(course.obstacles, "jump", "lane").length).toBeGreaterThan(0);
+      expect(pairGaps(course.obstacles, "lane", "squat").length).toBeGreaterThan(0);
+      expect(pairGaps(course.obstacles, "squat", "lane").length).toBeGreaterThan(0);
+      expect(pairGaps(course.obstacles, "squat", "squat").length).toBe(0);
       for (const gap of pairGaps(course.obstacles, "jump", "squat")) expect(gap).toBeGreaterThanOrEqual(3);
       for (const gap of pairGaps(course.obstacles, "squat", "jump")) expect(gap).toBeGreaterThanOrEqual(3);
-      for (const gap of pairGaps(course.obstacles, "lane", "lane")) expect(gap).toBeGreaterThanOrEqual(PAIR_FLOOR_S.lane.lane);
-      for (const gap of pairGaps(course.obstacles, "lane", "jump")) expect(gap).toBeGreaterThanOrEqual(2);
-      for (const gap of pairGaps(course.obstacles, "jump", "lane")) expect(gap).toBeGreaterThanOrEqual(PAIR_FLOOR_S.jump.lane);
+      for (const gap of pairGaps(course.obstacles, "lane", "squat")) expect(gap).toBeGreaterThanOrEqual(PAIR_FLOOR_S.lane.squat);
+      for (const gap of pairGaps(course.obstacles, "squat", "lane")) expect(gap).toBeGreaterThanOrEqual(PAIR_FLOOR_S.squat.lane);
       const lanes = new Set(course.obstacles.map((item) => item.lane));
       expect(lanes.size).toBeGreaterThan(1);
     }
@@ -157,15 +156,15 @@ describe("fitrunner obstacle schedule", () => {
     expect(courseLevelAt(200, "beginner")).toBe("intermediate");
     const later = scheduleCourse({ seed: 3, ceiling: "advanced", untilTimeS: 140 });
     const walked = assessSchedule(later.obstacles).path;
-    const advancedLanes: number[] = [];
+    const advancedAfterSquat: number[] = [];
     for (let index = 1; index < walked.length; index += 1) {
       const before = walked[index - 1];
       const after = walked[index];
-      if (before?.action === "lane" && after?.action === "lane" && after.level === "advanced") advancedLanes.push(after.gapS);
+      if (before?.action === "squat" && after?.action === "lane" && after.level === "advanced") advancedAfterSquat.push(after.gapS);
     }
-    expect(advancedLanes.length).toBeGreaterThan(0);
-    for (const gap of advancedLanes) expect(gap).toBeGreaterThanOrEqual(1.5);
-    expect(Math.min(...advancedLanes)).toBeLessThan(2);
+    expect(advancedAfterSquat.length).toBeGreaterThan(0);
+    for (const gap of advancedAfterSquat) expect(gap).toBeGreaterThanOrEqual(1.5);
+    expect(Math.min(...advancedAfterSquat)).toBeLessThan(2);
     const server = scheduleCourse({ seed: 99, ceiling: "intermediate", untilTimeS: 80 });
     const beginner = scheduleCourse({ seed: 99, ceiling: "beginner", untilTimeS: 80 });
     expect(scheduleContains(99, "intermediate", server.obstacles[3]?.id ?? "")).toBe(true);
@@ -223,6 +222,32 @@ describe("fitrunner obstacle schedule", () => {
     expect(extended.obstacles.some((item) => item.distanceM > at45 + 1 && item.distanceM < at45 + 50)).toBe(true);
     expect(scheduleContains(11, "beginner", "palm")).toBe(false);
     expect(scheduleContains(11, "beginner", "not-an-obstacle")).toBe(false);
+  });
+
+  it("places about twice as many squat gates, spread apart from jumps", () => {
+    const course = scheduleCourse({ seed: 11, ceiling: "beginner", untilTimeS: 600 });
+    const beats = new Map<number, Set<string>>();
+    for (const item of course.obstacles) {
+      const key = Math.round(item.contactS * 1000);
+      const set = beats.get(key) ?? new Set<string>();
+      set.add(item.action);
+      beats.set(key, set);
+    }
+    const ordered = [...beats.entries()].sort((a, b) => a[0] - b[0]);
+    const squats = ordered.filter(([, actions]) => actions.has("squat"));
+    // The previous eight-beat loop placed 58 squat gates in this same window.
+    expect(squats.length).toBeGreaterThanOrEqual(Math.round(58 * 1.8));
+    expect(squats.length).toBeLessThanOrEqual(Math.round(58 * 2.2));
+    for (const [, actions] of ordered) expect(actions.has("jump") && actions.has("squat")).toBe(false);
+    for (let index = 1; index < squats.length; index += 1) {
+      const previous = squats[index - 1]?.[0] ?? 0;
+      const next = squats[index]?.[0] ?? 0;
+      expect((next - previous) / 1000).toBeGreaterThanOrEqual(3);
+    }
+    const kinds = ordered.map(([, actions]) => (actions.has("squat") ? "squat" : actions.has("jump") ? "jump" : "lane"));
+    for (let index = 1; index < kinds.length; index += 1) {
+      expect(kinds[index] === "squat" && kinds[index - 1] === "squat").toBe(false);
+    }
   });
 });
 

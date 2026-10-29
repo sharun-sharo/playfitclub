@@ -19,6 +19,8 @@ export type RunStats = {
   perfects: number;
   jumps: number;
   squats: number;
+  laneLeft: number;
+  laneRight: number;
   laneDodges: number;
   hits: number;
   tokens: number;
@@ -44,6 +46,8 @@ export function createRunRecorder(hooks: { onEvent: (event: WorkoutEventDraft) =
   const presses = new Map<string, Press>();
   let jumps = 0;
   let squats = 0;
+  let laneLeft = 0;
+  let laneRight = 0;
   let laneDodges = 0;
   let hits = 0;
   let tokens = 0;
@@ -58,6 +62,8 @@ export function createRunRecorder(hooks: { onEvent: (event: WorkoutEventDraft) =
       perfects: snap.perfects,
       jumps,
       squats,
+      laneLeft,
+      laneRight,
       laneDodges,
       hits,
       tokens,
@@ -79,6 +85,8 @@ export function createRunRecorder(hooks: { onEvent: (event: WorkoutEventDraft) =
     }) {
       if (input.action === "jump") jumps += 1;
       if (input.action === "roll") squats += 1;
+      if (input.action === "lane" && input.direction < 0) laneLeft += 1;
+      if (input.action === "lane" && input.direction > 0) laneRight += 1;
       const movementType = poseFor(input.action, input.direction);
       hooks.onEvent({
         eventId: input.eventId,

@@ -7,7 +7,8 @@ import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
 import { playAgain as startPlayAgain } from "@/components/fitrunner-v2/play-again";
 import { LivesHearts } from "@/components/fitrunner-v2/lives-hearts";
 import { PlayScoreCard } from "@/components/fitrunner-v2/play-score-card";
-import { MissionPanel, MissionToast, playGradeBlip, ResultsScreen, type RunResult } from "@/components/fitrunner-v2/rewards-ui";
+import { playGradeBlip } from "@/components/fitrunner-v2/rewards-ui";
+import type { ResultsAccount } from "@/lib/fitrunner-v2/results-account";
 import { remainingDemoSeconds, spendActiveDemo } from "@/lib/fitrunner-v2/demo-budget";
 import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
 import { cameraActiveStep, playCalories } from "@/lib/fitrunner-v2/play-calories";
@@ -31,7 +32,14 @@ function gameOverExitPath() {
   return "/games";
 }
 
-export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | null }) {
+export function FitRunnerV2({
+  demoLimitSeconds,
+  accountLinks = null,
+}: {
+  demoLimitSeconds: number | null;
+  /** From the server session. Logged-out viewers and other roles stay null. */
+  accountLinks?: ResultsAccount | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<FitRunnerHandle | null>(null);
   const clipRef = useRef<HTMLElement>(null);
@@ -42,6 +50,11 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const playScoreRef = useRef<HTMLParagraphElement>(null);
   const distanceRef = useRef<HTMLElement>(null);
   const timeRef = useRef<HTMLElement>(null);
+  const jumpCountRef = useRef<HTMLElement>(null);
+  const squatCountRef = useRef<HTMLElement>(null);
+  const rightCountRef = useRef<HTMLElement>(null);
+  const leftCountRef = useRef<HTMLElement>(null);
+  const coinsCountRef = useRef<HTMLElement>(null);
   const courseDebugRef = useRef<HTMLPreElement>(null);
   const difficultyRef = useRef<string | null>(null);
   /** Development only. Production builds never mount this readout. */
@@ -62,7 +75,6 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const [showColliders, setShowColliders] = useState(tuning.showColliders);
   const [runId, setRunId] = useState(0);
   const [holdStart, setHoldStart] = useState(false);
-  const [results, setResults] = useState<RunResult | null>(null);
   const [poseReport, setPoseReport] = useState<PoseReport | null>(null);
   const [phoneDiag, setPhoneDiag] = useState<PoseDiagnostics | null>(null);
   const [liveMotion, setLiveMotion] = useState({ lane: "—", action: "—" });
@@ -138,7 +150,11 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           distance: distanceRef.current,
           time: timeRef.current,
           courseDebug: scheduleDebug ? courseDebugRef.current : null,
-          tokens: null,
+          tokens: coinsCountRef.current,
+          jumps: jumpCountRef.current,
+          squats: squatCountRef.current,
+          laneLeft: leftCountRef.current,
+          laneRight: rightCountRef.current,
           combo: null,
           onDemoOver: ({ activeMs }) => {
             if (demoLimitRef.current !== null) {
@@ -204,18 +220,15 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
               window.sessionStorage.setItem("fitplay.fitrunner.demoSpent", String(demoSpentRef.current));
             }
             setRunOpen(false);
-            if (endedByLivesRef.current) {
-              setGameOver({
-                score: run.score,
-                coins: run.tokens,
-                distanceM: run.distanceM,
-                obstaclesHit: hitsRef.current,
-              });
-            }
+            setGameOver({
+              score: run.score,
+              coins: run.tokens,
+              distanceM: run.distanceM,
+              obstaclesHit: hitsRef.current,
+            });
             void syncRef.current.finish(run).then((result) => {
               if (cancelled) return;
-              if (endedByLivesRef.current) setGameSaved(result.saved);
-              else setResults(result);
+              setGameSaved(result.saved);
             });
           },
           onPose: (report) => {
@@ -337,8 +350,8 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
   }, [weightKg, keyboardOnly]);
 
   useEffect(() => {
-    setRunOpen(playing && !demoOver && results === null);
-  }, [playing, demoOver, results, runId]);
+    setRunOpen(playing && !demoOver && gameOver === null);
+  }, [playing, demoOver, gameOver, runId]);
 
   useEffect(() => {
     let cancel = false;
@@ -460,7 +473,6 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
       clearRound: () => {
         setGameOver(null);
         setGameSaved(null);
-        setResults(null);
       },
       showDemoOver: () => setDemoOver(true),
     });
@@ -501,16 +513,19 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
         />
       ) : null}
       <PlayScoreCard
-        hidden={!playing}
+        hidden={!playing || Boolean(gameOver)}
         scoreRef={playScoreRef}
         distanceRef={distanceRef}
         timeRef={timeRef}
+        jumpRef={jumpCountRef}
+        squatRef={squatCountRef}
+        rightRef={rightCountRef}
+        leftRef={leftCountRef}
+        coinsRef={coinsCountRef}
         calories={calorieText}
         note={calorieNote}
         keyboard={session.keyboardChosen}
       />
-      {playing ? <MissionPanel auth={sync.auth} board={sync.missions} error={sync.missionError} onRetry={() => void sync.retryMissions()} onClaim={(id) => void sync.claim(id)} /> : null}
-      {playing ? <MissionToast text={sync.toast} /> : null}
       {playing && session.phase === "countdown" ? (
         <p
           data-countdown={session.countdown || undefined}
@@ -816,7 +831,9 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
           distanceM={gameOver.distanceM}
           obstaclesHit={gameOver.obstaclesHit}
           saved={gameSaved}
+          completedMissions={sync.completedThisRun ?? []}
           onAgain={playAgain}
+          accountLinks={accountLinks}
           onExit={() => {
             const exitTo = gameOverExitPath();
             void session.leaveSession().finally(() => {
@@ -824,9 +841,6 @@ export function FitRunnerV2({ demoLimitSeconds }: { demoLimitSeconds: number | n
             });
           }}
         />
-      ) : null}
-      {results && !demoOver && !gameOver ? (
-        <ResultsScreen result={results} onAgain={playAgain} />
       ) : null}
     </div>
   );

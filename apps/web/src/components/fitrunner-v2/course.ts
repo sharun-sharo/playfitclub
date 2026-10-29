@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 
 export type { ObstacleKind } from "./obstacle-meshes";
-export { createBlocker, createGate, createHurdle, createObstacle } from "./obstacle-meshes";
+export { createBlocker, createGate, createHurdle, createObstacle, presentRoadBlock } from "./obstacle-meshes";
 
 const tokenRing = new THREE.MeshStandardMaterial({
   color: "#d6ff4a",

@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { fitRunnerTuning } from "./tuning";
 import {
+  creditedForwardMeters,
+  forwardCreditMeters,
   forwardTravel,
   noteLongFrame,
   notePhoneFrameGap,
   phoneFrameDiagLines,
   releaseLiveCommand,
+  runStepMeters,
   runnerFrameSlices,
   runnerUsesCatchUp,
+  settleForwardCredit,
+  type ForwardCredit,
 } from "./runner-clock";
 
 const speed = {
@@ -80,6 +85,111 @@ describe("television runner clock", () => {
     expect(phoneFrameDiagLines({ frameMs: null, longFrame: false })).toEqual(["frame —", "long frame no"]);
     expect(phoneFrameDiagLines({ frameMs: 72.4, longFrame: true })).toEqual(["frame 72.4 ms", "long frame yes"]);
     expect(phoneFrameDiagLines({ frameMs: 12, longFrame: false }).join(" ")).not.toMatch(/token|email|session|player name/i);
+  });
+
+  it("adds no distance when the runner is stuck and still adds a clear running step", () => {
+    const step = runStepMeters(12, 1 / 60, speed, 1);
+    expect(step).toBeGreaterThan(0);
+
+    // Wedged on a hurdle, or shoved back out of a clip: this frame does not finish farther down the road.
+    expect(creditedForwardMeters(step, -591, -591)).toBe(0);
+    expect(creditedForwardMeters(step, -591, -590.4)).toBe(0);
+
+    // Pace is 8.2 m/s. A hurdle slide of 1.2–1.5 m/s is only a small fraction of that step.
+    const paceStep = runStepMeters(80, 1 / 60, speed, 1);
+    expect(paceStep).toBeCloseTo(fitRunnerTuning.maxSpeed / 60, 5);
+    const creep12 = 1.2 / 60;
+    const creep15 = 1.5 / 60;
+    expect(creep12).toBeLessThan(paceStep * 0.5);
+    expect(creditedForwardMeters(paceStep, -1139, -1139)).toBe(0);
+    expect(creditedForwardMeters(paceStep, -1139, -1139 - creep12)).toBe(0);
+    expect(creditedForwardMeters(paceStep, -1139, -1139 - creep15)).toBe(0);
+
+    // A clear frame still keeps the whole running step.
+    expect(creditedForwardMeters(step, -591, -591 - step)).toBeCloseTo(step, 8);
+    expect(creditedForwardMeters(paceStep, -1139, -1139 - paceStep)).toBeCloseTo(paceStep, 8);
+
+    let stuck = 591;
+    let creeping = 1139;
+    let running = 591;
+    for (let frame = 0; frame < 60; frame += 1) {
+      stuck += creditedForwardMeters(step, -591, -591);
+      creeping += creditedForwardMeters(paceStep, -1139, -1139 - creep12);
+      running += creditedForwardMeters(step, -running, -running - step);
+    }
+    expect(stuck).toBe(591);
+    expect(creeping).toBe(1139);
+    expect(running).toBeCloseTo(591 + step * 60, 6);
+    expect(Math.floor(stuck * fitRunnerTuning.distancePoints)).toBe(591);
+    expect(Math.floor(creeping * fitRunnerTuning.distancePoints)).toBe(1139);
+    expect(Math.floor(running * fitRunnerTuning.distancePoints)).toBeGreaterThan(591);
+  });
+
+  it("does not accumulate a 1.2–1.5 m/s hurdle slide, and a clear run still adds every step", () => {
+    const paceStep = runStepMeters(80, 1 / 60, speed, 1);
+    expect(paceStep).toBeCloseTo(fitRunnerTuning.maxSpeed / 60, 5);
+    const creep12 = 1.2 / 60;
+    const creep15 = 1.5 / 60;
+
+    let slide: ForwardCredit = { committed: 0, pending: 0 };
+    let z = -1139;
+    for (let frame = 0; frame < 120; frame += 1) {
+      const creep = frame % 2 === 0 ? creep12 : creep15;
+      const next = z - creep;
+      slide = settleForwardCredit(slide, {
+        attemptedMeters: paceStep,
+        zBefore: z,
+        zAfter: next,
+        blocked: false,
+      });
+      z = next;
+    }
+    expect(forwardCreditMeters(slide)).toBe(0);
+    expect(Math.floor(forwardCreditMeters(slide) * fitRunnerTuning.distancePoints)).toBe(0);
+
+    // Feet stay in the bar: most frames are blocked. A few miss the hit and take a full step,
+    // then the next frame shoves that step back. The score must not keep those steps.
+    let wedged: ForwardCredit = { committed: 0, pending: 0 };
+    z = -1139;
+    for (let frame = 0; frame < 121; frame += 1) {
+      const missed = frame % 7 === 0;
+      const next = missed ? z - paceStep : z + paceStep - creep12;
+      wedged = settleForwardCredit(wedged, {
+        attemptedMeters: paceStep,
+        zBefore: z,
+        zAfter: next,
+        blocked: !missed,
+      });
+      z = next;
+    }
+    expect(wedged.committed).toBe(0);
+    expect(forwardCreditMeters(wedged)).toBe(0);
+    expect(Math.floor((591 + forwardCreditMeters(wedged)) * fitRunnerTuning.distancePoints)).toBe(591);
+
+    let running: ForwardCredit = { committed: 0, pending: 0 };
+    z = -591;
+    for (let frame = 0; frame < 60; frame += 1) {
+      const next = z - paceStep;
+      running = settleForwardCredit(running, {
+        attemptedMeters: paceStep,
+        zBefore: z,
+        zAfter: next,
+        blocked: false,
+      });
+      z = next;
+    }
+    expect(forwardCreditMeters(running)).toBeCloseTo(paceStep * 60, 6);
+    expect(Math.floor(forwardCreditMeters(running) * fitRunnerTuning.distancePoints)).toBeGreaterThan(0);
+
+    const paused = settleForwardCredit(running, {
+      attemptedMeters: paceStep,
+      zBefore: z,
+      zAfter: z - paceStep,
+      blocked: false,
+      paused: true,
+    });
+    expect(forwardCreditMeters(paused)).toBeCloseTo(forwardCreditMeters(running), 8);
+    expect(paused).toEqual(running);
   });
 
   it("keeps a television command that waited through a long frame and still drops that command on a laptop", () => {

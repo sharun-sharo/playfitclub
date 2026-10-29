@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { GradePopup } from "@/lib/fitrunner-v2/combo";
 import type { WorkoutEventDraft } from "@/lib/fitrunner-v2/workout";
-import type { MissionBoard, MissionLoadError, RunResult } from "@/components/fitrunner-v2/rewards-ui";
+import { missionsCompletedThisRun } from "@/components/fitrunner-v2/missions-completed";
+import type { MissionBoard, MissionCard, MissionLoadError, RunResult } from "@/components/fitrunner-v2/rewards-ui";
 
 export type LocalRun = Omit<RunResult, "saved" | "missionsDone" | "xp" | "calories" | "achievements">;
 
@@ -26,9 +27,19 @@ export function useWorkoutSync(runId: number, enabled = true) {
   const sessionId = useRef<string | null>(null);
   const paused = useRef(false);
   const progress = useRef<Record<string, number>>({});
+  const baselineRef = useRef<MissionCard[] | null>(null);
+  const latestRef = useRef<MissionCard[] | null>(null);
+  const baselineReady = useRef<Promise<void>>(Promise.resolve());
+  const authRef = useRef<"unknown" | "in" | "out">("unknown");
   const [auth, setAuth] = useState<"unknown" | "in" | "out">("unknown");
   const [missions, setMissions] = useState<MissionBoard | null>(null);
   const [missionError, setMissionError] = useState<MissionLoadError | null>(null);
+  const [completedThisRun, setCompletedThisRun] = useState<Array<{ id: string; title: string }> | null>(null);
+
+  function setAuthState(next: "unknown" | "in" | "out") {
+    authRef.current = next;
+    setAuth(next);
+  }
   const loadSeq = useRef(0);
   const [toast, setToast] = useState<string | null>(null);
   const [grade, setGrade] = useState<GradePopup | null>(null);
@@ -45,8 +56,10 @@ export function useWorkoutSync(runId: number, enabled = true) {
     }
     const body = (await response.json()) as MissionBoard & { missions?: MissionBoard["missions"] };
     if (!body.missions) return;
-    setMissions({ dayKey: body.dayKey, resetsInMs: body.resetsInMs, missions: body.missions });
-    for (const mission of body.missions) {
+    const cards = body.missions.map((mission) => ({ ...mission }));
+    latestRef.current = cards;
+    setMissions({ dayKey: body.dayKey, resetsInMs: body.resetsInMs, missions: cards });
+    for (const mission of cards) {
       const previous = progress.current[mission.id] ?? 0;
       if (mission.progress > previous) {
         setToast(`${mission.title} ${Math.min(mission.progress, mission.target)}/${mission.target} · ${mission.xp} XP`);
@@ -55,7 +68,7 @@ export function useWorkoutSync(runId: number, enabled = true) {
     }
   }
 
-  async function readMissions(seq: number) {
+  async function readMissions(seq: number, captureBaseline = false) {
     const response = await fetchWithTimeout("/api/fitrunner-v2/missions").catch(() => null);
     if (seq !== loadSeq.current) return;
     if (!response) {
@@ -64,7 +77,7 @@ export function useWorkoutSync(runId: number, enabled = true) {
       return;
     }
     if (response.status === 401) {
-      setAuth("out");
+      setAuthState("out");
       setMissions(null);
       setMissionError(null);
       return;
@@ -89,8 +102,11 @@ export function useWorkoutSync(runId: number, enabled = true) {
       return;
     }
     setMissionError(null);
-    setMissions({ dayKey: payload.dayKey, resetsInMs: payload.resetsInMs, missions: payload.missions });
-    for (const mission of payload.missions) progress.current[mission.id] = mission.progress;
+    const cards = payload.missions.map((mission) => ({ ...mission }));
+    latestRef.current = cards;
+    if (captureBaseline && baselineRef.current === null) baselineRef.current = cards.map((mission) => ({ ...mission }));
+    setMissions({ dayKey: payload.dayKey, resetsInMs: payload.resetsInMs, missions: cards });
+    for (const mission of cards) progress.current[mission.id] = mission.progress;
   }
 
   useEffect(() => {
@@ -101,46 +117,59 @@ export function useWorkoutSync(runId: number, enabled = true) {
     queue.current = [];
     paused.current = false;
     progress.current = {};
-    setAuth("unknown");
+    baselineRef.current = null;
+    latestRef.current = null;
+    setCompletedThisRun(null);
+    setAuthState("unknown");
     setMissions(null);
     setMissionError(null);
     setGrade(null);
     setCombo({ multiplier: 0, best: 0 });
+    let resolveBaseline = () => {};
+    const gate = new Promise<void>((resolve) => {
+      resolveBaseline = resolve;
+    });
+    baselineReady.current = gate;
 
     void (async () => {
-      const meResponse = await fetchWithTimeout("/api/me").catch(() => null);
-      if (cancel || seq !== loadSeq.current) return;
-      if (!meResponse?.ok) {
-        setMissionError({ status: meResponse?.status ?? 0, message: "Could not check your session." });
-        return;
+      try {
+        const meResponse = await fetchWithTimeout("/api/me").catch(() => null);
+        if (cancel || seq !== loadSeq.current) return;
+        if (!meResponse?.ok) {
+          setMissionError({ status: meResponse?.status ?? 0, message: "Could not check your session." });
+          return;
+        }
+        const me = await meResponse.json().then((body) => body as { user?: { id?: string } | null }).catch(() => null);
+        if (cancel || seq !== loadSeq.current) return;
+        if (!me) {
+          setMissionError({ status: meResponse.status, message: "Could not check your session." });
+          return;
+        }
+        if (!me.user?.id) {
+          setAuthState("out");
+          setMissions(null);
+          setMissionError(null);
+          return;
+        }
+        setAuthState("in");
+        const missionsTask = readMissions(seq, true);
+        const started = await postJson("/api/fitrunner-v2/workouts", {}).catch(() => null);
+        await missionsTask;
+        if (!cancel && seq === loadSeq.current && started?.ok) {
+          const body = await started.json().then((value) => value as { id?: string }).catch(() => null);
+          sessionId.current = body?.id ?? null;
+          if (sessionId.current) await flush();
+        }
+      } finally {
+        resolveBaseline();
       }
-      const me = await meResponse.json().then((body) => body as { user?: { id?: string } | null }).catch(() => null);
-      if (cancel || seq !== loadSeq.current) return;
-      if (!me) {
-        setMissionError({ status: meResponse.status, message: "Could not check your session." });
-        return;
-      }
-      if (!me.user?.id) {
-        setAuth("out");
-        setMissions(null);
-        setMissionError(null);
-        return;
-      }
-      setAuth("in");
-      const missionsTask = readMissions(seq);
-      const started = await postJson("/api/fitrunner-v2/workouts", {}).catch(() => null);
-      if (!cancel && seq === loadSeq.current && started?.ok) {
-        const body = await started.json().then((value) => value as { id?: string }).catch(() => null);
-        sessionId.current = body?.id ?? null;
-        if (sessionId.current) await flush();
-      }
-      await missionsTask;
     })();
 
     const timer = window.setInterval(() => void flush(), 4000);
     return () => {
       cancel = true;
       loadSeq.current += 1;
+      resolveBaseline();
       window.clearInterval(timer);
     };
   }, [runId, enabled]);
@@ -161,6 +190,7 @@ export function useWorkoutSync(runId: number, enabled = true) {
     auth,
     missions,
     missionError,
+    completedThisRun,
     toast,
     grade,
     combo,
@@ -183,14 +213,30 @@ export function useWorkoutSync(runId: number, enabled = true) {
       await postJson(`/api/fitrunner-v2/workouts/${id}`, { action: next ? "pause" : "resume" }).catch(() => undefined);
     },
     async finish(local: LocalRun): Promise<RunResult> {
+      const seq = loadSeq.current;
+      const known =
+        baselineRef.current && latestRef.current ? missionsCompletedThisRun(baselineRef.current, latestRef.current) : [];
+      setCompletedThisRun(known);
       await flush();
       const unsaved: RunResult = { ...local, saved: false, missionsDone: null, xp: null, calories: null };
+      let result = unsaved;
       const id = sessionId.current;
-      if (!id) return unsaved;
-      const response = await postJson(`/api/fitrunner-v2/workouts/${id}`, { action: "complete" }).catch(() => null);
-      if (!response?.ok) return unsaved;
-      const body = (await response.json()) as { result?: RunResult };
-      return body.result ?? unsaved;
+      if (id) {
+        const response = await postJson(`/api/fitrunner-v2/workouts/${id}`, { action: "complete" }).catch(() => null);
+        if (response?.ok) {
+          const body = (await response.json()) as { result?: RunResult };
+          result = body.result ?? unsaved;
+        }
+      }
+      if (seq !== loadSeq.current) return result;
+      await baselineReady.current;
+      if (seq !== loadSeq.current) return result;
+      if (authRef.current === "in") await readMissions(seq, false);
+      if (seq !== loadSeq.current) return result;
+      const completed =
+        baselineRef.current && latestRef.current ? missionsCompletedThisRun(baselineRef.current, latestRef.current) : [];
+      setCompletedThisRun(completed);
+      return result;
     },
     async retryMissions() {
       const seq = ++loadSeq.current;
@@ -206,12 +252,12 @@ export function useWorkoutSync(runId: number, enabled = true) {
         const me = await meResponse.json().then((body) => body as { user?: { id?: string } | null }).catch(() => null);
         if (seq !== loadSeq.current) return;
         if (!me?.user?.id) {
-          setAuth("out");
+          setAuthState("out");
           setMissions(null);
           setMissionError(null);
           return;
         }
-        setAuth("in");
+        setAuthState("in");
       }
       await readMissions(seq);
     },

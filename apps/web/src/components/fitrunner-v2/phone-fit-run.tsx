@@ -185,6 +185,11 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const playScoreRef = useRef<HTMLParagraphElement>(null);
   const distanceRef = useRef<HTMLElement>(null);
   const timeRef = useRef<HTMLElement>(null);
+  const jumpCountRef = useRef<HTMLElement>(null);
+  const squatCountRef = useRef<HTMLElement>(null);
+  const rightCountRef = useRef<HTMLElement>(null);
+  const leftCountRef = useRef<HTMLElement>(null);
+  const coinsCountRef = useRef<HTMLElement>(null);
   const playingRef = useRef(false);
   const seenRef = useRef(new Set<string>());
   const runRef = useRef<RunLives>(emptyRun());
@@ -248,7 +253,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   };
 
   useEffect(() => {
-    const on = phoneMotionDiagEnabled(window.location.search);
+    const on = phoneMotionDiagEnabled(window.location.search, window.location.hostname);
     motionDiagRef.current = on;
     setMotionDiag(on);
   }, []);
@@ -395,7 +400,11 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             playScore: playScoreRef.current,
             distance: distanceRef.current,
             time: timeRef.current,
-            tokens: null,
+            tokens: coinsCountRef.current,
+            jumps: jumpCountRef.current,
+            squats: squatCountRef.current,
+            laneLeft: leftCountRef.current,
+            laneRight: rightCountRef.current,
             combo: null,
             onFrame: (now) => {
               if (!motionDiagRef.current) return;
@@ -534,6 +543,19 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             if (!motionDiagRef.current) return;
             diagRef.current.inferenceMs = state.rates.lastInferenceMs;
             diagRef.current.poseFps = state.rates.poseFps;
+            diagRef.current.inferStartMs = state.rates.inferenceStartMs;
+            diagRef.current.inferEndMs = state.rates.inferenceEndMs;
+            diagRef.current.poseAtMs = state.diagnostics?.poseAtMs ?? null;
+            diagRef.current.gestureAtMs = state.diagnostics?.gestureAtMs ?? null;
+            diagRef.current.candidateAtMs = state.diagnostics?.candidateAtMs ?? null;
+            diagRef.current.candidateToEmitMs = confirmToGameMs(
+              state.diagnostics?.candidateAtMs,
+              state.diagnostics?.gestureAtMs ?? Number.NaN,
+            );
+            diagRef.current.recognition = state.diagnostics?.recognition ?? null;
+            if (state.movement && typeof diagRef.current.callAtMs === "number") {
+              diagRef.current.endToCallMs = confirmToGameMs(state.rates.inferenceEndMs, diagRef.current.callAtMs);
+            }
             diagRef.current.candidate = phoneGestureCandidate(state.diagnostics);
             diagRef.current.reject = state.diagnostics?.reject || "none";
             if (state.movement) diagRef.current.confirmed = state.movement;
@@ -551,8 +573,10 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
             if (!current) return;
             const note = (action: string) => {
               if (!motionDiagRef.current) return;
+              const called = performance.now();
               diagRef.current.confirmed = action;
-              diagRef.current.confirmToCallMs = confirmToGameMs(draft.clientTimestamp, performance.now());
+              diagRef.current.callAtMs = called;
+              diagRef.current.confirmToCallMs = confirmToGameMs(draft.clientTimestamp, called);
             };
             applyLocalPose({
               playing: movesRef.current,
@@ -799,6 +823,14 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
         poseFps: diagRef.current.poseFps,
         inferenceMs: diagRef.current.inferenceMs,
         confirmToCallMs: diagRef.current.confirmToCallMs,
+        inferStartMs: diagRef.current.inferStartMs ?? null,
+        inferEndMs: diagRef.current.inferEndMs ?? null,
+        callAtMs: diagRef.current.callAtMs ?? null,
+        poseAtMs: diagRef.current.poseAtMs ?? null,
+        gestureAtMs: diagRef.current.gestureAtMs ?? null,
+        candidateToEmitMs: diagRef.current.candidateToEmitMs ?? null,
+        endToCallMs: diagRef.current.endToCallMs ?? null,
+        recognition: diagRef.current.recognition ?? null,
       });
       if (log.length > 240) log.shift();
       if (frameDiag.longFrame) frameDiagRef.current = { frameMs: frameDiag.frameMs, longFrame: false };
@@ -998,6 +1030,11 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
                 scoreRef={playScoreRef}
                 distanceRef={distanceRef}
                 timeRef={timeRef}
+                jumpRef={jumpCountRef}
+                squatRef={squatCountRef}
+                rightRef={rightCountRef}
+                leftRef={leftCountRef}
+                coinsRef={coinsCountRef}
                 calories={calorieText}
                 note={calorieNote}
                 keyboard={false}

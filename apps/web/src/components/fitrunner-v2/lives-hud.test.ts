@@ -25,6 +25,11 @@ describe("lives hud", () => {
         scoreRef: null,
         distanceRef: null,
         timeRef: null,
+        jumpRef: null,
+        squatRef: null,
+        rightRef: null,
+        leftRef: null,
+        coinsRef: null,
         calories: "43 kcal",
         note: null,
         keyboard: false,
@@ -33,6 +38,11 @@ describe("lives hud", () => {
     expect(card).toContain("Distance");
     expect(card).toContain("Time");
     expect(card).toContain("Calories burned");
+    expect(card).toContain("Jump");
+    expect(card).toContain("Squat");
+    expect(card).toContain("Right");
+    expect(card).toContain("Left");
+    expect(card).toContain("Coins");
     expect(card).not.toContain("data-fitrunner-hearts");
     expect(card).not.toContain("Demo");
     expect(card).not.toContain("Tokens");
@@ -64,5 +74,51 @@ describe("lives hud", () => {
     expect(html).not.toContain("Demo");
     expect(html).not.toContain("Tokens");
     expect(html).not.toContain("Combo");
+    expect(html).not.toContain("COMPLETED THIS RUN");
+    expect(html).not.toContain("Dodge Master");
+  });
+
+  it("lists only the missions completed this run", () => {
+    const html = renderToStaticMarkup(
+      createElement(GameOverScreen, {
+        score: 840,
+        coins: 12,
+        distanceM: 315.4,
+        obstaclesHit: 5,
+        saved: null,
+        completedMissions: [
+          { id: "dodge", title: "Dodge Master" },
+          { id: "clean", title: "Untouchable" },
+        ],
+        onAgain: () => undefined,
+        onExit: () => undefined,
+      }),
+    );
+    expect(html).toContain("COMPLETED THIS RUN");
+    expect(html).toContain("Dodge Master");
+    expect(html).toContain("Untouchable");
+    expect(html).not.toContain("Warm-Up Warrior");
+    expect(html).not.toContain("Triple Victory");
+    expect(html).not.toContain("No daily missions completed this run.");
+  });
+
+  it("says plainly when this run completed no missions", () => {
+    const html = renderToStaticMarkup(
+      createElement(GameOverScreen, {
+        score: 10,
+        coins: 0,
+        distanceM: 20,
+        obstaclesHit: 5,
+        saved: false,
+        completedMissions: [],
+        onAgain: () => undefined,
+        onExit: () => undefined,
+      }),
+    );
+    expect(html).toContain("No daily missions completed this run.");
+    expect(html).not.toContain("Dodge Master");
+    expect(html).not.toContain("Warm-Up Warrior");
+    expect(html).not.toContain("Untouchable");
+    expect(html).not.toContain("Triple Victory");
   });
 });

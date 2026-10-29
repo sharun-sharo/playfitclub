@@ -66,8 +66,8 @@ export const AGILITY_HURDLE = {
 
 /**
  * Standard 24 in plyometric box (0.61 m square). The course does not spawn this
- * mesh. Hurdles are jumped. Overhead gates are rolled. The cargo crate is the
- * lane blocker and is not a jump box.
+ * mesh. Hurdles are jumped. Overhead gates are rolled. The lane blocker is
+ * stepped around and is not a jump box.
  */
 export const PLYO_BOX = {
   name: "plyometric box",

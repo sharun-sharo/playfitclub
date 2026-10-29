@@ -3,6 +3,7 @@
 import { CALORIE_LABEL } from "@/lib/fitrunner-v2/calories";
 import type { GradePopup } from "@/lib/fitrunner-v2/combo";
 import { formatKolkataCountdown } from "@/lib/fitrunner-v2/missions";
+import type { ResultsAccount } from "@/lib/fitrunner-v2/results-account";
 
 export type MissionCard = {
   id: string;
@@ -168,7 +169,16 @@ function clock(ms: number) {
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
-export function ResultsScreen({ result, onAgain }: { result: RunResult; onAgain: () => void }) {
+export function ResultsScreen({
+  result,
+  onAgain,
+  accountLinks = null,
+}: {
+  result: RunResult;
+  onAgain: () => void;
+  /** Server session only. Null keeps Dashboard and History off the card. */
+  accountLinks?: ResultsAccount | null;
+}) {
   const rows: Array<[string, string]> = [
     ["Duration", clock(result.durationMs)],
     ["Active time", clock(result.activeMs)],
@@ -212,12 +222,16 @@ export function ResultsScreen({ result, onAgain }: { result: RunResult; onAgain:
           <button type="button" className="rounded-full bg-[#BEFF39] px-4 py-2 text-sm font-semibold text-[#1c1f24]" onClick={onAgain}>
             Play Again
           </button>
-          <a className="rounded-full border border-white/15 px-4 py-2 text-sm" href="/dashboard">
-            Dashboard
-          </a>
-          <a className="rounded-full border border-white/15 px-4 py-2 text-sm" href="/dev/fitrunner-v2/history">
-            History
-          </a>
+          {accountLinks === "individual" || accountLinks === "gym" ? (
+            <>
+              <a className="rounded-full border border-white/15 px-4 py-2 text-sm" href="/dashboard">
+                Dashboard
+              </a>
+              <a className="rounded-full border border-white/15 px-4 py-2 text-sm" href="/dev/fitrunner-v2/history">
+                History
+              </a>
+            </>
+          ) : null}
         </div>
       </section>
     </div>
