@@ -19,6 +19,7 @@ import {
   courseCeilingFromProfile,
   emptyRun,
   HIT_INVULNERABILITY_MS,
+  // Hit checks use the shared course schedule, so a schedule change has to ship with this service.
   scheduleContains,
   signClaims,
   verifyClaims,
