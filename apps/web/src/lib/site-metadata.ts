@@ -89,6 +89,6 @@ export const privacyMetadata: Metadata = {
 export const termsMetadata: Metadata = {
   title: segmentTitle("Terms"),
   description:
-    "PlayFit Club has not published terms of service yet. This page is not a contract. Listed subscriptions are on the pricing page. The game does not give medical advice.",
+    "Terms of use for PlayFit Club. Fit Run is a fitness game on your phone. It is not medical advice. The free demo is ₹0 for 10 minutes of active camera time.",
   robots: INDEXABLE,
 };
