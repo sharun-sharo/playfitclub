@@ -3,16 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { isSuperAdminRole } from "@fitplay/shared";
 import { trackEvent } from "@/components/analytics/track-event";
 import { BrandLogo } from "@/components/marketing/brand-logo";
 
-const links = [
+interface Me {
+  user: { displayName: string; role: string } | null;
+}
+
+const baseLinks = [
   { href: "/", label: "Home" },
   { href: "/games", label: "Experience" },
   { href: "/#how-it-works", label: "How It Works" },
   { href: "/for-gyms", label: "For Gyms" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/login", label: "Login" },
 ];
 
 function hrefFor(href: string, prefix: "" | "/") {
@@ -30,11 +34,19 @@ function focusableIn(panel: HTMLElement) {
 
 export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; logo?: "default" | "footer" }) {
   const pathname = usePathname();
+  const [me, setMe] = useState<Me | null>(null);
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreScroll = useRef(true);
+
+  useEffect(() => {
+    void fetch("/api/me")
+      .then((response) => response.json())
+      .then((body: Me) => setMe(body))
+      .catch(() => setMe({ user: null }));
+  }, []);
 
   useEffect(() => {
     setOpen(false);
@@ -113,6 +125,14 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
     trackEvent("play_clicked", { surface });
     close(false);
   }
+
+  const links = me?.user
+    ? [
+        ...baseLinks,
+        { href: "/dashboard", label: "Account" },
+        ...(isSuperAdminRole(me.user.role) ? [{ href: "/admin", label: "Admin" }] : []),
+      ]
+    : [...baseLinks, { href: "/login", label: "Login" }];
 
   return (
     <header className="fp-nav fp-nav-market">
