@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
 import { AppShell } from "@/components/app-shell";
+import { readSignInBody, signInFailureMessage } from "@/lib/sign-in-error";
 
 function LoginForm() {
   const router = useRouter();
@@ -16,28 +17,33 @@ function LoginForm() {
     event.preventDefault();
     setPending(true);
     setError("");
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
-    });
-    const body = (await response.json()) as { message?: string; role?: string; mustChangePassword?: boolean };
-    setPending(false);
-    if (!response.ok) {
-      setError(body.message ?? "Could not sign in.");
-      return;
-    }
-    trackEvent("login_completed");
-    if (body.mustChangePassword) {
-      router.push("/account/password");
+    try {
+      const form = new FormData(event.currentTarget);
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+      });
+      const body = await readSignInBody(response);
+      if (!response.ok || !body) {
+        setError(signInFailureMessage(response.ok ? 503 : response.status, body));
+        return;
+      }
+      trackEvent("login_completed");
+      if (body.mustChangePassword) {
+        router.push("/account/password");
+        router.refresh();
+        return;
+      }
+      const next = params.get("next");
+      const admin = body.role === "ADMIN" || body.role === "SUPER_ADMIN";
+      router.push(next || (admin ? "/admin" : "/dashboard"));
       router.refresh();
-      return;
+    } catch {
+      setError("Sign-in is unavailable right now. Try again in a moment.");
+    } finally {
+      setPending(false);
     }
-    const next = params.get("next");
-    const admin = body.role === "ADMIN" || body.role === "SUPER_ADMIN";
-    router.push(next || (admin ? "/admin" : "/dashboard"));
-    router.refresh();
   }
 
   async function demo(email: string) {
