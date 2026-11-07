@@ -118,34 +118,34 @@ html:-webkit-full-screen .phone-play,
 }
 
 /*
- * Mobile Only portrait: keep the tracking cue top-safe and clear of the score card
- * so it does not cover the runner or eat the play field as a full-width bar.
+ * Mobile Only portrait: compact tracking pill under the safe-area, top-right,
+ * clear of the score card and the road center.
  */
 .phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-frame {
   position: absolute;
   z-index: 24;
   top: max(8px, env(safe-area-inset-top, 0px));
-  left: max(12.25rem, calc(env(safe-area-inset-left, 0px) + 11.75rem));
+  left: auto;
   right: max(8px, env(safe-area-inset-right, 0px));
   width: auto;
-  max-width: min(17rem, calc(100% - 12.5rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
-  margin: 0 0 0 auto;
-  padding: 0.28rem 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  max-width: min(10.5rem, calc(100% - 12.75rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  margin: 0;
+  padding: 0.16rem 0.48rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   background: #10141cf2;
-  font-size: clamp(10px, 2.5vw, 12px);
-  line-height: 1.2;
-  text-align: left;
+  font-size: clamp(9px, 2.1vw, 11px);
+  line-height: 1.15;
+  text-align: center;
   pointer-events: none;
 }
 
 @media (max-width: 380px) {
   .phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-frame {
-    top: max(3.7rem, calc(env(safe-area-inset-top, 0px) + 3.35rem));
-    left: max(8px, env(safe-area-inset-left, 0px));
+    top: max(3.55rem, calc(env(safe-area-inset-top, 0px) + 3.2rem));
+    left: auto;
     right: max(8px, env(safe-area-inset-right, 0px));
-    max-width: none;
+    max-width: min(11rem, calc(100% - 1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
     text-align: center;
   }
 }

@@ -63,7 +63,7 @@ import { notePhoneFrameGap, phoneFrameDiagLines, type PhoneFrameDiag } from "@/c
 import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
 import { cameraActiveStep } from "@/lib/fitrunner-v2/play-calories";
 import { whatsappUrl } from "@/lib/whatsapp";
-import { BODY_LEFT_MESSAGE, MODEL_FAILED_MESSAGE } from "@/lib/vision/camera-status";
+import { BODY_LEFT_MESSAGE, BODY_LEFT_SHORT_MESSAGE, MODEL_FAILED_MESSAGE } from "@/lib/vision/camera-status";
 import type { FramingCode } from "@/lib/vision/framing";
 import { openCamera, PoseEstimator, releaseCamera } from "@/lib/vision/pose-estimator";
 import "./phone-hud.css";
@@ -1048,7 +1048,7 @@ export function PhoneFitRun({
               ) : null}
               {calib.phase === "warning" ? (
                 <p data-phone-frame="" role="status" className="phone-frame">
-                  {BODY_LEFT_MESSAGE}
+                  {wantsLandscape ? BODY_LEFT_MESSAGE : BODY_LEFT_SHORT_MESSAGE}
                 </p>
               ) : null}
             </div>

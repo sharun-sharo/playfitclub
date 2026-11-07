@@ -26,13 +26,15 @@ export function landscapeFollowCamera(): FollowCameraTuning {
 export const PORTRAIT_ROAD_MARGIN_M = 0;
 
 /** Prefer a short pull-back; raise FOV before pushing distance past the cap. */
-export const PORTRAIT_FOV_PREF = 82;
+export const PORTRAIT_FOV_PREF = 85;
 export const PORTRAIT_FOV_MAX = 85;
 export const PORTRAIT_DISTANCE_MIN = 9;
-export const PORTRAIT_DISTANCE_MAX = 11;
+/** Typical phone target. Ultra-tall aspects may ease out to HARD_MAX for road cover. */
+export const PORTRAIT_DISTANCE_MAX = 10.5;
+export const PORTRAIT_DISTANCE_HARD_MAX = 11;
 
 /** Look-ahead as a fraction of distance (~0.8–0.9×). */
-export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.85;
+export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.88;
 
 /**
  * Full road span plus a small margin. Lane centers stay at ±laneSpacing;
@@ -75,8 +77,9 @@ function fovForHorizontalWidth(aspect: number, depth: number, width: number) {
 
 /**
  * Portrait follow cam for Mobile Only tall viewports.
- * Presence push: short distance (~9–11 m), wide FOV (~82–85), look-ahead ~0.85×,
- * and a low look-at near the torso so near-asphalt does not dominate the frame.
+ * Presence push: short distance (~9–10.5 m), wide FOV (~85), look-ahead ~0.88×.
+ * Raise look-at toward chest height with a shallow pitch so the near road slab
+ * lip does not fill the bottom of the frame (lateral lock stays at X = 0).
  */
 export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSpacing): FollowCameraTuning {
   const safeAspect = aspect > 0.05 && aspect < 1 ? aspect : 9 / 16;
@@ -88,14 +91,22 @@ export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSp
   if (distance > PORTRAIT_DISTANCE_MAX) {
     distance = PORTRAIT_DISTANCE_MAX;
     fov = clamp(fovForHorizontalWidth(safeAspect, distance, need), PORTRAIT_FOV_PREF, PORTRAIT_FOV_MAX);
+    // FOV already at the ceiling: ease distance out just enough to keep the outer lanes.
+    if (fov >= PORTRAIT_FOV_MAX - 0.05 && horizontalFrustumWidth(safeAspect, fov, distance) < need - 0.05) {
+      distance = clamp(
+        distanceForHorizontalWidth(safeAspect, fov, need),
+        PORTRAIT_DISTANCE_MIN,
+        PORTRAIT_DISTANCE_HARD_MAX,
+      );
+    }
   } else if (distance < PORTRAIT_DISTANCE_MIN) {
     distance = PORTRAIT_DISTANCE_MIN;
   }
 
   const lookAhead = clamp(distance * PORTRAIT_LOOK_AHEAD_FACTOR, distance * 0.8, distance * 0.9);
-  // Aim near the torso so the near-field road slab shrinks without burying the jump arc.
-  const lookHeight = 0.7;
-  const height = lookHeight + (distance + lookAhead) * 0.03;
+  // Chest-height look-at + shallow pitch crops the near asphalt lip without losing jump arc.
+  const lookHeight = 1.12;
+  const height = lookHeight + (distance + lookAhead) * 0.016;
 
   return {
     fov: Math.round(fov * 10) / 10,

@@ -9,6 +9,7 @@ import {
   portraitFollowCamera,
   portraitRequiredWidthM,
   PORTRAIT_CAMERA_LOCK_X,
+  PORTRAIT_DISTANCE_HARD_MAX,
   PORTRAIT_DISTANCE_MAX,
   PORTRAIT_DISTANCE_MIN,
   PORTRAIT_FOV_MAX,
@@ -34,12 +35,13 @@ describe("portrait follow camera frustum", () => {
     expect(portraitRequiredWidthM()).toBeCloseTo((4.45 + PORTRAIT_ROAD_MARGIN_M) * 2, 5);
   });
 
-  it("keeps aggressive hybrid presence: ~9–11 m distance, FOV ≥ 82, look-ahead ~0.8–0.9×", () => {
+  it("keeps aggressive hybrid presence: ~9–10.5 m distance, FOV ~85, look-ahead ~0.8–0.9×", () => {
     const need = portraitRequiredWidthM();
-    expect(PORTRAIT_FOV_PREF).toBeGreaterThanOrEqual(82);
+    expect(PORTRAIT_FOV_PREF).toBeGreaterThanOrEqual(84);
     expect(PORTRAIT_FOV_MAX).toBeLessThanOrEqual(85);
     expect(PORTRAIT_DISTANCE_MIN).toBeGreaterThanOrEqual(9);
-    expect(PORTRAIT_DISTANCE_MAX).toBeLessThanOrEqual(11);
+    expect(PORTRAIT_DISTANCE_MAX).toBeLessThanOrEqual(10.5);
+    expect(PORTRAIT_DISTANCE_HARD_MAX).toBeLessThanOrEqual(11);
     expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeLessThanOrEqual(0.9);
     expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeGreaterThanOrEqual(0.8);
 
@@ -53,23 +55,27 @@ describe("portrait follow camera frustum", () => {
       expect(cam.fov, name).toBeLessThanOrEqual(PORTRAIT_FOV_MAX + 0.05);
       expect(cam.distance, name).toBeGreaterThan(fitRunnerTuning.camera.distance);
       expect(cam.distance, name).toBeGreaterThanOrEqual(PORTRAIT_DISTANCE_MIN - 0.01);
-      expect(cam.distance, name).toBeLessThanOrEqual(PORTRAIT_DISTANCE_MAX + 0.01);
+      expect(cam.distance, name).toBeLessThanOrEqual(PORTRAIT_DISTANCE_HARD_MAX + 0.01);
       expect(cam.lookAhead, name).toBeLessThanOrEqual(cam.distance * 0.9 + 0.01);
       expect(cam.lookAhead / cam.distance, name).toBeGreaterThanOrEqual(0.79);
       expect(cam.lookAhead / cam.distance, name).toBeLessThanOrEqual(0.91);
-      expect(cam.height, name).toBeLessThan(1.6);
-      expect(cam.lookHeight, name).toBeLessThanOrEqual(0.75);
+      expect(cam.height, name).toBeLessThan(1.7);
+      expect(cam.lookHeight, name).toBeGreaterThanOrEqual(1.0);
+      expect(cam.lookHeight, name).toBeLessThanOrEqual(1.25);
+      // Shallow pitch: near slab lip should not dominate the bottom of the frame.
+      expect(cam.height - cam.lookHeight, name).toBeLessThanOrEqual((cam.distance + cam.lookAhead) * 0.02);
     }
   });
 
-  it("targets ~11 m / FOV ~82 at a typical phone portrait (390×844)", () => {
+  it("targets ~10.5 m / FOV ~85 at a typical phone portrait (390×844)", () => {
     const cam = portraitFollowCamera(390 / 844);
-    expect(cam.fov).toBeGreaterThanOrEqual(82);
+    expect(cam.fov).toBeGreaterThanOrEqual(84);
     expect(cam.distance).toBeGreaterThanOrEqual(9);
-    expect(cam.distance).toBeLessThanOrEqual(11);
+    expect(cam.distance).toBeLessThanOrEqual(10.5);
     expect(cam.lookAhead).toBeLessThanOrEqual(cam.distance * 0.9);
-    expect(cam.height).toBeLessThan(1.45);
-    expect(cam.lookHeight).toBeLessThanOrEqual(0.75);
+    expect(cam.height).toBeLessThan(1.55);
+    expect(cam.lookHeight).toBeGreaterThanOrEqual(1.0);
+    expect(cam.lookHeight).toBeLessThanOrEqual(1.25);
   });
 
   it("leaves landscape framing on wide aspects and when framing is not requested", () => {

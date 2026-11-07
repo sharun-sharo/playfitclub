@@ -36,6 +36,8 @@ export const PHONE_OFF_MESSAGE = "This phone disconnected from the game. Reconne
 export const TAB_HIDDEN_MESSAGE = "This tab is hidden. Come back to it so the camera can see you.";
 export const ROTATE_MESSAGE = "Turn your phone upright.";
 export const BODY_LEFT_MESSAGE = "Your body left the frame. Step back into view.";
+/** Compact Mobile Only portrait HUD pill — keep the road clear. */
+export const BODY_LEFT_SHORT_MESSAGE = "Step back into frame";
 export const BODY_RETURN_MESSAGE = "Step back into view and hold still.";
 export const TRACKING_LOST_MESSAGE = "The camera lost track of you. Step into view and hold still.";
 
