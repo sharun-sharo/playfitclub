@@ -25,10 +25,11 @@ export type PoseRuntimeBundle = {
 export type PoseRuntimePhase = "idle" | "loading" | "ready" | "error";
 
 type VisionModule = typeof import("@mediapipe/tasks-vision");
+type WasmFileset = Awaited<ReturnType<VisionModule["FilesetResolver"]["forVisionTasks"]>>;
 
 let visionModule: Promise<VisionModule> | null = null;
-let fileset: Awaited<ReturnType<VisionModule["FilesetResolver"]["forVisionTasks"]>> | null = null;
-let filesetPromise: Promise<NonNullable<typeof fileset>> | null = null;
+let fileset: WasmFileset | null = null;
+let filesetPromise: Promise<WasmFileset> | null = null;
 let spare: PoseRuntimeBundle | null = null;
 let inflight: Promise<PoseRuntimeBundle> | null = null;
 let phase: PoseRuntimePhase = "idle";
@@ -62,19 +63,20 @@ function loadVision() {
   return visionModule;
 }
 
-async function resolveFileset() {
+async function resolveFileset(): Promise<WasmFileset> {
   if (fileset) return fileset;
   if (!filesetPromise) {
-    filesetPromise = loadVision()
-      .then((vision) => vision.FilesetResolver.forVisionTasks(POSE_WASM_PATH))
-      .then((resolved) => {
+    filesetPromise = (async () => {
+      try {
+        const vision = await loadVision();
+        const resolved = await vision.FilesetResolver.forVisionTasks(POSE_WASM_PATH);
         fileset = resolved;
         return resolved;
-      })
-      .catch((error) => {
+      } catch (error) {
         filesetPromise = null;
         throw error;
-      });
+      }
+    })();
   }
   return filesetPromise;
 }
