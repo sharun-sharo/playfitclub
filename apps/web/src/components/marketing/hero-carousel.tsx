@@ -2,7 +2,7 @@
 
 import { Play } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
@@ -34,34 +34,46 @@ const slides = [
   },
 ] as const;
 
-const SLIDE_MS = 5600;
-const FADE_MS = 640;
+const SLIDE_MS = 5000;
+const FADE_MS = 600;
 
 export function HeroShowcase() {
   const [index, setIndex] = useState(0);
   const [leaving, setLeaving] = useState<number | null>(null);
   const [animate, setAnimate] = useState(false);
   const [autoplay, setAutoplay] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [, setPaused] = useState(false);
   const indexRef = useRef(0);
   const goRef = useRef<(next: number) => void>(() => {});
   const leaveTimer = useRef<number | null>(null);
   const reducedRef = useRef(false);
   const pauseRef = useRef(false);
-  const holds = useRef({ hover: false, focus: false });
+  const holds = useRef({ hover: false, focus: false, manual: false });
   const clockRef = useRef({ pause() {}, resume() {} });
+  const manualTimer = useRef<number | null>(null);
 
   function syncHold() {
-    const held = holds.current.hover || holds.current.focus || document.hidden;
-    pauseRef.current = holds.current.hover || holds.current.focus;
+    const held = holds.current.hover || holds.current.focus || holds.current.manual || document.hidden;
+    pauseRef.current = holds.current.hover || holds.current.focus || holds.current.manual;
     setPaused(held);
     if (held) clockRef.current.pause();
     else clockRef.current.resume();
   }
 
-  function go(next: number) {
+  function bumpManualPause() {
+    holds.current.manual = true;
+    syncHold();
+    if (manualTimer.current) window.clearTimeout(manualTimer.current);
+    manualTimer.current = window.setTimeout(() => {
+      holds.current.manual = false;
+      syncHold();
+    }, SLIDE_MS);
+  }
+
+  function go(next: number, fromUser = false) {
     const normalized = (next + slides.length) % slides.length;
     if (normalized === indexRef.current) return;
+    if (fromUser) bumpManualPause();
     const reduce = reducedRef.current;
     if (!reduce) setLeaving(indexRef.current);
     indexRef.current = normalized;
@@ -76,6 +88,7 @@ export function HeroShowcase() {
   useEffect(() => {
     return () => {
       if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
+      if (manualTimer.current) window.clearTimeout(manualTimer.current);
     };
   }, []);
 
@@ -166,10 +179,10 @@ export function HeroShowcase() {
   function onStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      go(index + 1);
+      go(index + 1, true);
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      go(index - 1);
+      go(index - 1, true);
     }
   }
 
@@ -184,18 +197,18 @@ export function HeroShowcase() {
     if (!drag.current || drag.current.id !== event.pointerId) return;
     const delta = event.clientX - drag.current.x;
     drag.current = null;
-    if (delta <= -48) go(index + 1);
-    else if (delta >= 48) go(index - 1);
+    if (delta <= -48) go(index + 1, true);
+    else if (delta >= 48) go(index - 1, true);
   }
 
-  function onFocusCapture(event: FocusEvent<HTMLDivElement>) {
+  function onFocusCapture(event: FocusEvent<HTMLElement>) {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches(":focus-visible")) return;
     holds.current.focus = true;
     syncHold();
   }
 
-  function onBlurCapture(event: FocusEvent<HTMLDivElement>) {
+  function onBlurCapture(event: FocusEvent<HTMLElement>) {
     const next = event.relatedTarget;
     if (next instanceof Node && event.currentTarget.contains(next)) return;
     holds.current.focus = false;
@@ -203,28 +216,25 @@ export function HeroShowcase() {
   }
 
   const active = slides[index];
-  const progressStyle = { "--fp-slide-ms": `${SLIDE_MS}ms` } as CSSProperties;
 
   return (
     <>
       <div className="fp-hero-copy">
-        <h1 id="hero-title">
-          <span className="fp-hero-line">
-            You <span className="fp-hero-neon">Move</span>.
-          </span>
-          <span className="fp-hero-line">
-            The <span className="fp-hero-neon">Game</span> <span className="fp-hero-neon">Moves</span>.
-          </span>
-        </h1>
-        <p className="fp-hero-lead">No buttons. No controllers. Just your body in action.</p>
-        <span className="fp-hero-divider" aria-hidden="true" />
-        <div className="fp-hero-story">
-          <p className="fp-hero-sub fp-hero-rise">Turn your workout into an adventure.</p>
-          <p className="fp-hero-body fp-hero-rise">
-            Play Fit Run on a laptop, on your phone, or on your phone mirrored to a TV. Your camera tracks your body. Fit Fight and Fit Dance are coming soon.
-          </p>
+        <div className="fp-hero-copy-main">
+          <h1 id="hero-title">
+            <span className="fp-hero-line">You Move.</span>
+            <span className="fp-hero-line fp-hero-line--accent">The Game Moves.</span>
+          </h1>
+          <p className="fp-hero-lead">No buttons. No controllers. Just your body in action.</p>
+          <span className="fp-hero-divider" aria-hidden="true" />
+          <div className="fp-hero-story">
+            <p className="fp-hero-sub fp-hero-rise">Turn your workout into an adventure.</p>
+            <p className="fp-hero-body fp-hero-rise">
+              Play Fit Run on a laptop, on your phone, or on your phone mirrored to a TV. Your camera tracks your body. Fit Fight and Fit Dance are coming soon.
+            </p>
+          </div>
         </div>
-        <div className="fp-actions">
+        <div className="fp-actions fp-hero-cta-row">
           <span className="fp-hero-cta fp-hero-rise">
             <Link
               className="fp-btn fp-btn-primary"
@@ -240,43 +250,39 @@ export function HeroShowcase() {
           </span>
         </div>
       </div>
-      <figure className="fp-stage">
+      <figure
+        className="fp-stage"
+        onMouseEnter={() => {
+          holds.current.hover = true;
+          syncHold();
+        }}
+        onMouseLeave={() => {
+          holds.current.hover = false;
+          syncHold();
+        }}
+        onFocusCapture={onFocusCapture}
+        onBlurCapture={onBlurCapture}
+      >
         <div
           id="hero-showcase"
           className="fp-hero-carousel"
           role="region"
           aria-roledescription="carousel"
           aria-label={active.live}
+          tabIndex={0}
           onKeyDown={onStageKeyDown}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
           onPointerCancel={() => {
             drag.current = null;
           }}
-          onMouseEnter={() => {
-            holds.current.hover = true;
-            syncHold();
-          }}
-          onMouseLeave={() => {
-            holds.current.hover = false;
-            syncHold();
-          }}
-          onFocusCapture={onFocusCapture}
-          onBlurCapture={onBlurCapture}
         >
-          <p className="fp-hero-live" aria-live="polite">
-            {active.live}
-          </p>
-          {autoplay ? (
-            <div className="fp-hero-progress" style={progressStyle} aria-hidden="true">
-              <span key={index} className={paused ? "is-run is-paused" : "is-run"} />
-            </div>
-          ) : null}
           <div className="fp-hero-slides">
             {slides.map((item, itemIndex) => {
               const shown = itemIndex === index;
               const className = [
                 "fp-hero-slide",
+                `fp-hero-slide--${item.id}`,
                 shown ? "is-active" : "",
                 shown && animate ? "is-animate" : "",
                 itemIndex === leaving ? "is-leaving" : "",
@@ -284,32 +290,46 @@ export function HeroShowcase() {
                 .filter(Boolean)
                 .join(" ");
               return (
-                <div key={item.id} className={className} aria-hidden={shown ? undefined : true}>
+                <div
+                  key={item.id}
+                  className={className}
+                  data-slide={item.id}
+                  aria-hidden={shown ? undefined : true}
+                >
                   <HeroPicture jpeg={item.jpeg} png={item.png} alt={item.alt} priority={item.id === "run"} />
                 </div>
               );
             })}
           </div>
-          <button className="fp-hero-arrow fp-hero-prev" type="button" aria-label="Previous showcase" onClick={() => go(index - 1)}>
-            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path d="M12.2 4.4 6.6 10l5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button className="fp-hero-arrow fp-hero-next" type="button" aria-label="Next showcase" onClick={() => go(index + 1)}>
-            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path d="M7.8 4.4 13.4 10l-5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <div className="fp-hero-dots">
-            {slides.map((item, itemIndex) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-label={`Show ${item.name}`}
-                aria-current={itemIndex === index ? "true" : undefined}
-                onClick={() => go(itemIndex)}
-              />
-            ))}
+        </div>
+        <div className="fp-hero-controls">
+          <p className="fp-visually-hidden" aria-live="polite">
+            Showcase {index + 1} of {slides.length}: {active.name}. {active.live}
+          </p>
+          <div className="fp-hero-nav">
+            <div className="fp-hero-arrows">
+              <button className="fp-hero-arrow fp-hero-prev" type="button" aria-label="Previous showcase" onClick={() => go(index - 1, true)}>
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M12.2 4.4 6.6 10l5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button className="fp-hero-arrow fp-hero-next" type="button" aria-label="Next showcase" onClick={() => go(index + 1, true)}>
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M7.8 4.4 13.4 10l-5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+            <div className="fp-hero-dots">
+              {slides.map((item, itemIndex) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-label={`Show ${item.name}`}
+                  aria-current={itemIndex === index ? "true" : undefined}
+                  onClick={() => go(itemIndex, true)}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </figure>

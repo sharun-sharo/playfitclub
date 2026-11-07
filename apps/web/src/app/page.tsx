@@ -90,6 +90,18 @@ export default function HomePage() {
                 </TrackedLink>
               </div>
             </Reveal>
+            <Reveal className="fp-experience-visual">
+              <figure className="fp-experience-figure">
+                <img
+                  src="/marketing/your-body-your-controller.png"
+                  alt="PlayFit Club: your body is the controller — run, jump, and squat map to in-game moves."
+                  width={819}
+                  height={545}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+            </Reveal>
           </div>
         </section>
 
