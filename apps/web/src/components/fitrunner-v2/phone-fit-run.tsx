@@ -65,9 +65,14 @@ import { notePhoneFrameGap, phoneFrameDiagLines, type PhoneFrameDiag } from "@/c
 import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
 import { cameraActiveStep } from "@/lib/fitrunner-v2/play-calories";
 import { whatsappUrl } from "@/lib/whatsapp";
-import { BODY_LEFT_MESSAGE, BODY_LEFT_SHORT_MESSAGE, MODEL_FAILED_MESSAGE } from "@/lib/vision/camera-status";
+import {
+  BODY_LEFT_MESSAGE,
+  BODY_LEFT_SHORT_MESSAGE,
+  MODEL_FAILED_MESSAGE,
+  TRACKER_LOADING_MESSAGE,
+} from "@/lib/vision/camera-status";
 import type { FramingCode } from "@/lib/vision/framing";
-import { openCamera, PoseEstimator, releaseCamera } from "@/lib/vision/pose-estimator";
+import { openCamera, PoseEstimator, preloadPoseLandmarker, releaseCamera } from "@/lib/vision/pose-estimator";
 import "./phone-hud.css";
 
 function sameCalib(current: PhoneCalibState, next: PhoneCalibState) {
@@ -205,6 +210,7 @@ export function PhoneFitRun({
   const [playing, setPlaying] = useState(false);
   const [lives, setLives] = useState(RUN_LIVES);
   const [cameraError, setCameraError] = useState("");
+  const [trackerReady, setTrackerReady] = useState(false);
   const [graphicsError, setGraphicsError] = useState("");
   const [startError, setStartError] = useState("");
   const [gameOver, setGameOver] = useState<{ score: number; coins: number; distanceM: number; obstaclesHit: number } | null>(null);
@@ -274,6 +280,11 @@ export function PhoneFitRun({
       audio.dispose();
       if (audioRef.current === audio) audioRef.current = null;
     };
+  }, []);
+
+  /** Warm MediaPipe WASM + lite model while the intro is on screen. */
+  useEffect(() => {
+    void preloadPoseLandmarker();
   }, []);
 
   useEffect(() => {
@@ -546,6 +557,7 @@ export function PhoneFitRun({
     /** Keyboard test can run with no stream; pose pipeline stays off until a camera opens. */
     if (!video || !poseCanvas || !stream) return;
     let cancelled = false;
+    setTrackerReady(false);
     const estimator = new PoseEstimator();
     estimatorRef.current = estimator;
     estimator.setCoaching(false);
@@ -557,10 +569,14 @@ export function PhoneFitRun({
       try {
         await estimator.load();
       } catch {
-        if (!cancelled) setCameraError(MODEL_FAILED_MESSAGE);
+        if (!cancelled) {
+          setTrackerReady(false);
+          setCameraError(MODEL_FAILED_MESSAGE);
+        }
         return;
       }
       if (cancelled) return;
+      setTrackerReady(true);
       estimator.setFacing("user");
       estimator.start(
         video,
@@ -659,8 +675,10 @@ export function PhoneFitRun({
 
     return () => {
       cancelled = true;
+      setTrackerReady(false);
       estimator.stop();
       if (estimatorRef.current === estimator) estimatorRef.current = null;
+      void preloadPoseLandmarker();
     };
   }, [streamToken]);
 
@@ -944,6 +962,8 @@ export function PhoneFitRun({
     const root = rootRef.current;
     if (!video || !root || startingRef.current) return;
     startingRef.current = true;
+    /** Keep model init overlapping the permission prompt / camera open. */
+    void preloadPoseLandmarker();
     const keys = keyboardTestRef.current || readKeyboardTestFlag();
     keyboardTestRef.current = keys;
     const play = startPhonePlay({
@@ -1066,18 +1086,22 @@ export function PhoneFitRun({
             <CalibGuide zones={standZones} holding={holding} />
             <p className="phone-stand-line">{PHONE_STAND_SENTENCE}</p>
             <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} data-phone-holding={holding ? "1" : "0"} role="status">
-              {calib.status && calib.phase !== "countdown" ? (
+              {!trackerReady ? (
+                <p className="phone-calib-status" data-phone-status="" data-phone-tracker="loading">
+                  {TRACKER_LOADING_MESSAGE}
+                </p>
+              ) : calib.status && calib.phase !== "countdown" ? (
                 <p className="phone-calib-status" data-phone-status="">
                   {calib.status}
                 </p>
               ) : null}
-              {calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
-              {calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
+              {trackerReady && calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
+              {trackerReady && calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
                 <p className="phone-calib-count" data-phone-countdown="">
                   {calib.countdown}
                 </p>
               ) : null}
-              {guidanceLine ? (
+              {trackerReady && guidanceLine ? (
                 <p className="phone-calib-guidance" data-phone-guidance="">
                   {guidanceLine}
                 </p>

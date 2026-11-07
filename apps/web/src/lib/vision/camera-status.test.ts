@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CAMERA_LOST_MESSAGE, cameraStatusFromTrack, classifyCameraError } from "./camera-status";
+import {
+  CAMERA_LOST_MESSAGE,
+  TRACKER_LOADING_MESSAGE,
+  cameraStatusFromTrack,
+  classifyCameraError,
+} from "./camera-status";
 
 describe("camera permission states", () => {
   it("maps a denied permission to a denied state", () => {
@@ -31,5 +36,9 @@ describe("camera permission states", () => {
     expect(cameraStatusFromTrack({ readyState: "ended" })).toBe("disconnected");
     expect(cameraStatusFromTrack({ readyState: "live" })).toBe("granted");
     expect(CAMERA_LOST_MESSAGE).toMatch(/keyboard/i);
+  });
+
+  it("keeps a short loading line for tracker cold start", () => {
+    expect(TRACKER_LOADING_MESSAGE).toMatch(/Loading tracker/i);
   });
 });

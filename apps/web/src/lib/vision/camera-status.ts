@@ -31,6 +31,8 @@ export function cameraStatusFromTrack(track: { readyState: "live" | "ended" }): 
 
 export const CAMERA_LOST_MESSAGE = "The camera disconnected. Turn it back on to keep playing. The TV keyboard still works.";
 export const MODEL_FAILED_MESSAGE = "The movement tracker could not load. Try again.";
+/** Shown after camera grant while WASM/model init is still in flight. */
+export const TRACKER_LOADING_MESSAGE = "Loading tracker…";
 export const REALTIME_DOWN_MESSAGE = "The live game is unreachable. Accept the certificate if this phone has not done that yet, then try again.";
 export const PHONE_OFF_MESSAGE = "This phone disconnected from the game. Reconnect to keep playing.";
 export const TAB_HIDDEN_MESSAGE = "This tab is hidden. Come back to it so the camera can see you.";

@@ -47,6 +47,17 @@ import {
   PLAY_BANNER,
   type FramingView,
 } from "@/lib/vision/framing";
+import { takePoseLandmarker } from "@/lib/vision/pose-runtime";
+
+export {
+  POSE_MODEL_PATH,
+  POSE_WASM_PATH,
+  poseRuntimePhase,
+  preloadPoseLandmarker,
+  subscribePoseRuntime,
+  takePoseLandmarker,
+  type PoseRuntimePhase,
+} from "@/lib/vision/pose-runtime";
 
 type Facing = "user" | "environment";
 
@@ -243,27 +254,9 @@ export class PoseEstimator {
 
   async load() {
     if (this.landmarker) return;
-    const vision = await import("@mediapipe/tasks-vision");
-    const files = await vision.FilesetResolver.forVisionTasks("/mediapipe/wasm");
-    const options = {
-      baseOptions: { modelAssetPath: "/mediapipe/pose_landmarker_lite.task", delegate: "GPU" as const },
-      runningMode: "VIDEO" as const,
-      // One pose only. The result has no presence score and no second body.
-      numPoses: 1,
-      minPoseDetectionConfidence: 0.35,
-      minPosePresenceConfidence: 0.35,
-      minTrackingConfidence: 0.35,
-    };
-    try {
-      this.landmarker = await vision.PoseLandmarker.createFromOptions(files, options);
-      this.delegate = "GPU";
-    } catch {
-      this.landmarker = await vision.PoseLandmarker.createFromOptions(files, {
-        ...options,
-        baseOptions: { ...options.baseOptions, delegate: "CPU" },
-      });
-      this.delegate = "CPU";
-    }
+    const runtime = await takePoseLandmarker();
+    this.landmarker = runtime.landmarker;
+    this.delegate = runtime.delegate;
     this.rates = { ...this.rates, delegate: this.delegate };
   }
 

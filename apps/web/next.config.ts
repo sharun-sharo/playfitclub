@@ -43,6 +43,19 @@ const nextConfig: NextConfig = {
       { source: "/gyms", destination: "/for-gyms", permanent: true },
     ];
   },
+  async headers() {
+    return [
+      {
+        source: "/mediapipe/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     if (process.env.NODE_ENV === "production") return [];
     const configured = process.env.REALTIME_URL || process.env.NEXT_PUBLIC_REALTIME_URL || "http://127.0.0.1:3001";

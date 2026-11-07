@@ -32,6 +32,7 @@ import {
   REALTIME_DOWN_MESSAGE,
   ROTATE_MESSAGE,
   TAB_HIDDEN_MESSAGE,
+  TRACKER_LOADING_MESSAGE,
   TRACKING_LOST_MESSAGE,
   type CameraPermission,
 } from "@/lib/vision/camera-status";
@@ -45,7 +46,15 @@ import {
 import { createHandsFree, STEP_BACK_INTO_FRAME, type CountdownPurpose, type HandsFreeView } from "@/lib/vision/hands-free";
 import { readMotionThresholds } from "@/lib/vision/motion-thresholds";
 import { containFrame } from "@/lib/vision/preview-fit";
-import { gestureLabel, openCamera, PoseEstimator, releaseCamera, type PoseDiagnostics, type PoseUiState } from "@/lib/vision/pose-estimator";
+import {
+  gestureLabel,
+  openCamera,
+  PoseEstimator,
+  preloadPoseLandmarker,
+  releaseCamera,
+  type PoseDiagnostics,
+  type PoseUiState,
+} from "@/lib/vision/pose-estimator";
 
 const EMPTY_RATES = {
   cameraFps: null,
@@ -256,6 +265,10 @@ export function PhoneSession({ code }: { code: string }) {
   const stage: Stage = !joined ? "join" : roundLive ? "play" : "setup";
 
   useEffect(() => {
+    void preloadPoseLandmarker();
+  }, []);
+
+  useEffect(() => {
     const video = videoRef.current;
     let cancel = false;
     setJoined(false);
@@ -277,6 +290,7 @@ export function PhoneSession({ code }: { code: string }) {
     return () => {
       cancel = true;
       estimatorRef.current?.stop();
+      void preloadPoseLandmarker();
       releaseCamera(streamRef.current, video);
       const switched = codeRef.current !== code;
       closePhoneSocket(switched);
@@ -732,6 +746,11 @@ export function PhoneSession({ code }: { code: string }) {
     let track: MediaStreamTrack | null = null;
     try {
       releaseCamera(streamRef.current, video);
+      const estimator = estimatorRef.current ?? new PoseEstimator();
+      estimatorRef.current = estimator;
+      estimator.setDiagnosticsLog(motionDiagRef.current);
+      /** Camera permission and model/WASM init overlap instead of waiting in series. */
+      const modelReady = estimator.load();
       const stream = await openCamera(video);
       streamRef.current = stream;
       track = stream.getVideoTracks()[0] ?? null;
@@ -758,11 +777,9 @@ export function PhoneSession({ code }: { code: string }) {
       track.onended = onTrackEnded;
       if (track.readyState === "ended") onTrackEnded();
       setCameraStatus("granted");
-      const estimator = estimatorRef.current ?? new PoseEstimator();
-      estimatorRef.current = estimator;
-      estimator.setDiagnosticsLog(motionDiagRef.current);
+      setUi((current) => ({ ...current, guidance: TRACKER_LOADING_MESSAGE, actionsEnabled: false }));
       try {
-        await estimator.load();
+        await modelReady;
       } catch {
         bodyActionsRef.current = false;
         setNotice({
