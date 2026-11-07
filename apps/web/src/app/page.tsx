@@ -92,10 +92,10 @@ export default function HomePage() {
             </Reveal>
             <Reveal delay={1} className="fp-experience-art">
               <img
-                src="/marketing/play-fitness-like-a-game.jpg"
-                alt="Play fitness like a game: Fit Run with body tracking on a laptop or phone, optional phone-to-TV screen mirroring, and steps to open, calibrate, move, and compete."
-                width={1024}
-                height={576}
+                src="/marketing/move-in-real-life.png"
+                alt="Move in real life, see it in the game: a runner with body tracking beside a TV showing Fit Run mirroring her movement."
+                width={819}
+                height={545}
                 loading="lazy"
                 decoding="async"
               />
