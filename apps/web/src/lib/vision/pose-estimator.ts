@@ -564,7 +564,7 @@ export class PoseEstimator {
         calibrated,
         movement: null,
         actionsEnabled: false,
-        diagnostics: playUpdate ? diagnosticsFrom(playUpdate, this.facing === "user", now, raw, this.rememberCandidate(playUpdate)) : null,
+        diagnostics: playUpdate ? diagnosticsFrom(playUpdate, this.facing === "user", now, raw ?? undefined, this.rememberCandidate(playUpdate)) : null,
         framing: { ...view, instruction: guidance },
       }, now);
       return;
@@ -606,7 +606,7 @@ export class PoseEstimator {
       calibrated: Boolean(this.detector.neutral),
       movement,
       actionsEnabled: this.actionsOpen && confident && !view.suppressAll,
-      diagnostics: diagnosticsFrom(update, this.facing === "user", now, raw, this.rememberCandidate(update)),
+      diagnostics: diagnosticsFrom(update, this.facing === "user", now, raw ?? undefined, this.rememberCandidate(update)),
       framing: view,
     }, now);
   }
