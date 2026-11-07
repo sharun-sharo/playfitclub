@@ -3,10 +3,12 @@ import { roadLayout } from "./road-width";
 import { fitRunnerTuning } from "./tuning";
 import {
   distanceForHorizontalWidth,
+  followCameraTrackX,
   horizontalFrustumWidth,
   landscapeFollowCamera,
   portraitFollowCamera,
   portraitRequiredWidthM,
+  PORTRAIT_CAMERA_LOCK_X,
   PORTRAIT_DISTANCE_MAX,
   PORTRAIT_DISTANCE_MIN,
   PORTRAIT_FOV_MAX,
@@ -79,6 +81,25 @@ describe("portrait follow camera frustum", () => {
     expect(resolveFollowCamera("portrait-when-tall", 16 / 9)).toEqual(land);
     expect(shouldUsePortraitFollowCamera("portrait-when-tall", 9 / 16)).toBe(true);
     expect(shouldUsePortraitFollowCamera("portrait-when-tall", 16 / 9)).toBe(false);
+  });
+
+  it("locks portrait Mobile Only follow X to road center; landscape still tracks lane X", () => {
+    const left = -fitRunnerTuning.laneSpacing;
+    const right = fitRunnerTuning.laneSpacing;
+    expect(PORTRAIT_CAMERA_LOCK_X).toBe(0);
+    expect(followCameraTrackX(true, left)).toBe(0);
+    expect(followCameraTrackX(true, 0)).toBe(0);
+    expect(followCameraTrackX(true, right)).toBe(0);
+    expect(followCameraTrackX(false, left)).toBe(left);
+    expect(followCameraTrackX(false, right)).toBe(right);
+  });
+
+  it("covers full road width from locked center without chasing outer lanes", () => {
+    const need = portraitRequiredWidthM();
+    const cam = portraitFollowCamera(390 / 844);
+    // Camera X = 0: frustum at player depth must still span ±roadEdge.
+    expect(horizontalFrustumWidth(390 / 844, cam.fov, cam.distance)).toBeGreaterThanOrEqual(need - 0.05);
+    expect(need / 2).toBeCloseTo(roadLayout().roadEdge + PORTRAIT_ROAD_MARGIN_M, 5);
   });
 
   it("matches the distance helper against the width helper", () => {

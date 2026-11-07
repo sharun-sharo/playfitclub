@@ -114,6 +114,17 @@ export function shouldUsePortraitFollowCamera(framing: "landscape" | "portrait-w
   return framing === "portrait-when-tall" && Number.isFinite(aspect) && aspect > 0 && aspect < 1;
 }
 
+/**
+ * Mobile Only portrait: keep the follow-cam and look-at on road center (X = 0)
+ * so all three lanes stay framed. Landscape / TV still tracks the runner's lane X.
+ * Runner localSteps still move the character; only lateral camera follow is disabled.
+ */
+export const PORTRAIT_CAMERA_LOCK_X = 0;
+
+export function followCameraTrackX(portraitLocked: boolean, runnerX: number): number {
+  return portraitLocked ? PORTRAIT_CAMERA_LOCK_X : runnerX;
+}
+
 export function resolveFollowCamera(
   framing: "landscape" | "portrait-when-tall" | undefined,
   aspect: number,

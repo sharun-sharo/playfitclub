@@ -29,6 +29,7 @@ import {
   type PhoneDrawPreset,
 } from "@/components/fitrunner-v2/phone-draw";
 import {
+  followCameraTrackX,
   landscapeFollowCamera,
   resolveFollowCamera,
   type FollowCameraTuning,
@@ -1828,10 +1829,11 @@ export async function startFitRunner(
         runner.position.x = visualLane * tuning.laneSpacing;
         updateVertical(dt);
         const cam = activeFollowCam();
-        const desired = new THREE.Vector3(runner.position.x, cam.height, runner.position.z + cam.distance);
+        const trackX = followCameraTrackX(portraitFollowActive, runner.position.x);
+        const desired = new THREE.Vector3(trackX, cam.height, runner.position.z + cam.distance);
         const follow = 1 - Math.exp(-cam.smooth * dt);
         camera.position.lerp(desired, follow);
-        camera.lookAt(runner.position.x, cam.lookHeight, runner.position.z - cam.lookAhead);
+        camera.lookAt(trackX, cam.lookHeight, runner.position.z - cam.lookAhead);
         blob.position.set(runner.position.x, 0.02, runner.position.z);
       }
       mixer.update(dt);
@@ -2104,15 +2106,16 @@ export async function startFitRunner(
         camera.fov = targetFov;
         camera.updateProjectionMatrix();
       }
+      const trackX = followCameraTrackX(portraitFollowActive, runner.position.x);
       const desired = new THREE.Vector3(
-        runner.position.x + Math.sin(elapsed * 48) * shake,
+        trackX + Math.sin(elapsed * 48) * shake,
         cam.height - cameraDip,
         runner.position.z + cam.distance,
       );
       const follow = 1 - Math.exp(-cam.smooth * dt);
       camera.position.lerp(desired, follow);
       camera.lookAt(
-        runner.position.x,
+        trackX,
         cam.lookHeight + jumpLift * cam.jumpLook,
         runner.position.z - cam.lookAhead,
       );
