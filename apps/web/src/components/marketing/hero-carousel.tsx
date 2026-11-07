@@ -9,28 +9,28 @@ import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
 const slides = [
   {
-    id: "run",
-    name: "Run",
-    live: "Run. Move forward.",
-    jpeg: "/marketing/hero-run.jpg",
-    png: "/marketing/hero-run.png",
-    alt: "Illustrated home-play scene. A woman in a teal shirt jogs in a living room. The television banner reads Run, Move forward.",
-  },
-  {
     id: "laptop",
     name: "Laptop",
     live: "Laptop. Webcam play.",
-    jpeg: "/marketing/hero-laptop.jpg",
-    png: "/marketing/hero-laptop.png",
-    alt: "Home play on a laptop. A woman in a teal shirt jumps while Fit Run plays on the laptop screen with webcam tracking.",
+    jpeg: "/marketing/hero-laptop-jump.jpg",
+    png: "/marketing/hero-laptop-jump.jpg",
+    alt: "Laptop webcam play. A woman in a teal shirt jumps in front of a laptop running Fit Run with camera tracking.",
   },
   {
     id: "mobile",
     name: "Mobile",
     live: "Mobile. Phone only.",
-    jpeg: "/marketing/hero-mobile.jpg",
-    png: "/marketing/hero-mobile.png",
-    alt: "Mobile-only home play. A woman in a teal shirt squats while Fit Run plays on a phone that is also the camera.",
+    jpeg: "/marketing/hero-mobile-squat.jpg",
+    png: "/marketing/hero-mobile-squat.jpg",
+    alt: "Mobile-only play. A woman in a teal shirt squats in front of a phone screen running Fit Run as the camera.",
+  },
+  {
+    id: "living-room",
+    name: "TV living room",
+    live: "Phone and TV. Mirror play.",
+    jpeg: "/marketing/hero-tv-living-room.jpg",
+    png: "/marketing/hero-tv-living-room.jpg",
+    alt: "Phone plus TV mirror play. A woman jogs in a living room while Fit Run plays on the TV and a phone on the table tracks her moves.",
   },
 ] as const;
 
@@ -280,7 +280,7 @@ export function HeroShowcase() {
                 .join(" ");
               return (
                 <div key={item.id} className={className} aria-hidden={shown ? undefined : true}>
-                  <HeroPicture jpeg={item.jpeg} png={item.png} alt={item.alt} priority={item.id === "run"} />
+                  <HeroPicture jpeg={item.jpeg} png={item.png} alt={item.alt} priority={item.id === "laptop"} />
                 </div>
               );
             })}
