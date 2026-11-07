@@ -53,9 +53,16 @@ export interface MovementThresholds {
   minVisibility: number;
   /** Average joint confidence required before a gesture is emitted. */
   minActionConfidence: number;
-  /** Kept for stored tuning. Lane changes use torsoLeanEnter, not this. */
+  /**
+   * How far the torso/hip center must shift from calibrated neutral, in shoulder widths, before one lane change.
+   * Whole-body step or sway uses this. Shoulder-over-hip lean still uses torsoLeanEnter.
+   * Raising it ignores smaller side steps. Lower it if a clear step is ignored.
+   */
   leanEnter: number;
-  /** Kept for stored tuning. The neutral reset for a body lean is torsoLeanNeutral. */
+  /**
+   * How close to the calibrated center the body must return, in shoulder widths, before another body-shift lane can count.
+   * A held side stance stays outside this band and does not repeat. Small sway stays under leanEnter and does not emit.
+   */
   leanExit: number;
   /**
    * How far the shoulder center must pass the hip center, in torso lengths, before one lane change.
@@ -355,11 +362,15 @@ export interface PoseSignals {
   ok: boolean;
   reason?: "missing" | "low_confidence";
   confidence: number;
-  /** Positive means the whole torso center moved to the player's left. Lane commands do not use this. */
+  /**
+   * Whole torso/hip center vs the soft body-lane baseline, in shoulder widths, plus a little shoulder tilt.
+   * Positive is the player's left after the selfie mirror. A deliberate side step uses this for a lane change.
+   * Slow walks are absorbed into the baseline so framing drift does not spam lanes.
+   */
   lean: number;
   /**
    * Shoulder center relative to the hip center, in torso lengths, minus the standing calibration.
-   * Positive is the player's left after the selfie mirror. This is the body-lean lane signal.
+   * Positive is the player's left after the selfie mirror. An upper-body lean uses this for a lane change.
    */
   torsoLean: number;
   hipDrop: number;
@@ -460,4 +471,9 @@ export interface DetectorState {
    * The next real movement after that can be emitted.
    */
   awaitRelease: boolean;
+  /**
+   * Soft torso/hip center for body-shift lanes. Follows slow walks so framing drift
+   * does not spam lanes. A deliberate step outruns it and crosses leanEnter.
+   */
+  bodyLaneCenterX: number | null;
 }

@@ -12,8 +12,9 @@ import {
 /**
  * Classifies a single smoothed pose against a calibrated neutral stance.
  * MediaPipe Pose tracks body landmarks. It does not classify clothing.
- * Lane direction uses a shoulder lean past the hips, with an arm raise as the fallback.
- * MediaPipe's anatomical left stays the player's left after the selfie mirror flips x.
+ * Lane direction uses a whole-body shift from calibrated center, a shoulder lean past
+ * the hips, or an arm raise as the fallback. MediaPipe's anatomical left stays the
+ * player's left after the selfie mirror flips x.
  * Jump speed is a hip-rise estimate. A fixed monocular camera cannot measure
  * real-world height or prove that both feet left the ground.
  */

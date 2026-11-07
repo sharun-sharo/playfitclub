@@ -99,6 +99,13 @@ export function torsoLeanReleaseLine(enter: number, neutral: number) {
   return (enter + neutral) / 2;
 }
 
+/**
+ * Per-frame blend for the soft body-lane center while the player is still inside leanExit.
+ * High enough that a slow walk across the frame stays under leanEnter. Low enough that a
+ * clear side step still freezes the baseline and crosses leanEnter.
+ */
+export const BODY_LANE_FOLLOW = 0.4;
+
 export interface DetectorUpdate {
   state: DetectorState;
   events: MovementDraft[];
@@ -161,6 +168,7 @@ export function createDetector(overrides: Partial<MovementThresholds> = {}): Det
     lostSince: null,
     lastGesture: null,
     awaitRelease: false,
+    bodyLaneCenterX: null,
   };
 }
 
@@ -192,6 +200,7 @@ export function setNeutral(state: DetectorState, neutral: NeutralPose): Detector
     squatArbitration: "idle",
     lastJump: null,
     awaitRelease: false,
+    bodyLaneCenterX: null,
   };
 }
 
@@ -236,6 +245,7 @@ export function resetMovementReady(state: DetectorState): DetectorState {
     lastTimestamp: null,
     smoother: [],
     awaitRelease: false,
+    bodyLaneCenterX: null,
   };
 }
 
@@ -282,6 +292,7 @@ export function settleGestures(state: DetectorState): DetectorState {
     lastTimestamp: null,
     smoother: [],
     awaitRelease: true,
+    bodyLaneCenterX: null,
   };
 }
 
@@ -370,6 +381,19 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
     signals.forwardBend = rawPose.forwardBend;
     signals.legsReady = rawPose.legsReady;
     signals.torsoFold = rawPose.torsoFold;
+  }
+  const bodyLane = advanceBodyLaneCenter(
+    state.bodyLaneCenterX,
+    mirrored.landmarks,
+    state.neutral.shoulderWidth,
+    state.thresholds.minVisibility,
+    state.thresholds.leanEnter,
+  );
+  if (bodyLane) {
+    signals.lean = bodyLane.shift;
+    base.bodyLaneCenterX = bodyLane.center;
+  } else if (rawPose.ok) {
+    signals.lean = rawPose.lean;
   }
   if (!signals.ok || signals.confidence < state.thresholds.minActionConfidence) {
     const reason: PoseRejectReason = !signals.ok && signals.reason === "missing" ? "tracking_lost" : "low_confidence";
@@ -665,7 +689,7 @@ function transitionPhase(
       phase = "JUMPING";
       if (leftUp) left = suppressTrack(left, now);
       if (rightUp) right = suppressTrack(right, now);
-      torso = parkTorso(torso, signals.torsoLean, thresholds.torsoLeanNeutral, now);
+      torso = parkTorso(torso, signals.torsoLean, signals.lean, thresholds, now);
       return pack();
     }
     jump = freshTrack();
@@ -889,7 +913,7 @@ function transitionPhase(
     phase = "JUMPING";
     if (leftUp) left = suppressTrack(left, now);
     if (rightUp) right = suppressTrack(right, now);
-    torso = parkTorso(torso, signals.torsoLean, thresholds.torsoLeanNeutral, now);
+    torso = parkTorso(torso, signals.torsoLean, signals.lean, thresholds, now);
     return pack();
   }
 
@@ -902,8 +926,8 @@ function transitionPhase(
     jumpMotion === "takeoff" ||
     jumpMotion === "airborne";
   const torsoStep = leanBlocked
-    ? { track: parkTorso(torso, signals.torsoLean, thresholds.torsoLeanNeutral, now), emitted: false }
-    : advanceTorso(torso, signals.torsoLean, thresholds, now, (movementType) => emit(movementType, signals.confidence));
+    ? { track: parkTorso(torso, signals.torsoLean, signals.lean, thresholds, now), emitted: false }
+    : advanceTorso(torso, signals.torsoLean, signals.lean, thresholds, now, (movementType) => emit(movementType, signals.confidence));
   torso = torsoStep.track;
   const torsoOwnsLane = torsoStep.emitted || torso.phase === "TRIGGERED" || torso.phase === "WAIT_RESET";
 
@@ -922,7 +946,7 @@ function transitionPhase(
     const beforeLane = events.length;
     left = advanceArm(left, leftUp && !(rightUp && !leftSent), thresholds.armHoldMs, now, () => emit("lean_left", signals.confidence));
     right = advanceArm(right, rightUp && !(leftUp && !rightSent), thresholds.armHoldMs, now, () => emit("lean_right", signals.confidence));
-    if (events.length > beforeLane && Math.abs(signals.torsoLean) > thresholds.torsoLeanNeutral) {
+    if (events.length > beforeLane && bodyLaneEngaged(signals.torsoLean, signals.lean, thresholds)) {
       torso = { phase: "WAIT_RESET", since: now, eventId: torso.eventId, suppress: false };
     }
   }
@@ -1001,7 +1025,7 @@ function poseIsQuiet(signals: PoseSignals, thresholds: MovementThresholds, neutr
   const rightUp = armRaised(signals.rightArm, neutral.rightWristLateral, false, thresholds);
   const squatting = !signals.forwardBend && signals.hipDrop > thresholds.squatEnterDrop;
   const preparing = !signals.forwardBend && signals.hipDrop > thresholds.jumpPrepDrop;
-  const leaning = Math.abs(signals.torsoLean) > thresholds.torsoLeanNeutral;
+  const leaning = bodyLaneEngaged(signals.torsoLean, signals.lean, thresholds);
   const jumping = signals.legsReady
     ? (signals.ankleRise > thresholds.jumpAnkleRise || signals.hipDrop < -0.05) &&
       (signals.riseSpeed > thresholds.jumpRise || signals.hipVelocity > thresholds.jumpRise)
@@ -1009,36 +1033,55 @@ function poseIsQuiet(signals: PoseSignals, thresholds: MovementThresholds, neutr
   return !leftUp && !rightUp && !squatting && !preparing && !jumping && !leaning;
 }
 
-function parkTorso(track: GestureTrack, lean: number, neutralBand: number, now: number): GestureTrack {
-  if (Math.abs(lean) <= neutralBand) return track.phase === "NEUTRAL" ? track : freshTrack();
+function bodyLaneEngaged(torsoLean: number, bodyLean: number, thresholds: MovementThresholds) {
+  return Math.abs(torsoLean) > thresholds.torsoLeanNeutral || Math.abs(bodyLean) > thresholds.leanExit;
+}
+
+function parkTorso(
+  track: GestureTrack,
+  torsoLean: number,
+  bodyLean: number,
+  thresholds: MovementThresholds,
+  now: number,
+): GestureTrack {
+  if (!bodyLaneEngaged(torsoLean, bodyLean, thresholds)) {
+    return track.phase === "NEUTRAL" ? track : freshTrack();
+  }
   return { phase: "WAIT_RESET", since: track.since || now, eventId: track.eventId, suppress: false };
 }
 
 /**
- * One deliberate lean sends one lane command on the camera frame that is already past the line.
- * A hold stays latched. Coming back to the midpoint of the enter line and the neutral band
- * re-arms, so a return to 0.10 after 0.16 can lean again. The neutral band alone left that
- * second lean disarmed. A second push at the same timestamp finds the sent phase and does not emit.
+ * One deliberate shoulder lean or whole-body side shift sends one lane command on the
+ * camera frame that is already past its enter line. A hold stays latched. Coming back
+ * under both release midpoints re-arms. A second push at the same timestamp finds the
+ * sent phase and does not emit. Sideways hands stay available when this track is quiet.
  */
 function advanceTorso(
   track: GestureTrack,
-  lean: number,
+  torsoLean: number,
+  bodyLean: number,
   thresholds: MovementThresholds,
   now: number,
   emit: (movementType: "lean_left" | "lean_right") => { id: string },
 ): { track: GestureTrack; emitted: boolean } {
-  const magnitude = Math.abs(lean);
-  const past = magnitude >= thresholds.torsoLeanEnter;
-  const releaseLine = torsoLeanReleaseLine(thresholds.torsoLeanEnter, thresholds.torsoLeanNeutral);
+  const torsoMag = Math.abs(torsoLean);
+  const bodyMag = Math.abs(bodyLean);
+  const past = torsoMag >= thresholds.torsoLeanEnter || bodyMag >= thresholds.leanEnter;
+  const torsoRelease = torsoLeanReleaseLine(thresholds.torsoLeanEnter, thresholds.torsoLeanNeutral);
+  const bodyRelease = torsoLeanReleaseLine(thresholds.leanEnter, thresholds.leanExit);
+  const released = torsoMag <= torsoRelease && bodyMag <= bodyRelease;
+  const torsoNorm = torsoMag / Math.max(0.001, thresholds.torsoLeanEnter);
+  const bodyNorm = bodyMag / Math.max(0.001, thresholds.leanEnter);
+  const winningLean = torsoNorm >= bodyNorm ? torsoLean : bodyLean;
   if (track.phase === "TRIGGERED" || track.phase === "WAIT_RESET" || track.phase === "SENT" || track.phase === "CONFIRMED") {
-    if (magnitude <= releaseLine) return { track: freshTrack(), emitted: false };
+    if (released) return { track: freshTrack(), emitted: false };
     return { track: { ...track, phase: "WAIT_RESET" }, emitted: false };
   }
   if (track.suppress || !past) return { track: freshTrack(), emitted: false };
   const since = track.phase === "CANDIDATE" ? track.since : now;
   if (track.phase === "CANDIDATE" && since === now) return { track, emitted: false };
   if (now - since >= thresholds.torsoLeanHoldMs) {
-    const sent = emit(lean > 0 ? "lean_left" : "lean_right");
+    const sent = emit(winningLean > 0 ? "lean_left" : "lean_right");
     return { track: { phase: "TRIGGERED", since: now, eventId: sent.id, suppress: false }, emitted: true };
   }
   return { track: { phase: "CANDIDATE", since, eventId: null, suppress: false }, emitted: false };
@@ -1053,7 +1096,7 @@ function stanceIsQuiet(state: DetectorState, signals: PoseSignals) {
   const neutral = state.neutral;
   if (!neutral || state.awaitRelease || state.phase !== "NEUTRAL" || state.jumpMotion !== "grounded") return false;
   if (state.left.phase !== "NEUTRAL" || state.right.phase !== "NEUTRAL" || state.torso.phase !== "NEUTRAL") return false;
-  if (Math.abs(signals.torsoLean) > state.thresholds.torsoLeanNeutral) return false;
+  if (bodyLaneEngaged(signals.torsoLean, signals.lean, state.thresholds)) return false;
   if (state.squat.phase !== "NEUTRAL" || state.jump.phase !== "NEUTRAL") return false;
   if (signals.hipDrop > 0.02 || signals.hipDrop < -0.02 || Math.abs(signals.hipVelocity) > 0.12 || signals.ankleRise > 0.02) return false;
   return poseIsQuiet(signals, state.thresholds, neutral);
@@ -1129,6 +1172,53 @@ function midY(
   if ((left.visibility ?? 0) < minVisibility || (right.visibility ?? 0) < minVisibility) return null;
   if (!Number.isFinite(left.y) || !Number.isFinite(right.y)) return null;
   return (left.y + right.y) / 2;
+}
+
+/**
+ * Soft torso/hip center for body-shift lanes. Follows while under leanEnter so a slow walk
+ * is absorbed. Freezes once a deliberate step crosses leanEnter so a held side stance stays
+ * armed until the player returns toward the soft center.
+ */
+function advanceBodyLaneCenter(
+  previous: number | null,
+  landmarks: Array<{ x: number; y: number; visibility?: number } | null | undefined>,
+  shoulderWidth: number,
+  minVisibility: number,
+  leanEnter: number,
+): { center: number; shift: number } | null {
+  const leftShoulder = landmarks[11];
+  const rightShoulder = landmarks[12];
+  const leftHip = landmarks[23];
+  const rightHip = landmarks[24];
+  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return null;
+  if (
+    (leftShoulder.visibility ?? 0) < minVisibility ||
+    (rightShoulder.visibility ?? 0) < minVisibility ||
+    (leftHip.visibility ?? 0) < minVisibility ||
+    (rightHip.visibility ?? 0) < minVisibility
+  ) {
+    return null;
+  }
+  if (
+    !Number.isFinite(leftShoulder.x) ||
+    !Number.isFinite(rightShoulder.x) ||
+    !Number.isFinite(leftHip.x) ||
+    !Number.isFinite(rightHip.x)
+  ) {
+    return null;
+  }
+  const shoulderX = (leftShoulder.x + rightShoulder.x) / 2;
+  const hipX = (leftHip.x + rightHip.x) / 2;
+  const centerX = (shoulderX + hipX) / 2;
+  const width = Math.max(0.04, shoulderWidth);
+  const tilt = (leftShoulder.y - rightShoulder.y) / width;
+  const baseline = previous ?? centerX;
+  const shift = (baseline - centerX) / width + tilt * 0.45;
+  if (Math.abs(shift) < leanEnter) {
+    const followed = baseline + (centerX - baseline) * BODY_LANE_FOLLOW;
+    return { center: followed, shift: (followed - centerX) / width + tilt * 0.45 };
+  }
+  return { center: baseline, shift };
 }
 
 function mirrorFrame(frame: PoseFrame): PoseFrame {
