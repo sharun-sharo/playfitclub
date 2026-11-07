@@ -358,6 +358,78 @@ export function phoneFrameWarning(input: { playing: boolean; banner: boolean; pa
 }
 
 /**
+ * After countdown GO, the WebGL runner may still be loading on a phone.
+ * Keep waiting this long before surfacing a stall / retry.
+ */
+export const PHONE_COURSE_START_STALL_MS = 8000;
+
+/** Shown while GO has fired but beginCourse has not run yet (assets / handle race). */
+export const PHONE_COURSE_STARTING_LINE = "Starting…";
+
+export const PHONE_COURSE_START_STALL_MESSAGE =
+  "The course is still loading. Stay in frame — tap Try again if this does not clear.";
+
+export type PhoneCourseStartIntent = "start" | "resume" | null;
+
+/**
+ * Black calibration stage. After GO, phase is already `running` but `playing` stays
+ * false until the Fit Runner handle calls beginCourse. Hiding the stage on phase alone
+ * leaves a blank sky-blue canvas on slow iPhone Safari asset loads.
+ */
+export function phoneShowsCalibrationStage(input: {
+  started: boolean;
+  playing: boolean;
+  phase: string;
+}): boolean {
+  if (!input.started) return false;
+  if (!input.playing) return true;
+  return (
+    input.phase === "reposition" ||
+    input.phase === "finding" ||
+    input.phase === "adjust" ||
+    input.phase === "calibrating" ||
+    input.phase === "ready" ||
+    input.phase === "countdown"
+  );
+}
+
+/** Latch start/resume edges from the calibration machine. */
+export function phonePendingCourseAfterEdge(
+  pending: PhoneCourseStartIntent,
+  edge: { startCourse: boolean; resumeCourse: boolean },
+): PhoneCourseStartIntent {
+  if (edge.startCourse) return "start";
+  if (edge.resumeCourse) return "resume";
+  return pending;
+}
+
+/** Enter the 3D course once the handle exists. Start needs a fresh beginCourse. */
+export function phoneShouldEnterCourse(input: {
+  pending: PhoneCourseStartIntent;
+  hasHandle: boolean;
+  courseBegun: boolean;
+}): "start" | "resume" | null {
+  if (!input.hasHandle) return null;
+  if (input.pending === "start" && !input.courseBegun) return "start";
+  if (input.pending === "resume" && input.courseBegun) return "resume";
+  return null;
+}
+
+/** True when GO (or startCourse) has been pending without beginCourse for too long. */
+export function phoneCourseStartStalled(input: {
+  pending: PhoneCourseStartIntent;
+  courseBegun: boolean;
+  pendingSince: number | null;
+  now: number;
+  stallMs?: number;
+}): boolean {
+  if (input.pending !== "start" || input.courseBegun) return false;
+  if (input.pendingSince === null) return false;
+  const limit = input.stallMs ?? PHONE_COURSE_START_STALL_MS;
+  return input.now - input.pendingSince >= limit;
+}
+
+/**
  * Preview visibility is paint. The pose callback still applies while the preview is hidden.
  * `previewVisible` is part of the call so a hide button cannot grow a second gate.
  */

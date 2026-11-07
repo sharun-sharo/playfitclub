@@ -38,7 +38,13 @@ import {
   applyPhonePlayViewport,
   phonePlayViewportBox,
   phoneObstacleCounts,
+  phoneCourseStartStalled,
+  phonePendingCourseAfterEdge,
   phoneRunSeed,
+  phoneShouldEnterCourse,
+  phoneShowsCalibrationStage,
+  PHONE_COURSE_START_STALL_MS,
+  PHONE_COURSE_STARTING_LINE,
   PHONE_MIRROR_GUIDE,
   FIT_RUN_HOW_TO_PLAY,
   PHONE_MIRROR_NOTE,
@@ -458,5 +464,48 @@ describe("phone local gestures", () => {
     expect(style.width).toBe("");
     expect(style.height).toBe("");
     expect(style.left).toBe("");
+  });
+
+  it("keeps the calibration stage up after GO until the course is playing", () => {
+    expect(phoneShowsCalibrationStage({ started: true, playing: false, phase: "running" })).toBe(true);
+    expect(phoneShowsCalibrationStage({ started: true, playing: false, phase: "countdown" })).toBe(true);
+    expect(phoneShowsCalibrationStage({ started: true, playing: true, phase: "running" })).toBe(false);
+    expect(phoneShowsCalibrationStage({ started: true, playing: true, phase: "reposition" })).toBe(true);
+    expect(phoneShowsCalibrationStage({ started: false, playing: false, phase: "finding" })).toBe(false);
+    expect(PHONE_COURSE_STARTING_LINE).toMatch(/Starting/);
+  });
+
+  it("latches GO until the WebGL handle exists, then stalls after the timeout", () => {
+    expect(phonePendingCourseAfterEdge(null, { startCourse: true, resumeCourse: false })).toBe("start");
+    expect(phonePendingCourseAfterEdge("start", { startCourse: false, resumeCourse: false })).toBe("start");
+    expect(phonePendingCourseAfterEdge("start", { startCourse: false, resumeCourse: true })).toBe("resume");
+    expect(phoneShouldEnterCourse({ pending: "start", hasHandle: false, courseBegun: false })).toBeNull();
+    expect(phoneShouldEnterCourse({ pending: "start", hasHandle: true, courseBegun: false })).toBe("start");
+    expect(phoneShouldEnterCourse({ pending: "resume", hasHandle: true, courseBegun: true })).toBe("resume");
+    expect(phoneShouldEnterCourse({ pending: "resume", hasHandle: true, courseBegun: false })).toBeNull();
+    expect(
+      phoneCourseStartStalled({
+        pending: "start",
+        courseBegun: false,
+        pendingSince: 0,
+        now: PHONE_COURSE_START_STALL_MS - 1,
+      }),
+    ).toBe(false);
+    expect(
+      phoneCourseStartStalled({
+        pending: "start",
+        courseBegun: false,
+        pendingSince: 0,
+        now: PHONE_COURSE_START_STALL_MS,
+      }),
+    ).toBe(true);
+    expect(
+      phoneCourseStartStalled({
+        pending: "start",
+        courseBegun: true,
+        pendingSince: 0,
+        now: PHONE_COURSE_START_STALL_MS * 2,
+      }),
+    ).toBe(false);
   });
 });

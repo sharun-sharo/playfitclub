@@ -33,8 +33,10 @@ import {
   confirmToGameMs,
   dispatchLocalGesture,
   phoneAsksForLandscape,
+  phoneCourseStartStalled,
   phoneHudCardWidth,
   phoneMotionLogText,
+  phonePendingCourseAfterEdge,
   phonePlayViewportBox,
   phoneCameraFailure,
   phoneGestureCandidate,
@@ -45,8 +47,12 @@ import {
   phonePlayCalories,
   phonePrefersLandscape,
   phoneRunSeed,
+  phoneShouldEnterCourse,
+  phoneShowsCalibrationStage,
   FIT_RUN_HOW_TO_PLAY,
   LAPTOP_PLAY_NOTE,
+  PHONE_COURSE_STARTING_LINE,
+  PHONE_COURSE_START_STALL_MESSAGE,
   PHONE_MIRROR_NOTE,
   PHONE_ROTATE_LINE,
   PHONE_TV_MIRROR_GUIDES,
@@ -54,6 +60,7 @@ import {
   PHONE_TEST_CONTROLS,
   PHONE_TEST_CONTROLS_LABEL,
   renderLoopFps,
+  type PhoneCourseStartIntent,
   type PhoneDisplayMode,
   type PhoneMotionDiag,
   type PhoneMotionLogRecord,
@@ -190,7 +197,8 @@ export function PhoneFitRun({
   const cameraActiveRef = useRef(0);
   const calibRef = useRef<PhoneCalibState>(createPhoneCalibration());
   const courseBegunRef = useRef(false);
-  const pendingCourseRef = useRef<"start" | "resume" | null>(null);
+  const pendingCourseRef = useRef<PhoneCourseStartIntent>(null);
+  const pendingCourseSinceRef = useRef<number | null>(null);
   const trackingPauseRef = useRef(false);
   const movesRef = useRef(false);
   const startingRef = useRef(false);
@@ -239,6 +247,69 @@ export function PhoneFitRun({
   function cameraStreamLive() {
     const tracks = streamRef.current?.getVideoTracks() ?? [];
     return tracks.some((track) => track.readyState === "live");
+  }
+
+  /** Latch GO → beginCourse. Also used when the WebGL handle arrives after countdown. */
+  function enterPhoneCourse(handle: FitRunnerHandle, intent: "start" | "resume") {
+    if (intent === "start") {
+      courseBegunRef.current = true;
+      pendingCourseRef.current = null;
+      pendingCourseSinceRef.current = null;
+      handle.beginCourse();
+      estimatorRef.current?.setMode("play");
+      estimatorRef.current?.setCoaching(false);
+      estimatorRef.current?.setRaceLive(true);
+      playingRef.current = true;
+      setPlaying(true);
+      setStartError("");
+      return;
+    }
+    pendingCourseRef.current = null;
+    pendingCourseSinceRef.current = null;
+    estimatorRef.current?.resumeTracking();
+    estimatorRef.current?.setRaceLive(true);
+    handle.setPaused(false);
+    trackingPauseRef.current = false;
+    playingRef.current = true;
+  }
+
+  function latchPendingCourse(edge: { startCourse: boolean; resumeCourse: boolean }, now: number) {
+    const next = phonePendingCourseAfterEdge(pendingCourseRef.current, edge);
+    if (next === "start" && pendingCourseRef.current !== "start") pendingCourseSinceRef.current = now;
+    else if (next !== "start") pendingCourseSinceRef.current = null;
+    pendingCourseRef.current = next;
+  }
+
+  /** After a WebGL remount, startCourse edge is gone but calib still says the run began. */
+  function rearmPendingStartFromCalib(now: number) {
+    if (courseBegunRef.current || playingRef.current) return;
+    if (!calibRef.current.runStarted) return;
+    if (pendingCourseRef.current === "start") return;
+    pendingCourseRef.current = "start";
+    pendingCourseSinceRef.current = now;
+  }
+
+  function flushPendingCourse(handle: FitRunnerHandle | null, now = performance.now()) {
+    rearmPendingStartFromCalib(now);
+    const intent = phoneShouldEnterCourse({
+      pending: pendingCourseRef.current,
+      hasHandle: Boolean(handle),
+      courseBegun: courseBegunRef.current,
+    });
+    if (!intent || !handle) {
+      if (
+        phoneCourseStartStalled({
+          pending: pendingCourseRef.current,
+          courseBegun: courseBegunRef.current,
+          pendingSince: pendingCourseSinceRef.current,
+          now,
+        })
+      ) {
+        setStartError((current) => (current === PHONE_COURSE_START_STALL_MESSAGE ? current : PHONE_COURSE_START_STALL_MESSAGE));
+      }
+      return;
+    }
+    enterPhoneCourse(handle, intent);
   }
 
   const publishCaloriesRef = useRef<(ms: number, cameraLive: boolean) => void>(() => {});
@@ -404,6 +475,7 @@ export function PhoneFitRun({
     movesRef.current = false;
     courseBegunRef.current = false;
     pendingCourseRef.current = null;
+    pendingCourseSinceRef.current = null;
     trackingPauseRef.current = false;
     poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
     calibRef.current = createPhoneCalibration();
@@ -533,6 +605,8 @@ export function PhoneFitRun({
         }
         handle = next;
         handleRef.current = next;
+        // iPhone Safari often finishes GLB load after countdown GO. Flush immediately.
+        flushPendingCourse(next);
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
@@ -726,25 +800,8 @@ export function PhoneFitRun({
       }
       calibRef.current = next;
       const handle = handleRef.current;
-      if (next.startCourse) pendingCourseRef.current = "start";
-      if (next.resumeCourse) pendingCourseRef.current = "resume";
-      if (pendingCourseRef.current === "start" && handle && !courseBegunRef.current) {
-        courseBegunRef.current = true;
-        pendingCourseRef.current = null;
-        handle.beginCourse();
-        estimator?.setMode("play");
-        estimator?.setCoaching(false);
-        estimator?.setRaceLive(true);
-        playingRef.current = true;
-        setPlaying(true);
-      } else if (pendingCourseRef.current === "resume" && handle && courseBegunRef.current) {
-        pendingCourseRef.current = null;
-        estimatorRef.current?.resumeTracking();
-        estimatorRef.current?.setRaceLive(true);
-        handle.setPaused(false);
-        trackingPauseRef.current = false;
-        playingRef.current = true;
-      }
+      latchPendingCourse({ startCourse: next.startCourse, resumeCourse: next.resumeCourse }, now);
+      flushPendingCourse(handle, now);
       if (courseBegunRef.current && handle && next.coursePaused !== trackingPauseRef.current) {
         trackingPauseRef.current = next.coursePaused;
         handle.setPaused(next.coursePaused);
@@ -1057,7 +1114,8 @@ export function PhoneFitRun({
     });
   }
 
-  const cameraLarge = started && calib.phase !== "running" && calib.phase !== "warning";
+  const cameraLarge = phoneShowsCalibrationStage({ started, playing, phase: calib.phase });
+  const waitingForCourse = !playing && (calib.phase === "running" || calib.countdown === "GO");
   const holding = poseCount <= 1 && phoneStandHolding(calib);
   const guidanceLine = phoneStandGuidance(calib, poseCount);
   const showCourseHud = playing && calib.phase !== "reposition" && calib.phase !== "countdown" && calib.phase !== "ready" && calib.phase !== "finding" && calib.phase !== "adjust" && calib.phase !== "calibrating";
@@ -1090,31 +1148,51 @@ export function PhoneFitRun({
                 <p className="phone-calib-status" data-phone-status="" data-phone-tracker="loading">
                   {TRACKER_LOADING_MESSAGE}
                 </p>
+              ) : waitingForCourse ? (
+                <p className="phone-calib-status" data-phone-status="starting">
+                  {PHONE_COURSE_STARTING_LINE}
+                </p>
               ) : calib.status && calib.phase !== "countdown" ? (
                 <p className="phone-calib-status" data-phone-status="">
                   {calib.status}
                 </p>
               ) : null}
-              {trackerReady && calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
-              {trackerReady && calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
+              {trackerReady && !waitingForCourse && calib.phase === "ready" ? <p className="phone-calib-ready">{PHONE_PLAYER_READY}</p> : null}
+              {trackerReady && !waitingForCourse && calib.phase === "countdown" && calib.countdown && calib.countdown !== "GO" ? (
                 <p className="phone-calib-count" data-phone-countdown="">
                   {calib.countdown}
                 </p>
               ) : null}
-              {trackerReady && guidanceLine ? (
+              {trackerReady && !waitingForCourse && guidanceLine ? (
                 <p className="phone-calib-guidance" data-phone-guidance="">
                   {guidanceLine}
                 </p>
               ) : null}
-              {stageNote ? <p className="phone-calib-note">{stageNote}</p> : null}
+              {stageNote && !waitingForCourse ? <p className="phone-calib-note">{stageNote}</p> : null}
               {cameraError ? (
                 <p className="phone-calib-note" role="alert">
                   {cameraError}
                 </p>
               ) : null}
-              {startError ? <p className="phone-calib-note">{startError}</p> : null}
-              {cameraError ? (
-                <button type="button" className="phone-start" onClick={() => void startFromTap()}>
+              {startError ? (
+                <p className="phone-calib-note" role="alert">
+                  {startError}
+                </p>
+              ) : null}
+              {cameraError || (startError && waitingForCourse) ? (
+                <button
+                  type="button"
+                  className="phone-start"
+                  onClick={() => {
+                    if (cameraError) {
+                      void startFromTap();
+                      return;
+                    }
+                    // Stall retry: remount WebGL; flushPendingCourse rearms from runStarted.
+                    setStartError("");
+                    setRunId((value) => value + 1);
+                  }}
+                >
                   Try again
                 </button>
               ) : null}
