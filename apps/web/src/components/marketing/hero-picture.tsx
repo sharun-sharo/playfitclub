@@ -15,8 +15,8 @@ export function HeroPicture({
       <img
         src={png}
         alt={alt}
-        width={864}
-        height={1152}
+        width={1024}
+        height={682}
         loading="eager"
         decoding={priority ? "sync" : "async"}
         fetchPriority={priority ? "high" : "auto"}
