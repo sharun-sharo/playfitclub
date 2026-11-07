@@ -38,6 +38,7 @@ describe("lives hud", () => {
     expect(card).toContain("Distance");
     expect(card).toContain("Time");
     expect(card).toContain("Calories burned");
+    expect(card).toContain("43 kcal");
     expect(card).toContain("Jump");
     expect(card).toContain("Squat");
     expect(card).toContain("Right");

@@ -55,6 +55,7 @@ export function FitRunnerV2({
   const rightCountRef = useRef<HTMLElement>(null);
   const leftCountRef = useRef<HTMLElement>(null);
   const coinsCountRef = useRef<HTMLElement>(null);
+  const caloriesRef = useRef<HTMLElement>(null);
   const courseDebugRef = useRef<HTMLPreElement>(null);
   const difficultyRef = useRef<string | null>(null);
   /** Development only. Production builds never mount this readout. */
@@ -83,7 +84,6 @@ export function FitRunnerV2({
   const [demoOver, setDemoOver] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
   const [weightKg, setWeightKg] = useState<number | null | undefined>(undefined);
-  const [calorieText, setCalorieText] = useState("—");
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
   const [gameOver, setGameOver] = useState<{ score: number; coins: number; distanceM: number; obstaclesHit: number } | null>(null);
   const [gameSaved, setGameSaved] = useState<boolean | null>(null);
@@ -335,7 +335,8 @@ export function FitRunnerV2({
       weight === undefined && !keysOnly
         ? { text: "—", note: null }
         : playCalories({ weightKg: weight, cameraActiveMs: ms, keyboardOnly: keysOnly });
-    setCalorieText((current) => (current === view.text ? current : view.text));
+    const cal = caloriesRef.current;
+    if (cal && cal.textContent !== view.text) cal.textContent = view.text;
     setCalorieNote((current) => (current === view.note ? current : view.note));
   };
 
@@ -522,7 +523,7 @@ export function FitRunnerV2({
         rightRef={rightCountRef}
         leftRef={leftCountRef}
         coinsRef={coinsCountRef}
-        calories={calorieText}
+        caloriesRef={caloriesRef}
         note={calorieNote}
         keyboard={session.keyboardChosen}
       />

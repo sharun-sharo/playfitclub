@@ -185,6 +185,7 @@ export function PhoneFitRun({
   const rightCountRef = useRef<HTMLElement>(null);
   const leftCountRef = useRef<HTMLElement>(null);
   const coinsCountRef = useRef<HTMLElement>(null);
+  const caloriesRef = useRef<HTMLElement>(null);
   const playingRef = useRef(false);
   const seenRef = useRef(new Set<string>());
   const runRef = useRef<RunLives>(emptyRun());
@@ -226,7 +227,6 @@ export function PhoneFitRun({
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [weightKg, setWeightKg] = useState<number | null | undefined>(undefined);
-  const [calorieText, setCalorieText] = useState("—");
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
   const [motionDiag, setMotionDiag] = useState(false);
   const [keyboardTest, setKeyboardTest] = useState(false);
@@ -315,7 +315,8 @@ export function PhoneFitRun({
   const publishCaloriesRef = useRef<(ms: number, cameraLive: boolean) => void>(() => {});
   publishCaloriesRef.current = (ms, cameraLive) => {
     const view = phonePlayCalories({ weightKg: weightRef.current, cameraActiveMs: ms, cameraLive });
-    setCalorieText((current) => (current === view.text ? current : view.text));
+    const cal = caloriesRef.current;
+    if (cal && cal.textContent !== view.text) cal.textContent = view.text;
     setCalorieNote((current) => (current === view.note ? current : view.note));
   };
 
@@ -1230,7 +1231,7 @@ export function PhoneFitRun({
                 rightRef={rightCountRef}
                 leftRef={leftCountRef}
                 coinsRef={coinsCountRef}
-                calories={calorieText}
+                caloriesRef={caloriesRef}
                 note={calorieNote}
                 keyboard={keyboardTest}
                 className="phone-score"

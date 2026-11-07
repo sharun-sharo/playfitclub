@@ -48,8 +48,8 @@ export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.58;
 export const PORTRAIT_CAMERA_HEIGHT = 1.62;
 export const PORTRAIT_LOOK_HEIGHT = 1.32;
 
-/** Slightly snappier lateral follow so lane changes stay centered without jitter. */
-export const PORTRAIT_FOLLOW_SMOOTH = 8.5;
+/** Lateral follow: damped enough to avoid lane-change judder, still keeps the runner centered. */
+export const PORTRAIT_FOLLOW_SMOOTH = 6.8;
 
 /**
  * Horizontal meters the portrait frustum should cover at player depth.

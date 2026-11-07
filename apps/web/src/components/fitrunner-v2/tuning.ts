@@ -16,11 +16,11 @@ export const fitRunnerTuning = {
    * Visible side-step on the run clip, in seconds. The accepted lane is used for hits immediately.
    * The mesh is in that lane at the end. Keep this between 0.25 and 0.35.
    */
-  sideStepDuration: 0.3,
+  sideStepDuration: 0.33,
   laneEasing: "smoothstep" as LaneEasing,
   /** Peak parent bank while sliding, in radians. Upright again when the slide stops. */
   leanRadians: 0.2,
-  leanDamp: 12,
+  leanDamp: 9,
   /** Extra delay before another lane key is accepted. Zero responds on the keydown frame. */
   laneInputCooldown: 0,
   showColliders: false,
@@ -55,7 +55,7 @@ export const fitRunnerTuning = {
     height: 1.68,
     lookAhead: 6.4,
     lookHeight: 0.98,
-    smooth: 7,
+    smooth: 5.8,
     fovGain: 4,
     landingDip: 0.08,
     jumpLook: 0.1,

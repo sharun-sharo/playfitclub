@@ -414,14 +414,16 @@ export async function startFitRunner(
       preset: phonePreset,
     });
   }
+  // Phone/TV skip MSAA — high-DPI buffers already look sharp; antialias costs frame time.
+  const useAntialias = !television && !phoneDraw;
   const gl = canvas.getContext("webgl2", {
     alpha: false,
-    antialias: !television,
+    antialias: useAntialias,
     depth: true,
     stencil: false,
     preserveDrawingBuffer: false,
     failIfMajorPerformanceCaveat: false,
-    ...(television ? { powerPreference: "low-power" as const } : {}),
+    powerPreference: television ? ("low-power" as const) : ("high-performance" as const),
   });
   if (!gl) {
     canvas.dataset.webgl = "unavailable";
@@ -434,9 +436,10 @@ export async function startFitRunner(
   const renderer = new THREE.WebGLRenderer({
     canvas,
     context: gl,
-    antialias: !television,
+    antialias: useAntialias,
     alpha: false,
     preserveDrawingBuffer: false,
+    powerPreference: television ? "low-power" : "high-performance",
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = television ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
@@ -459,6 +462,9 @@ export async function startFitRunner(
   let portraitFollowActive = false;
   const camera = new THREE.PerspectiveCamera(followCam.fov, 1, 0.1, COURSE_CAMERA_FAR);
   camera.position.set(0, followCam.height, followCam.distance);
+  const cameraDesired = new THREE.Vector3();
+  const cameraLook = new THREE.Vector3(0, followCam.lookHeight, -followCam.lookAhead);
+  let cameraLookReady = false;
 
   function activeFollowCam(): FollowCameraTuning {
     return portraitFollowActive ? followCam : landscapeFollowCamera();
@@ -1479,6 +1485,14 @@ export async function startFitRunner(
       canvas.dataset.cameraHeight = cam.height.toFixed(2);
     }
 
+    function setHudText(el: HTMLElement | null | undefined, value: string) {
+      if (el && el.textContent !== value) el.textContent = value;
+    }
+
+    function setCanvasData(key: string, value: string) {
+      if (canvas.dataset[key] !== value) canvas.dataset[key] = value;
+    }
+
     function publish(speed: number) {
       const snap = recorder.stats();
       const score = liveScore(snap.clearancePoints);
@@ -1486,39 +1500,48 @@ export async function startFitRunner(
         statsAt = elapsed;
         hud.onStats?.({ multiplier: snap.multiplier, bestMultiplier: snap.bestMultiplier });
       }
-      canvas.dataset.ready = "true";
-      canvas.dataset.clip = activeClip;
-      canvas.dataset.lane = laneLabel(lane);
-      canvas.dataset.visualLane = visualLane.toFixed(3);
-      canvas.dataset.bodyX = bodySpanX;
-      canvas.dataset.motion = motion;
-      canvas.dataset.score = String(score);
-      canvas.dataset.tokens = String(coins);
-      canvas.dataset.combo = String(snap.multiplier);
-      canvas.dataset.distance = distance.toFixed(1);
-      canvas.dataset.paused = paused ? "1" : "0";
-      canvas.dataset.quality = activeQuality;
-      canvas.dataset.ahead = nearestAhead;
-      canvas.dataset.module = coastModule(Math.max(0, Math.round(-runner.position.z / tuning.tileSize)));
-      canvas.dataset.jumpTime = `${jumpAction.time.toFixed(2)}/${jumpAction.getClip().duration.toFixed(2)}/${runner.position.y.toFixed(2)}`;
-      canvas.dataset.animTime = current.time.toFixed(3);
-      canvas.dataset.hit = invuln > 0 ? "1" : "0";
-      canvas.dataset.lives = String(shownLives);
-      if (hud.clip) hud.clip.textContent = activeClip;
-      if (hud.lane) hud.lane.textContent = laneT < 0.999 ? `${visualLane.toFixed(2)} → ${laneLabel(lane)}` : laneLabel(lane);
-      if (hud.motion) hud.motion.textContent = invuln > 0 ? `${motion} · hit` : motion;
-      if (hud.speed) hud.speed.textContent = `${speed.toFixed(1)} m/s`;
-      if (hud.score) hud.score.textContent = String(score);
-      if (hud.playScore) hud.playScore.textContent = String(score);
-      if (hud.distance) hud.distance.textContent = `${Math.floor(distance)} m`;
-      if (hud.time) hud.time.textContent = formatTime(elapsed);
-      if (hud.demoTime && demoLimit !== null) hud.demoTime.textContent = formatRemaining(demoLimit, elapsed);
-      if (hud.tokens) hud.tokens.textContent = String(coins);
-      if (hud.jumps) hud.jumps.textContent = String(snap.jumps);
-      if (hud.squats) hud.squats.textContent = String(snap.squats);
-      if (hud.laneLeft) hud.laneLeft.textContent = String(snap.laneLeft);
-      if (hud.laneRight) hud.laneRight.textContent = String(snap.laneRight);
-      if (hud.combo) hud.combo.textContent = snap.multiplier > 0 ? `x${snap.multiplier}` : "—";
+      const scoreText = String(score);
+      const distanceText = `${Math.floor(distance)} m`;
+      const timeText = formatTime(elapsed);
+      const laneText = laneT < 0.999 ? `${visualLane.toFixed(2)} → ${laneLabel(lane)}` : laneLabel(lane);
+      const motionText = invuln > 0 ? `${motion} · hit` : motion;
+      const speedText = `${speed.toFixed(1)} m/s`;
+      setCanvasData("ready", "true");
+      setCanvasData("clip", activeClip);
+      setCanvasData("lane", laneLabel(lane));
+      setCanvasData("visualLane", visualLane.toFixed(3));
+      setCanvasData("bodyX", bodySpanX);
+      setCanvasData("motion", motion);
+      setCanvasData("score", scoreText);
+      setCanvasData("tokens", String(coins));
+      setCanvasData("combo", String(snap.multiplier));
+      setCanvasData("distance", distance.toFixed(1));
+      setCanvasData("paused", paused ? "1" : "0");
+      setCanvasData("quality", activeQuality);
+      setCanvasData("ahead", nearestAhead);
+      setCanvasData("module", coastModule(Math.max(0, Math.round(-runner.position.z / tuning.tileSize))));
+      setCanvasData(
+        "jumpTime",
+        `${jumpAction.time.toFixed(2)}/${jumpAction.getClip().duration.toFixed(2)}/${runner.position.y.toFixed(2)}`,
+      );
+      setCanvasData("animTime", current.time.toFixed(3));
+      setCanvasData("hit", invuln > 0 ? "1" : "0");
+      setCanvasData("lives", String(shownLives));
+      setHudText(hud.clip, activeClip);
+      setHudText(hud.lane, laneText);
+      setHudText(hud.motion, motionText);
+      setHudText(hud.speed, speedText);
+      setHudText(hud.score, scoreText);
+      setHudText(hud.playScore, scoreText);
+      setHudText(hud.distance, distanceText);
+      setHudText(hud.time, timeText);
+      if (hud.demoTime && demoLimit !== null) setHudText(hud.demoTime, formatRemaining(demoLimit, elapsed));
+      setHudText(hud.tokens, String(coins));
+      setHudText(hud.jumps, String(snap.jumps));
+      setHudText(hud.squats, String(snap.squats));
+      setHudText(hud.laneLeft, String(snap.laneLeft));
+      setHudText(hud.laneRight, String(snap.laneRight));
+      setHudText(hud.combo, snap.multiplier > 0 ? `x${snap.multiplier}` : "—");
       if (hud.courseDebug) {
         const cueLane = Math.max(-1, Math.min(1, Math.round(visualLane))) as -1 | 0 | 1;
         const readout = courseDebugSnapshot({
@@ -1529,17 +1552,36 @@ export async function startFitRunner(
           valid: coursePlan ? courseValid : false,
           reasons: coursePlan ? courseReasons : ["waiting"],
         });
-        hud.courseDebug.textContent = [
-          `speed ${readout.speedMps.toFixed(2)} m/s`,
-          `next obstacle ${readout.secondsUntilNext === null ? "—" : `${readout.secondsUntilNext.toFixed(2)} s`}`,
-          `action ${readout.requiredAction}`,
-          `between actions ${readout.secondsBetweenActions === null ? "—" : `${readout.secondsBetweenActions.toFixed(2)} s`}`,
-          `latency allowance ${readout.latencyAllowanceS.toFixed(3)} s`,
-          `recovery allowance ${readout.recoveryAllowanceS.toFixed(3)} s`,
-          `difficulty ${readout.difficulty}`,
-          `validation ${readout.validation}`,
-        ].join("\n");
+        setHudText(
+          hud.courseDebug,
+          [
+            `speed ${readout.speedMps.toFixed(2)} m/s`,
+            `next obstacle ${readout.secondsUntilNext === null ? "—" : `${readout.secondsUntilNext.toFixed(2)} s`}`,
+            `action ${readout.requiredAction}`,
+            `between actions ${readout.secondsBetweenActions === null ? "—" : `${readout.secondsBetweenActions.toFixed(2)} s`}`,
+            `latency allowance ${readout.latencyAllowanceS.toFixed(3)} s`,
+            `recovery allowance ${readout.recoveryAllowanceS.toFixed(3)} s`,
+            `difficulty ${readout.difficulty}`,
+            `validation ${readout.validation}`,
+          ].join("\n"),
+        );
       }
+    }
+
+    function followCameraTo(trackX: number, lookY: number, lookZ: number, desiredY: number, desiredZ: number, smooth: number, dt: number, shakeX = 0) {
+      cameraDesired.set(trackX + shakeX, desiredY, desiredZ);
+      const follow = 1 - Math.exp(-smooth * dt);
+      camera.position.lerp(cameraDesired, follow);
+      if (!cameraLookReady) {
+        cameraLook.set(trackX, lookY, lookZ);
+        cameraLookReady = true;
+      } else {
+        // Damp lateral look only — Z snaps with the runner so world scroll stays locked.
+        cameraLook.x += (trackX - cameraLook.x) * follow;
+        cameraLook.y += (lookY - cameraLook.y) * follow;
+        cameraLook.z = lookZ;
+      }
+      camera.lookAt(cameraLook);
     }
 
     function recycle() {
@@ -1830,10 +1872,15 @@ export async function startFitRunner(
         updateVertical(dt);
         const cam = activeFollowCam();
         const trackX = followCameraTrackX(portraitFollowActive, runner.position.x);
-        const desired = new THREE.Vector3(trackX, cam.height, runner.position.z + cam.distance);
-        const follow = 1 - Math.exp(-cam.smooth * dt);
-        camera.position.lerp(desired, follow);
-        camera.lookAt(trackX, cam.lookHeight, runner.position.z - cam.lookAhead);
+        followCameraTo(
+          trackX,
+          cam.lookHeight,
+          runner.position.z - cam.lookAhead,
+          cam.height,
+          runner.position.z + cam.distance,
+          cam.smooth,
+          dt,
+        );
         blob.position.set(runner.position.x, 0.02, runner.position.z);
       }
       mixer.update(dt);
@@ -1910,6 +1957,7 @@ export async function startFitRunner(
       laneLockUntil = 0;
       runner.position.x = 0;
       visual.rotation.z = 0;
+      cameraLookReady = false;
     }
 
     function beginCourse() {
@@ -1927,6 +1975,7 @@ export async function startFitRunner(
       distance = 0;
       forwardCredit = { committed: 0, pending: 0 };
       runDistance = 0;
+      cameraLookReady = false;
       clock.getDelta();
       canvas.dataset.course = "live";
       hud.onRunBegin?.();
@@ -2102,25 +2151,25 @@ export async function startFitRunner(
       cameraDip = THREE.MathUtils.damp(cameraDip, 0, 4.5, dt);
       const cam = activeFollowCam();
       const targetFov = cam.fov + cam.fovGain * (speed / tuning.maxSpeed);
-      if (Math.abs(camera.fov - targetFov) > 0.05) {
-        camera.fov = targetFov;
+      const fovFollow = 1 - Math.exp(-cam.smooth * dt);
+      const nextFov = camera.fov + (targetFov - camera.fov) * fovFollow;
+      if (Math.abs(nextFov - camera.fov) > 0.01) {
+        camera.fov = nextFov;
         camera.updateProjectionMatrix();
       }
       const trackX = followCameraTrackX(portraitFollowActive, runner.position.x);
-      const desired = new THREE.Vector3(
-        trackX + Math.sin(elapsed * 48) * shake,
-        cam.height - cameraDip,
-        runner.position.z + cam.distance,
-      );
-      const follow = 1 - Math.exp(-cam.smooth * dt);
-      camera.position.lerp(desired, follow);
-      camera.lookAt(
+      followCameraTo(
         trackX,
         cam.lookHeight + jumpLift * cam.jumpLook,
         runner.position.z - cam.lookAhead,
+        cam.height - cameraDip,
+        runner.position.z + cam.distance,
+        cam.smooth,
+        dt,
+        Math.sin(elapsed * 48) * shake,
       );
-      canvas.dataset.cameraTrackX = trackX.toFixed(2);
-      canvas.dataset.cameraPosX = camera.position.x.toFixed(2);
+      setCanvasData("cameraTrackX", trackX.toFixed(2));
+      setCanvasData("cameraPosX", camera.position.x.toFixed(2));
 
       sun.position.set(runner.position.x + 6, 14, runner.position.z + 8);
       sun.target.position.set(runner.position.x, 0.4, runner.position.z - 4);

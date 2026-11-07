@@ -17,12 +17,13 @@ export function jumpDuringRoll(motion: string, movementType: string): boolean {
 }
 
 /**
- * Ease-out lane slide. t is 0 at the command and 1 when the body is in the lane.
- * The first slice already moves. Smoothstep held the body still at the start.
+ * Cubic ease-out lane slide. t is 0 at the command and 1 when the body is in the lane.
+ * Softer arrival than quadratic ease-out; still moves on the first slice (unlike smoothstep).
  */
 export function laneSlideFraction(t: number): number {
   const clamped = Math.min(1, Math.max(0, t));
-  return 1 - (1 - clamped) * (1 - clamped);
+  const inv = 1 - clamped;
+  return 1 - inv * inv * inv;
 }
 
 /**
@@ -30,7 +31,7 @@ export function laneSlideFraction(t: number): number {
  * None of those is a strafe or a side-step, so the lane change plays this pose on top of Run.
  * Seconds. The mesh is in the accepted lane at the end. Collision uses that lane from the command.
  */
-export const SIDE_STEP_S = 0.3;
+export const SIDE_STEP_S = 0.33;
 
 /**
  * First slice of a jump or lane, applied in the command handler.

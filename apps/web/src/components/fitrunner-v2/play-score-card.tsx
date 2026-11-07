@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type Ref } from "react";
+import { useLayoutEffect, useState, type Ref, type RefObject } from "react";
+
+function seedText(ref: Ref<HTMLElement> | undefined, value: string) {
+  if (!ref || typeof ref === "function") return;
+  const el = (ref as RefObject<HTMLElement | null>).current;
+  if (el && !el.textContent) el.textContent = value;
+}
 
 function DistPinIcon() {
   return (
@@ -24,6 +30,10 @@ function CalFlameIcon() {
   );
 }
 
+/**
+ * Live values are written from the rAF loop via refs. Do not put React text children
+ * on those nodes — a parent re-render would reset score/distance and flicker the HUD.
+ */
 export function PlayScoreCard({
   hidden,
   scoreRef,
@@ -34,7 +44,8 @@ export function PlayScoreCard({
   rightRef,
   leftRef,
   coinsRef,
-  calories,
+  caloriesRef,
+  calories = "—",
   note,
   keyboard,
   className,
@@ -49,7 +60,9 @@ export function PlayScoreCard({
   rightRef: Ref<HTMLElement>;
   leftRef: Ref<HTMLElement>;
   coinsRef: Ref<HTMLElement>;
-  calories: string;
+  caloriesRef?: Ref<HTMLElement>;
+  /** Static / SSR fallback when caloriesRef is unused. */
+  calories?: string;
   note: string | null;
   keyboard: boolean;
   className?: string;
@@ -58,6 +71,18 @@ export function PlayScoreCard({
 }) {
   const [statsOpen, setStatsOpen] = useState(false);
   const compact = layout === "compact";
+
+  useLayoutEffect(() => {
+    seedText(scoreRef, "0");
+    seedText(distanceRef, "0 m");
+    seedText(timeRef, "0:00");
+    seedText(jumpRef, "0");
+    seedText(squatRef, "0");
+    seedText(rightRef, "0");
+    seedText(leftRef, "0");
+    seedText(coinsRef, "0");
+    if (caloriesRef) seedText(caloriesRef, calories);
+  }, [scoreRef, distanceRef, timeRef, jumpRef, squatRef, rightRef, leftRef, coinsRef, caloriesRef, calories]);
 
   return (
     <section
@@ -71,18 +96,19 @@ export function PlayScoreCard({
       hidden={hidden}
     >
       {compact ? null : <p className="text-[10px] tracking-[0.18em] text-[#d6ff4a]">SCORE</p>}
-      <p ref={scoreRef} className={compact ? "phone-compact-score" : "font-display text-4xl leading-none"}>
-        0
-      </p>
+      <p ref={scoreRef} className={compact ? "phone-compact-score" : "font-display text-4xl leading-none"} />
       {compact ? (
         <div className="phone-compact-strip">
           <span className="phone-compact-stat">
             <DistPinIcon />
-            <span className="phone-compact-k">Dist</span> <span ref={distanceRef}>0 m</span>
+            <span className="phone-compact-k">Dist</span> <span ref={distanceRef} />
           </span>
           <span className="phone-compact-stat">
             <CalFlameIcon />
-            <span className="phone-compact-k">Cal</span> <span data-calories="">{calories}</span>
+            <span className="phone-compact-k">Cal</span>{" "}
+            <span ref={caloriesRef} data-calories="">
+              {caloriesRef ? null : calories}
+            </span>
           </span>
           <button
             type="button"
@@ -112,37 +138,29 @@ export function PlayScoreCard({
         {compact ? null : (
           <>
             <dt>Distance</dt>
-            <dd ref={distanceRef}>0 m</dd>
+            <dd ref={distanceRef} />
           </>
         )}
         <dt>Time</dt>
-        <dd ref={timeRef}>0:00</dd>
+        <dd ref={timeRef} />
         {compact ? null : (
           <>
             <dt>Calories burned</dt>
-            <dd data-calories="">{calories}</dd>
+            <dd ref={caloriesRef} data-calories="">
+              {caloriesRef ? null : calories}
+            </dd>
           </>
         )}
         <dt>Jump</dt>
-        <dd ref={jumpRef} data-jumps="">
-          0
-        </dd>
+        <dd ref={jumpRef} data-jumps="" />
         <dt>Squat</dt>
-        <dd ref={squatRef} data-squats="">
-          0
-        </dd>
+        <dd ref={squatRef} data-squats="" />
         <dt>Right</dt>
-        <dd ref={rightRef} data-lane-right="">
-          0
-        </dd>
+        <dd ref={rightRef} data-lane-right="" />
         <dt>Left</dt>
-        <dd ref={leftRef} data-lane-left="">
-          0
-        </dd>
+        <dd ref={leftRef} data-lane-left="" />
         <dt>Coins</dt>
-        <dd ref={coinsRef} data-coins="">
-          0
-        </dd>
+        <dd ref={coinsRef} data-coins="" />
       </dl>
       {note ? (
         <p
