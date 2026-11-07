@@ -19,14 +19,17 @@ export function landscapeFollowCamera(): FollowCameraTuning {
   return { ...tuning.camera };
 }
 
-/** Extra asphalt beyond each road edge that should stay in the portrait frustum. */
-export const PORTRAIT_ROAD_MARGIN_M = 0.3;
+/**
+ * Extra asphalt beyond each road edge in the portrait frustum.
+ * Hybrid: roadEdge ± a thin margin (0–0.1). Slight lip crop is OK for presence.
+ */
+export const PORTRAIT_ROAD_MARGIN_M = 0.05;
 
-/** Prefer this vertical FOV; raise only when distance would exceed the cap. */
-export const PORTRAIT_FOV_PREF = 58;
-export const PORTRAIT_FOV_MAX = 70;
-export const PORTRAIT_DISTANCE_MIN = 8.5;
-export const PORTRAIT_DISTANCE_MAX = 16;
+/** Prefer a short pull-back; raise FOV before pushing distance past the cap. */
+export const PORTRAIT_FOV_PREF = 70;
+export const PORTRAIT_FOV_MAX = 78;
+export const PORTRAIT_DISTANCE_MIN = 11.5;
+export const PORTRAIT_DISTANCE_MAX = 14;
 
 /**
  * Full road span plus a small margin. Lane centers stay at ±laneSpacing;
@@ -69,8 +72,8 @@ function fovForHorizontalWidth(aspect: number, depth: number, width: number) {
 
 /**
  * Portrait follow cam for Mobile Only tall viewports.
- * Pulls back and widens FOV so the full asphalt (+ margin) fits at the player Z
- * plane, with look-ahead far enough that outer-lane obstacles read early.
+ * Hybrid cover: road edge ± thin margin, short distance (~12–14 m) and wide FOV (~70+)
+ * so the runner reads larger. Look-ahead stays ~1× distance (not 18 m).
  */
 export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSpacing): FollowCameraTuning {
   const safeAspect = aspect > 0.05 && aspect < 1 ? aspect : 9 / 16;
@@ -86,10 +89,10 @@ export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSp
     distance = PORTRAIT_DISTANCE_MIN;
   }
 
-  const lookAhead = clamp(distance * 1.35, 10.5, 18);
+  const lookAhead = clamp(distance * 1.0, 9, 14);
   const lookHeight = 1.05;
-  // Slightly steeper than landscape so more road surface stays on screen.
-  const height = lookHeight + (distance + lookAhead) * 0.072;
+  // Softer than the first portrait ship so near asphalt is less empty/foreshortened.
+  const height = lookHeight + (distance + lookAhead) * 0.055;
 
   return {
     fov: Math.round(fov * 10) / 10,

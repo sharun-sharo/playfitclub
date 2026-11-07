@@ -1431,11 +1431,22 @@ export async function startFitRunner(
 
     let viewWidth = 0;
     let viewHeight = 0;
+    let resizeRetry = 0;
+    let resizeRetryFrame = 0;
     function resize() {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       const aspect = cameraAspectFromCss(width, height);
-      if (aspect === null) return;
+      if (aspect === null) {
+        // CSS box can lag the first paint (attrs stuck on default buffer). Retry briefly.
+        if (!stopped && resizeRetry < 45) {
+          resizeRetry += 1;
+          window.cancelAnimationFrame(resizeRetryFrame);
+          resizeRetryFrame = window.requestAnimationFrame(resize);
+        }
+        return;
+      }
+      resizeRetry = 0;
       const ratio = drawingPixelRatio();
       const layout = fitRunnerDrawingSize(width, height, television);
       const bufferWidth = Math.floor(layout.width * ratio);
@@ -2149,6 +2160,14 @@ export async function startFitRunner(
     visualViewport?.addEventListener("scroll", resize);
     if (phoneDraw) applyPhoneTextureClarity(scene, phonePreset, renderer.capabilities.getMaxAnisotropy());
     resize();
+    // Second pass after layout/viewport pinning so portrait attrs are not stuck on defaults.
+    window.requestAnimationFrame(() => {
+      if (stopped) return;
+      resize();
+      window.requestAnimationFrame(() => {
+        if (!stopped) resize();
+      });
+    });
     publish(tuning.forwardSpeed);
     tropical.update(runner.position, camera, 0);
     canvas.dataset.hold = "0";
@@ -2184,6 +2203,7 @@ export async function startFitRunner(
         stopped = true;
         canvas.removeEventListener("webglcontextlost", onContextLost);
         window.cancelAnimationFrame(frame);
+        window.cancelAnimationFrame(resizeRetryFrame);
         window.removeEventListener("keydown", onKey);
         window.removeEventListener("resize", resize);
         window.removeEventListener("orientationchange", resize);

@@ -10,16 +10,19 @@
   width: 100%;
   width: 100dvw;
   height: 100%;
+  min-height: 100svh;
   height: 100dvh;
   max-width: none;
   max-height: none;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 html:has(.phone-play),
 body:has(.phone-play) {
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 html:fullscreen .phone-play,
@@ -42,6 +45,7 @@ html:-webkit-full-screen .phone-play,
   width: 100%;
   width: 100dvw;
   height: 100%;
+  min-height: 100svh;
   height: 100dvh;
   max-width: none;
   max-height: none;
@@ -531,6 +535,9 @@ html:-webkit-full-screen .phone-play,
 
 .phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-hud-bottom {
   gap: 0.45rem;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 4px));
+  left: max(12px, env(safe-area-inset-left, 0px));
 }
 
 .phone-calib-copy {
@@ -660,6 +667,7 @@ html:-webkit-full-screen .phone-play,
   align-items: center;
   justify-content: flex-start;
   overflow: auto;
+  overscroll-behavior: none;
   padding: max(1.5rem, env(safe-area-inset-top, 0px)) max(1.25rem, env(safe-area-inset-right, 0px))
     max(1.5rem, env(safe-area-inset-bottom, 0px)) max(1.25rem, env(safe-area-inset-left, 0px));
   background: #16181d;
