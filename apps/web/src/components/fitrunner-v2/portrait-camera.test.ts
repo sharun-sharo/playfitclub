@@ -32,14 +32,14 @@ describe("portrait follow camera frustum", () => {
     expect(portraitRequiredWidthM()).toBeCloseTo((4.45 + PORTRAIT_ROAD_MARGIN_M) * 2, 5);
   });
 
-  it("keeps aggressive hybrid presence: ~10–12 m distance, FOV ≥ 78, look-ahead ≤ distance", () => {
+  it("keeps aggressive hybrid presence: ~9–11 m distance, FOV ≥ 82, look-ahead ~0.8–0.9×", () => {
     const need = portraitRequiredWidthM();
-    expect(PORTRAIT_FOV_PREF).toBeGreaterThanOrEqual(78);
+    expect(PORTRAIT_FOV_PREF).toBeGreaterThanOrEqual(82);
     expect(PORTRAIT_FOV_MAX).toBeLessThanOrEqual(85);
-    expect(PORTRAIT_DISTANCE_MIN).toBeGreaterThanOrEqual(10);
-    expect(PORTRAIT_DISTANCE_MAX).toBeLessThanOrEqual(12);
-    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeLessThanOrEqual(1);
-    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeGreaterThanOrEqual(0.85);
+    expect(PORTRAIT_DISTANCE_MIN).toBeGreaterThanOrEqual(9);
+    expect(PORTRAIT_DISTANCE_MAX).toBeLessThanOrEqual(11);
+    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeLessThanOrEqual(0.9);
+    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeGreaterThanOrEqual(0.8);
 
     for (const { name, aspect } of ASPECTS) {
       const cam = portraitFollowCamera(aspect);
@@ -52,22 +52,22 @@ describe("portrait follow camera frustum", () => {
       expect(cam.distance, name).toBeGreaterThan(fitRunnerTuning.camera.distance);
       expect(cam.distance, name).toBeGreaterThanOrEqual(PORTRAIT_DISTANCE_MIN - 0.01);
       expect(cam.distance, name).toBeLessThanOrEqual(PORTRAIT_DISTANCE_MAX + 0.01);
-      expect(cam.lookAhead, name).toBeLessThanOrEqual(cam.distance + 0.01);
-      expect(cam.lookAhead / cam.distance, name).toBeGreaterThanOrEqual(0.84);
-      expect(cam.lookAhead / cam.distance, name).toBeLessThanOrEqual(1.01);
-      expect(cam.height, name).toBeLessThan(2.2);
-      expect(cam.lookHeight, name).toBeLessThanOrEqual(1.0);
+      expect(cam.lookAhead, name).toBeLessThanOrEqual(cam.distance * 0.9 + 0.01);
+      expect(cam.lookAhead / cam.distance, name).toBeGreaterThanOrEqual(0.79);
+      expect(cam.lookAhead / cam.distance, name).toBeLessThanOrEqual(0.91);
+      expect(cam.height, name).toBeLessThan(1.6);
+      expect(cam.lookHeight, name).toBeLessThanOrEqual(0.75);
     }
   });
 
-  it("targets ~11–12 m / FOV ~78 at a typical phone portrait (390×844)", () => {
+  it("targets ~11 m / FOV ~82 at a typical phone portrait (390×844)", () => {
     const cam = portraitFollowCamera(390 / 844);
-    expect(cam.fov).toBeGreaterThanOrEqual(78);
-    expect(cam.distance).toBeGreaterThanOrEqual(10);
-    expect(cam.distance).toBeLessThanOrEqual(12);
-    expect(cam.distance).toBeLessThan(13);
-    expect(cam.lookAhead).toBeLessThanOrEqual(cam.distance);
-    expect(cam.height).toBeLessThan(2.0);
+    expect(cam.fov).toBeGreaterThanOrEqual(82);
+    expect(cam.distance).toBeGreaterThanOrEqual(9);
+    expect(cam.distance).toBeLessThanOrEqual(11);
+    expect(cam.lookAhead).toBeLessThanOrEqual(cam.distance * 0.9);
+    expect(cam.height).toBeLessThan(1.45);
+    expect(cam.lookHeight).toBeLessThanOrEqual(0.75);
   });
 
   it("leaves landscape framing on wide aspects and when framing is not requested", () => {
