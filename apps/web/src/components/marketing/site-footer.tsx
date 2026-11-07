@@ -47,7 +47,7 @@ export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
               </Link>
             );
           })}
-          <TrackedLink href="/games" events={[{ name: "play_clicked", params: { surface: "footer" } }]}>
+          <TrackedLink href="/play" events={[{ name: "play_clicked", params: { surface: "footer" } }]}>
             Play Now
           </TrackedLink>
           <Link href="/privacy">Privacy</Link>

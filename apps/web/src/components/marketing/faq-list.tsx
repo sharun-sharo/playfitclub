@@ -13,7 +13,7 @@ const questions = [
   },
   {
     q: "Do I need a special controller?",
-    a: "No. There is no console, no extra sensor, and no pairing code. Your laptop webcam or phone camera runs Fit Run in the browser. Tap Play Demo, choose a play mode, and allow the camera.",
+    a: "No. There is no console, no extra sensor, and no pairing code. Your laptop webcam or phone camera runs Fit Run in the browser. Tap Play Now, choose a play mode, and allow the camera.",
   },
   {
     q: "Can I play using my phone and a TV?",
