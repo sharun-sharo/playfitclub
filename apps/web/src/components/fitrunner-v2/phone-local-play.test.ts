@@ -208,13 +208,12 @@ describe("phone local gestures", () => {
     expect(LAPTOP_PLAY_PATH).toBe("/play/fit-run");
     expect(LAPTOP_PLAY_NOTE).toMatch(/laptop camera/i);
     expect(FIT_RUN_HOW_TO_PLAY).toEqual([
-      "Step or lean left/right to change lanes",
-      "Raise your left arm sideways to move left",
-      "Raise your right arm sideways to move right",
+      "Raise left arm sideways or step left to move left",
+      "Raise right arm sideways or step right to move right",
       "Squat to duck under obstacles",
       "Jump to clear obstacles",
     ]);
-    expect(FIT_RUN_HOW_TO_PLAY).toHaveLength(5);
+    expect(FIT_RUN_HOW_TO_PLAY).toHaveLength(4);
     expect(phonePlayQrPayload("https://playfitclub.com")).toBe(`https://playfitclub.com${PHONE_PLAY_PATH}`);
     expect(phonePlayQrPayload("https://playfitclub.com/")).toBe(`https://playfitclub.com${PHONE_PLAY_PATH}`);
     expect(phonePlayQrPayload("https://preview.example")).toBe(`https://preview.example${PHONE_PLAY_PATH}`);
