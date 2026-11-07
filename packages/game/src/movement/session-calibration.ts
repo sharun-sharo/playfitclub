@@ -61,6 +61,18 @@ export function noteBodyScale(state: MotionCalibration, torso: number, shoulderW
 }
 
 /**
+ * Live EMA body scale after the session baseline is locked.
+ * Does not reset coaching steps or instructions.
+ */
+export function updateBodyScale(state: MotionCalibration, torso: number, shoulderWidth: number): MotionCalibration {
+  if (!Number.isFinite(torso) || !Number.isFinite(shoulderWidth) || torso <= 0 || shoulderWidth <= 0) return state;
+  return {
+    ...state,
+    bodyScale: { torso, shoulderWidth },
+  };
+}
+
+/**
  * A demonstrated squat must not raise the live gate.
  * The old band was 0.14–0.20, so a deep calibration squat (0.36 became 0.20)
  * and the next moderate squat was ignored. The live gate stays at or under

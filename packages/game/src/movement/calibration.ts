@@ -131,7 +131,52 @@ export function driftNeutral(neutral: NeutralPose, sample: NeutralPose, alpha: n
     leftWristLateral: blend(neutral.leftWristLateral, sample.leftWristLateral),
     rightWristLateral: blend(neutral.rightWristLateral, sample.rightWristLateral),
     shoulderHip: blend(neutral.shoulderHip ?? 0, sample.shoulderHip ?? 0),
+    legsMeasured: sample.legsMeasured === false ? neutral.legsMeasured : sample.legsMeasured ?? neutral.legsMeasured,
   };
+}
+
+/** Relative torso change that must clear before distance EMA runs (phone freezes micro-drift). */
+export const BODY_SCALE_DEADBAND = 0.1;
+/** Per-30fps blend when past the deadband. Same clock helper as neutralDriftForGap. */
+export const BODY_SCALE_DRIFT = 0.12;
+/** Lateral / vertical stance shift that also arms a soft position EMA. */
+export const BODY_POSITION_DEADBAND = 0.045;
+export const BODY_POSITION_DRIFT = 0.06;
+
+/**
+ * EMA alpha for smooth recalibration when the player steps closer/farther or
+ * recenters, without a full recalibrate restart. Returns 0 under the deadband
+ * so quiet micro-jitter does not rewrite the session baseline.
+ */
+export function bodyScaleDriftAlpha(
+  neutral: NeutralPose,
+  sample: NeutralPose,
+  dtMs: number,
+  options?: { scaleDeadband?: number; positionDeadband?: number; scaleDrift?: number; positionDrift?: number },
+) {
+  const scaleDeadband = options?.scaleDeadband ?? BODY_SCALE_DEADBAND;
+  const positionDeadband = options?.positionDeadband ?? BODY_POSITION_DEADBAND;
+  const scaleDrift = options?.scaleDrift ?? BODY_SCALE_DRIFT;
+  const positionDrift = options?.positionDrift ?? BODY_POSITION_DRIFT;
+  const torsoRatio = Math.abs(sample.torso - neutral.torso) / Math.max(0.05, neutral.torso);
+  const shoulderRatio = Math.abs(sample.shoulderWidth - neutral.shoulderWidth) / Math.max(0.04, neutral.shoulderWidth);
+  const scaleMoved = torsoRatio >= scaleDeadband || shoulderRatio >= scaleDeadband;
+  const positionMoved =
+    Math.abs(sample.centerX - neutral.centerX) >= positionDeadband || Math.abs(sample.hipY - neutral.hipY) >= positionDeadband;
+  if (!scaleMoved && !positionMoved) return 0;
+  const perFrame = scaleMoved ? scaleDrift : positionDrift;
+  if (dtMs <= 0 || perFrame <= 0) return 0;
+  const frames = dtMs / (1000 / 30);
+  return 1 - (1 - Math.min(0.95, perFrame)) ** frames;
+}
+
+/**
+ * Gradually adapt standing scale/position from a quiet sample.
+ * Returns the same object when alpha is 0.
+ */
+export function observeBodyScale(neutral: NeutralPose, sample: NeutralPose, alpha: number): NeutralPose {
+  if (!(alpha > 0)) return neutral;
+  return driftNeutral(neutral, sample, Math.min(0.95, alpha));
 }
 
 export function calibrateNeutral(

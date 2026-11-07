@@ -53,6 +53,13 @@ export interface FramingConfig {
   warnMs: number;
   /** Further sustained loss pauses into the reposition state. One frame is not enough. */
   pauseMs: number;
+  /**
+   * Shoulder-to-hip length below this (image height fraction) is too far.
+   * Matched to the phone start gate. A body that is only a speck cannot calibrate.
+   */
+  torsoFar: number;
+  /** Nose-to-ankle (or knee) vertical span below this is too far. */
+  spanFar: number;
 }
 
 export const DEFAULT_FRAMING_CONFIG: FramingConfig = {
@@ -64,6 +71,8 @@ export const DEFAULT_FRAMING_CONFIG: FramingConfig = {
   goodFramesToCalibrate: 8,
   warnMs: 800,
   pauseMs: 3000,
+  torsoFar: 0.11,
+  spanFar: 0.3,
 };
 
 export const FRAMING_SETUP_LINES = [
@@ -81,8 +90,8 @@ export const PLAY_BANNER = "PLEASE MOVE BACK INTO FRAME";
 export const LOST_YOU = "We lost you. Step back into view.";
 
 const INSTRUCTION: Record<FramingCode, string> = {
-  good: "Player detected",
-  too_close: "STEP BACK A LITTLE",
+  good: "Full body detected",
+  too_close: "MOVE BACK",
   too_far: "MOVE CLOSER",
   move_left: "MOVE LEFT",
   move_right: "MOVE RIGHT",
@@ -197,10 +206,10 @@ function resolveConfig(overrides?: Partial<FramingConfig>, minVisibility?: numbe
 
 /**
  * One primary instruction for a single frame.
- * GOOD means the head, shoulders, and hips are inside the image.
- * Knees and ankles under the visibility floor do not reject the frame.
- * Where the body stands in the frame does not matter. Apparent size does not matter
- * while those joints stay inside. Setup and play share that rule.
+ * GOOD means the head, shoulders, and hips are inside the image and the body
+ * is not a distant speck. Knees and ankles under the visibility floor do not
+ * reject the frame. Where the body stands laterally does not matter while those
+ * joints stay inside. A tiny torso or head-to-foot span is too_far.
  */
 function classifyRaw(
   landmarks: Array<FramingLandmark | null | undefined>,
@@ -265,6 +274,15 @@ function classifyRaw(
   if (edge) return { code: edge, confidence };
 
   if (footPredictedOutside(landmarks, config.minVisibility)) return { code: "keep_feet", confidence };
+
+  const shoulder = { x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2 };
+  const hip = { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2 };
+  const torso = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y);
+  const footY = leftAnkle && rightAnkle ? Math.max(leftAnkle.y, rightAnkle.y) : leftKnee && rightKnee ? Math.max(leftKnee.y, rightKnee.y) : null;
+  const span = nose && footY !== null ? footY - nose.y : null;
+  if (torso <= config.torsoFar || (span !== null && span <= config.spanFar)) {
+    return { code: "too_far", confidence };
+  }
 
   return { code: "good", confidence };
 }
@@ -408,7 +426,7 @@ function verticalHipsVisible(
 export function plainFramingCue(code: FramingCode, confidence = 1): string {
   switch (code) {
     case "too_close":
-      return "Move backward";
+      return "Move back";
     case "too_far":
       return "Move closer";
     case "keep_feet":
@@ -426,8 +444,28 @@ export function plainFramingCue(code: FramingCode, confidence = 1): string {
     case "adjust_camera":
       return confidence < 0.45 ? "Improve lighting" : "Move back until your full body is visible.";
     case "good":
-      return "Player detected";
+      return "Full body detected";
   }
+}
+
+export type LiveFramingCue = "Move back" | "Move closer" | "Full body detected";
+
+/**
+ * Primary distance / readiness lines only when needed.
+ * During active play, pass announceReady false so "Full body detected" stays off
+ * and distance cues only surface when framing is actually bad.
+ */
+export function liveFramingCue(input: {
+  code: FramingCode | null | undefined;
+  /** When false, hide the ready line (active play). Default true for calibration. */
+  announceReady?: boolean;
+}): LiveFramingCue | null {
+  const code = input.code;
+  if (!code) return null;
+  if (code === "too_close" || code === "arm_space") return "Move back";
+  if (code === "too_far") return "Move closer";
+  if (code === "good" && input.announceReady !== false) return "Full body detected";
+  return null;
 }
 
 /** Calibration already decided. This only picks the line the phone shows. */
@@ -472,6 +510,8 @@ export function framingStatusLine(message: string | null | undefined) {
     "HIPS AND ANKLES",
     "STAY STILL WHILE WE CALIBRATE",
     "PLAYER DETECTED",
+    "FULL BODY DETECTED",
+    "MOVE BACK",
     "MOTION TRACKING ACTIVE",
     "LOOKING FOR PLAYER",
     "ONE PERSON AT A TIME",

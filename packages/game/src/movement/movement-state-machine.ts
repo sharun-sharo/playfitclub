@@ -1,4 +1,4 @@
-import { assessFraming, driftNeutral, neutralFromLandmarks } from "./calibration";
+import { assessFraming, bodyScaleDriftAlpha, driftNeutral, neutralFromLandmarks } from "./calibration";
 import { classifyPose } from "./movement-classifier";
 import { smoothFrame } from "./landmark-smoothing";
 import {
@@ -460,10 +460,16 @@ export function pushPose(state: DetectorState, frame: PoseFrame): DetectorUpdate
   if (settled.neutral && stanceIsQuiet(settled, signals)) {
     const sample = neutralFromLandmarks(smoothed.landmarks);
     if (sample) {
-      settled = {
-        ...settled,
-        neutral: driftNeutral(settled.neutral, sample, neutralDriftForGap(settled.thresholds.neutralDrift, dt)),
-      };
+      // Phone locks neutralDrift at 0 so micro-jitter does not rewrite the stance.
+      // Past a body-scale / position deadband, EMA still adapts distance without recalibrate().
+      const continuous = neutralDriftForGap(settled.thresholds.neutralDrift, dt);
+      const alpha = continuous > 0 ? continuous : bodyScaleDriftAlpha(settled.neutral, sample, dt);
+      if (alpha > 0) {
+        settled = {
+          ...settled,
+          neutral: driftNeutral(settled.neutral, sample, alpha),
+        };
+      }
     }
   }
   return {

@@ -11,6 +11,7 @@ import {
   phoneCalibMachine,
   phoneFullscreenKeepsPlay,
   phoneStageCaps,
+  phoneLiveFramingCue,
   phoneStandGuidance,
   phoneStandHolding,
   startPhonePlay,
@@ -1119,7 +1120,9 @@ export function PhoneFitRun({
   const cameraLarge = phoneShowsCalibrationStage({ started, playing, phase: calib.phase });
   const waitingForCourse = !playing && (calib.phase === "running" || calib.countdown === "GO");
   const holding = poseCount <= 1 && phoneStandHolding(calib);
-  const guidanceLine = phoneStandGuidance(calib, poseCount);
+  const guidanceLine =
+    phoneStandGuidance(calib, poseCount) ??
+    phoneLiveFramingCue({ phase: calib.phase, framingCode: poseRef.current.framingCode, guidance: calib.guidance });
   const showCourseHud = playing && calib.phase !== "reposition" && calib.phase !== "countdown" && calib.phase !== "ready" && calib.phase !== "finding" && calib.phase !== "adjust" && calib.phase !== "calibrating";
 
   return (

@@ -1,5 +1,13 @@
-import { DEFAULT_FRAMING_CONFIG, type FramingCode, type FramingLandmark } from "../../lib/vision/framing";
+import {
+  DEFAULT_FRAMING_CONFIG,
+  liveFramingCue,
+  type FramingCode,
+  type FramingLandmark,
+  type LiveFramingCue,
+} from "../../lib/vision/framing";
 import { inCameraFrame } from "../../lib/vision/preview-fit";
+
+export type { LiveFramingCue };
 
 /**
  * Phone start gate. Visibility floor is the existing framing floor (0.45).
@@ -52,7 +60,7 @@ export const PHONE_STATUSES = ["Finding Player", "Adjust Position", "Calibrating
 export type PhoneStatus = (typeof PHONE_STATUSES)[number];
 
 export const PHONE_GUIDANCE = [
-  "Move farther",
+  "Move back",
   "Move closer",
   "Center your body",
   "Keep your knees visible",
@@ -278,7 +286,7 @@ export function phoneFramingGuidance(input: {
   if (input.poseCount !== 1) return null;
   switch (input.framingCode) {
     case "too_close":
-      return "Move farther";
+      return "Move back";
     case "too_far":
       return "Move closer";
     case "move_left":
@@ -397,7 +405,7 @@ export function phoneBodyGate(input: {
     cutOff(confidentJoint(input.landmarks, PHONE_START_LANDMARKS.rightKnee, minVisibility));
   if (!leftKnee || !rightKnee) {
     if (kneesCut || headCut) {
-      return { signal: "partial", fullBody: false, straight, guidance: "Move farther", standing: false, zones };
+      return { signal: "partial", fullBody: false, straight, guidance: "Move back", standing: false, zones };
     }
     return { signal: "partial", fullBody: false, straight, guidance: "Keep your knees visible", standing: false, zones };
   }
@@ -407,7 +415,7 @@ export function phoneBodyGate(input: {
       signal: "partial",
       fullBody: false,
       straight,
-      guidance: !head || shouldersHigh ? "Move farther" : "Hold still",
+      guidance: !head || shouldersHigh ? "Move back" : "Hold still",
       standing: false,
       zones,
     };
@@ -456,6 +464,23 @@ export function phoneStandGuidance(
   if (poseCount > 1) return "One person at a time";
   if (phoneStandHolding(state) && state.phase !== "ready" && state.phase !== "countdown") return "Hold still";
   return state.guidance;
+}
+
+/**
+ * Live Move back / Move closer / Full body detected only when needed.
+ * Hidden during active running play; shown on calibration / adjust / reposition.
+ */
+export function phoneLiveFramingCue(input: {
+  phase: PhoneCalibPhase;
+  framingCode: FramingCode | null;
+  guidance: PhoneGuidance | null;
+}): LiveFramingCue | null {
+  if (input.phase === "running" || input.phase === "countdown" || input.phase === "warning") return null;
+  if (input.guidance === "Move back" || input.guidance === "Move closer" || input.guidance === "Full body detected") {
+    return input.guidance;
+  }
+  const announceReady = input.phase === "finding" || input.phase === "adjust" || input.phase === "calibrating" || input.phase === "ready" || input.phase === "reposition";
+  return liveFramingCue({ code: input.framingCode, announceReady });
 }
 
 function clearEdges(state: PhoneCalibState): PhoneCalibState {

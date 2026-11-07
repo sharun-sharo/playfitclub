@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 import { medianStandingBaseline } from "./calibration";
 import { DEFAULT_THRESHOLDS, type NeutralPose } from "./movement-types";
 import {
+  BODY_SCALE_DEADBAND,
+  bodyScaleDriftAlpha,
+  observeBodyScale,
+} from "./calibration";
+import {
   CALIBRATION_RETRY_MS,
   armMappingVerdict,
   calibrationThresholds,
   createMotionCalibration,
   noteBodyScale,
   observeMotionCalibration,
+  updateBodyScale,
 } from "./session-calibration";
 
 function sample(state: ReturnType<typeof createMotionCalibration>, now: number, movement: "lean_left" | "lean_right" | "jump" | "squat" | null) {
@@ -94,6 +100,44 @@ describe("session motion calibration", () => {
     expect(armMappingVerdict("left", "lean_right")).toBe("mismatch");
     expect(armMappingVerdict("right", "lean_right")).toBe("match");
     expect(armMappingVerdict("right", "jump")).toBe("waiting");
+  });
+
+  it("updates live body scale without resetting coaching", () => {
+    let state = noteBodyScale(createMotionCalibration(0), 0.2, 0.16, 0);
+    state = sample(state, 100, "lean_left");
+    expect(state.step).toBe("right");
+    state = updateBodyScale(state, 0.28, 0.19);
+    expect(state.bodyScale).toEqual({ torso: 0.28, shoulderWidth: 0.19 });
+    expect(state.step).toBe("right");
+    expect(state.instruction).toBe("Raise your right arm");
+  });
+
+  it("EMA-adapts torso when the player moves closer past the deadband", () => {
+    const stance = (overrides: Partial<NeutralPose>): NeutralPose => ({
+      centerX: 0.5,
+      hipY: 0.5,
+      shoulderY: 0.28,
+      torso: 0.2,
+      shoulderWidth: 0.16,
+      ankleY: 0.9,
+      kneeAngle: 175,
+      thighLength: 0.2,
+      shinLength: 0.2,
+      leftWristLateral: 0.1,
+      rightWristLateral: 0.1,
+      shoulderHip: 0,
+      legsMeasured: true,
+      ...overrides,
+    });
+    const neutral = stance({});
+    const closer = stance({ torso: 0.28, shoulderWidth: 0.2, hipY: 0.52 });
+    expect(Math.abs(closer.torso - neutral.torso) / neutral.torso).toBeGreaterThan(BODY_SCALE_DEADBAND);
+    expect(bodyScaleDriftAlpha(neutral, closer, 33)).toBeGreaterThan(0);
+    expect(bodyScaleDriftAlpha(neutral, stance({ torso: 0.205 }), 33)).toBe(0);
+    const next = observeBodyScale(neutral, closer, 0.2);
+    expect(next.torso).toBeGreaterThan(neutral.torso);
+    expect(next.torso).toBeLessThan(closer.torso);
+    expect(observeBodyScale(neutral, closer, 0)).toBe(neutral);
   });
 
   it("uses the median standing pose and not the first frame alone", () => {

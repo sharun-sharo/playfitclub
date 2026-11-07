@@ -5,9 +5,9 @@ import type { FramingCode } from "./framing";
  * Readiness is the framing classifier held for READY_HOLD_MS.
  * The realtime server owns the countdown. This machine only requests it.
  *
- * MediaPipe is created with numPoses: 1. PoseLandmarkerResult returns that one
- * pose's landmarks and does not include pose presence or detection confidence,
- * so a second overlapping body cannot be detected or ruled out.
+ * MediaPipe is created with numPoses: 2. PoseEstimator selects the largest,
+ * most-centered figure. PoseLandmarkerResult does not include pose presence
+ * scores, so overlapping bodies of similar size may still switch.
  */
 
 export const READY_HOLD_MS = 2000;

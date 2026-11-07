@@ -9,6 +9,7 @@ import {
   VERTICAL_HIP_MARGIN,
   plainCalibrationCue,
   plainFramingCue,
+  liveFramingCue,
   plainLimbCue,
   type FramingCode,
   type FramingLandmark,
@@ -54,14 +55,14 @@ function settle(landmarks: FramingLandmark[], profile: FramingProfile, mirrored:
 
 describe("plain phone cues", () => {
   it("uses one short line from the framing code", () => {
-    expect(plainFramingCue("too_close")).toBe("Move backward");
+    expect(plainFramingCue("too_close")).toBe("Move back");
     expect(plainFramingCue("too_far")).toBe("Move closer");
     expect(plainFramingCue("keep_feet")).toBe("Keep your head and feet inside the frame.");
     expect(plainFramingCue("tilt_up")).toBe("Tilt phone upward");
     expect(plainFramingCue("tilt_down")).toBe("Tilt phone downward");
     expect(plainFramingCue("move_left")).toBe("Move slightly left");
     expect(plainFramingCue("move_right")).toBe("Move slightly right");
-    expect(plainFramingCue("good")).toBe("Player detected");
+    expect(plainFramingCue("good")).toBe("Full body detected");
     expect(plainFramingCue("adjust_camera", 0.2)).toBe("Improve lighting");
     expect(plainFramingCue("adjust_camera", 0.8)).toBe("Move back until your full body is visible.");
   });
@@ -88,11 +89,11 @@ describe("framing classifier", () => {
     });
     const view = settle(landmarks, "setup", true);
     expect(view.code).toBe("too_close");
-    expect(view.instruction).toBe("STEP BACK A LITTLE");
+    expect(view.instruction).toBe("MOVE BACK");
     expect(view.tone).toBe("adjust");
   });
 
-  it("accepts a small full body anywhere in the frame", () => {
+  it("asks a distant speck to move closer", () => {
     const landmarks = pose((points) => {
       points[0] = { x: 0.5, y: 0.4, visibility: 0.95 };
       points[11] = { x: 0.46, y: 0.44, visibility: 0.95 };
@@ -107,8 +108,8 @@ describe("framing classifier", () => {
       points[28] = { x: 0.53, y: 0.62, visibility: 0.95 };
     });
     const view = settle(landmarks, "setup", true);
-    expect(view.code).toBe("good");
-    expect(view.instruction).toBe("Player detected");
+    expect(view.code).toBe("too_far");
+    expect(view.instruction).toBe("MOVE CLOSER");
   });
 
   it("accepts a full body on the left third, center, and right third", () => {
@@ -169,10 +170,19 @@ describe("framing classifier", () => {
     const view = settle(pose(), "setup", true);
     expect(view.code).toBe("good");
     expect(view.tone).toBe("ready");
-    expect(view.instruction).toBe("Player detected");
+    expect(view.instruction).toBe("Full body detected");
     expect(view.calibrate).toBe(false);
     const held = settle(pose(), "setup", true, 8);
     expect(held.calibrate).toBe(true);
+  });
+
+  it("shows live framing cues only when needed", () => {
+    expect(liveFramingCue({ code: "too_close" })).toBe("Move back");
+    expect(liveFramingCue({ code: "too_far" })).toBe("Move closer");
+    expect(liveFramingCue({ code: "good" })).toBe("Full body detected");
+    expect(liveFramingCue({ code: "good", announceReady: false })).toBeNull();
+    expect(liveFramingCue({ code: "move_left" })).toBeNull();
+    expect(liveFramingCue({ code: null })).toBeNull();
   });
 
   it("does not flip a stable reading or pause on one noisy frame", () => {

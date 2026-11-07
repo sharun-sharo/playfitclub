@@ -99,7 +99,8 @@ async function createPoseLandmarker(): Promise<PoseRuntimeBundle> {
   const options = {
     baseOptions: { modelAssetPath: POSE_MODEL_PATH, delegate: "GPU" as const },
     runningMode: "VIDEO" as const,
-    numPoses: 1,
+    /** Up to two people; PoseEstimator picks largest/most-centered as the player. */
+    numPoses: 2,
     minPoseDetectionConfidence: 0.35,
     minPosePresenceConfidence: 0.35,
     minTrackingConfidence: 0.35,

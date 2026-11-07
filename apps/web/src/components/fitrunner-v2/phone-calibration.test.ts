@@ -6,6 +6,7 @@ import {
   phoneFramingGuidance,
   phoneFullscreenKeepsPlay,
   phoneFullBody,
+  phoneLiveFramingCue,
   phoneStandGuidance,
   phoneStandHolding,
   PHONE_ANKLES_NOT_REQUIRED,
@@ -232,12 +233,16 @@ describe("phone calibration", () => {
     expect(legs.signal).toBe("partial");
     expect(legs.standing).toBe(false);
     expect(legs.guidance).toBe("Keep your knees visible");
-    expect(phoneFramingGuidance({ framingCode: "too_close", fullBody: true, straight: true, poseCount: 1 })).toBe("Move farther");
+    expect(phoneFramingGuidance({ framingCode: "too_close", fullBody: true, straight: true, poseCount: 1 })).toBe("Move back");
     expect(phoneFramingGuidance({ framingCode: "too_far", fullBody: false, straight: true, poseCount: 1 })).toBe("Move closer");
     expect(phoneFramingGuidance({ framingCode: "move_left", fullBody: false, straight: true, poseCount: 1 })).toBe("Center your body");
     expect(phoneFramingGuidance({ framingCode: "move_right", fullBody: false, straight: true, poseCount: 1 })).toBe("Center your body");
     expect(phoneFramingGuidance({ framingCode: "keep_feet", fullBody: false, straight: true, poseCount: 1 })).toBe("Keep your knees visible");
     expect(phoneFramingGuidance({ framingCode: "good", fullBody: true, straight: true, poseCount: 2 })).toBeNull();
+    expect(phoneLiveFramingCue({ phase: "adjust", framingCode: "too_close", guidance: "Move back" })).toBe("Move back");
+    expect(phoneLiveFramingCue({ phase: "adjust", framingCode: "too_far", guidance: null })).toBe("Move closer");
+    expect(phoneLiveFramingCue({ phase: "ready", framingCode: "good", guidance: "Full body detected" })).toBe("Full body detected");
+    expect(phoneLiveFramingCue({ phase: "running", framingCode: "too_close", guidance: "Move back" })).toBeNull();
   });
 
   it("marks the head, shoulders, and knees on the standing figure", () => {
@@ -265,7 +270,7 @@ describe("phone calibration", () => {
       points[0] = { x: 0.5, y: -0.06, visibility: 0.95 };
     });
     const headless = phoneBodyReading({ poseCount: 1, landmarks: noHead, framingCode: null });
-    expect(headless.guidance).toBe("Move farther");
+    expect(headless.guidance).toBe("Move back");
     expect(headless.zones).toEqual({ head: "missing", shoulders: "ok", knees: "ok" });
 
     const far = standing((points) => {
@@ -338,7 +343,7 @@ describe("phone calibration", () => {
       points[26] = { x: 0.55, y: 1.05, visibility: 0.95 };
     });
     const clippedReading = phoneBodyReading({ poseCount: 1, landmarks: clipped, framingCode: "good" });
-    expect(clippedReading.guidance).toBe("Move farther");
+    expect(clippedReading.guidance).toBe("Move back");
     expect(clippedReading.guidance).not.toBe("Keep your knees visible");
 
     const off = standing((points) => {
@@ -373,7 +378,7 @@ describe("phone calibration", () => {
     expect(reading.fullBody).toBe(true);
     expect(reading.guidance).toBe("Full body detected");
     expect(reading.guidance).not.toBe("Keep your knees visible");
-    expect(reading.guidance).not.toBe("Move farther");
+    expect(reading.guidance).not.toBe("Move back");
   });
 
   it("waits for the baseline after the 2 second hold and does not treat that wait as a reset", () => {

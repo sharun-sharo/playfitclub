@@ -14,6 +14,7 @@ import {
   setThresholds,
   resetPhoneForRound,
   settleGestures,
+  updateBodyScale,
   type DetectorState,
   type DetectorUpdate,
   type MotionCalibration,
@@ -22,6 +23,7 @@ import {
   type NeutralPose,
   type PoseFrame,
 } from "@fitplay/game";
+import { selectPrimaryPose } from "@/lib/vision/select-primary-pose";
 import {
   cameraBoxKeepsFrames,
   classificationTimestamp,
@@ -153,7 +155,7 @@ export interface PoseUiState {
   rates: PoseRates;
   /** Developer diagnostics only. Not sent to the TV. */
   landmarksLabel: string | null;
-  /** Poses returned for this frame. The landmarker is created with numPoses: 1. */
+  /** Tracked player count after primary-pose selection (0 or 1). */
   poseCount: number;
   /** Session coach line for the TV. Null when the race has started or the coach is finished. */
   calibrationCue: string | null;
@@ -230,14 +232,14 @@ export class PoseEstimator {
   private delegate: "GPU" | "CPU" | null = null;
   /** One skeleton draw for this inference, after the command is handed off. */
   private pendingDraw: { points: Array<{ x: number; y: number }> | undefined } | null = null;
-  /** Latest single-person landmarks. The phone start gate reads this. No second model. */
+  /** Latest primary-player landmarks. The phone start gate reads this. No second model. */
   private bodyMarks: Array<{ x: number; y: number; visibility?: number }> | null = null;
   private framing = createFramingMonitor();
   private lastFramingKey = "";
   /** Play-profile pause is armed only after the race has started. */
   private raceLive = true;
   private landmarkSample: string | null = null;
-  /** detectForVideo with numPoses: 1 returns at most one pose. Presence scores are not in the result. */
+  /** After selectPrimaryPose: 0 or 1. MediaPipe may have returned two raw poses. */
   private poseCount = 0;
   /** In-memory samples for this page load. Not written to storage. */
   private motion: MotionCalibration = createMotionCalibration();
@@ -378,7 +380,7 @@ export class PoseEstimator {
     this.raceLive = live;
   }
 
-  /** Landmarks from the pose already running. Null when nobody, or more than one person, is in frame. */
+  /** Landmarks for the primary tracked player. Null when nobody is in frame. */
   latestLandmarks() {
     return this.bodyMarks;
   }
@@ -478,27 +480,13 @@ export class PoseEstimator {
     const inferenceEnded = performance.now();
     this.rates = { ...this.rates, inferenceStartMs: inferenceStarted, inferenceEndMs: inferenceEnded };
     this.sampleRates(inferenceEnded, inferenceEnded - inferenceStarted);
-    this.poseCount = result.landmarks?.length ?? 0;
-    const raw = result.landmarks?.[0];
-    this.bodyMarks = this.poseCount === 1 && raw ? raw : null;
-    this.pendingDraw = now - this.lastDraw > 50 ? { points: raw } : null;
+    const picked = selectPrimaryPose(result.landmarks);
+    this.poseCount = picked.poseCount;
+    const raw = picked.landmarks;
+    this.bodyMarks = raw;
+    this.pendingDraw = now - this.lastDraw > 50 ? { points: raw ?? undefined } : null;
     if (this.pendingDraw !== null) this.lastDraw = now;
-    if (this.poseCount > 1) {
-      this.landmarkSample = null;
-      const view = this.framingView([], now);
-      this.emitUi({
-        guidance: "One person at a time",
-        confidence: 0,
-        framingReady: false,
-        calibrated: Boolean(this.detector.neutral),
-        movement: null,
-        actionsEnabled: false,
-        diagnostics: null,
-        framing: { ...view, instruction: "One person at a time" },
-      }, now);
-      return;
-    }
-    this.landmarkSample = formatLandmarkSample(raw);
+    this.landmarkSample = formatLandmarkSample(raw ?? undefined);
     const aspect = video.videoWidth > 0 && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 1;
     const frame: PoseFrame | null = raw
       ? {
@@ -587,6 +575,9 @@ export class PoseEstimator {
     }
     const update = pushPose(this.detector, frame);
     this.detector = update.state;
+    if (this.baselineLocked && update.state.neutral) {
+      this.motion = updateBodyScale(this.motion, update.state.neutral.torso, update.state.neutral.shoulderWidth);
+    }
     this.noteDiag(update);
     this.observeCoach(update, now, view.code === "good" && !view.pause);
     const allowed = view.suppressAll ? [] : update.events.filter((event) => gestureAllowed(event.movementType, view.blocks));
