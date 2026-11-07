@@ -17,6 +17,7 @@ import {
   phoneCameraFailure,
   phoneFrameWarning,
   phoneGestureCandidate,
+  phoneKeyboardTestEnabled,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
   phoneMotionLogText,
@@ -227,6 +228,15 @@ describe("phone local gestures", () => {
     expect(phoneMotionDiagEnabled("?motiondiag=1", "127.0.0.1")).toBe(true);
     expect(phoneMotionDiagEnabled("?motiondiag=1", "playfitclub.com")).toBe(false);
     expect(phoneMotionDiagEnabled("", "localhost")).toBe(false);
+    expect(phoneKeyboardTestEnabled("")).toBe(false);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "", "production")).toBe(false);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "localhost")).toBe(true);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "127.0.0.1")).toBe(true);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "playfitclub.com")).toBe(false);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "www.playfitclub.com", "development")).toBe(false);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "preview.example", "development")).toBe(true);
+    expect(phoneKeyboardTestEnabled("?keyboard=1", "preview.example", "production")).toBe(false);
+    expect(phoneKeyboardTestEnabled("", "localhost")).toBe(false);
     expect(PHONE_TEST_CONTROLS_LABEL).toBe("Test controls");
     expect(PHONE_TEST_CONTROLS_LABEL).not.toMatch(/play with keyboard/i);
     const lines = phoneMotionDiagLines({

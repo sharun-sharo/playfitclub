@@ -37,6 +37,7 @@ import {
   phonePlayViewportBox,
   phoneCameraFailure,
   phoneGestureCandidate,
+  phoneKeyboardTestEnabled,
   phoneMotionDiagEnabled,
   phoneMotionDiagLines,
   phoneObstacleCounts,
@@ -213,6 +214,7 @@ export function PhoneFitRun({
   const [calorieText, setCalorieText] = useState("—");
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
   const [motionDiag, setMotionDiag] = useState(false);
+  const [keyboardTest, setKeyboardTest] = useState(false);
   const [diagLines, setDiagLines] = useState<string[]>(() => [
     ...phoneMotionDiagLines(emptyDiag()),
     ...phoneFrameDiagLines({ frameMs: null, longFrame: false }),
@@ -234,9 +236,12 @@ export function PhoneFitRun({
   };
 
   useEffect(() => {
-    const on = phoneMotionDiagEnabled(window.location.search, window.location.hostname);
+    const search = window.location.search;
+    const host = window.location.hostname;
+    const on = phoneMotionDiagEnabled(search, host);
     motionDiagRef.current = on;
     setMotionDiag(on);
+    setKeyboardTest(phoneKeyboardTestEnabled(search, host));
   }, []);
 
   useLayoutEffect(() => {
@@ -488,7 +493,8 @@ export function PhoneFitRun({
             holdCourse: true,
             demoLimitSeconds,
             drawProfile: "phone",
-            acceptKeyboard: false,
+            /** Local `?keyboard=1` only. Production phone path keeps keyboard off. */
+            acceptKeyboard: keyboardTest,
             /** Mobile Only portrait framing. Laptop + Play on TV keep landscape. */
             cameraFraming: wantsLandscape ? "landscape" : "portrait-when-tall",
           },
@@ -515,7 +521,7 @@ export function PhoneFitRun({
       handle?.dispose();
       handleRef.current = null;
     };
-  }, [demoLimitSeconds, runId, wantsLandscape]);
+  }, [demoLimitSeconds, keyboardTest, runId, wantsLandscape]);
 
   useEffect(() => {
     if (streamToken === 0) return;
@@ -1065,7 +1071,7 @@ export function PhoneFitRun({
                 coinsRef={coinsCountRef}
                 calories={calorieText}
                 note={calorieNote}
-                keyboard={false}
+                keyboard={keyboardTest}
                 className="phone-score"
                 layout={wantsLandscape ? "full" : "compact"}
               />

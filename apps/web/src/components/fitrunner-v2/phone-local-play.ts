@@ -406,6 +406,29 @@ export function phoneMotionDiagEnabled(search: string, host = "") {
   return bare === "localhost" || bare === "127.0.0.1";
 }
 
+/** Tester query for local portrait keyboard. The value must be exactly `1`. */
+export function readPhoneKeyboardFlag(search: string) {
+  const query = search.startsWith("?") ? search.slice(1) : search;
+  return new URLSearchParams(query).get("keyboard") === "1";
+}
+
+/**
+ * Portrait phone keyboard for local testing only.
+ * Needs `?keyboard=1`, then either localhost/127.0.0.1 or a non-production NODE_ENV.
+ * Hard-blocked on playfitclub.com so production never gets keyboard controls.
+ */
+export function phoneKeyboardTestEnabled(
+  search: string,
+  host = "",
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+) {
+  if (!readPhoneKeyboardFlag(search)) return false;
+  const bare = host.trim().toLowerCase().split(":")[0] ?? "";
+  if (bare === "playfitclub.com" || bare.endsWith(".playfitclub.com")) return false;
+  if (bare === "localhost" || bare === "127.0.0.1") return true;
+  return nodeEnv !== "production";
+}
+
 export function renderLoopFps(samples: readonly number[]) {
   if (samples.length < 2) return null;
   const first = samples[0];
