@@ -59,6 +59,7 @@ import {
   PHONE_TV_MIRROR_NOTE,
   PHONE_TEST_CONTROLS,
   PHONE_TEST_CONTROLS_LABEL,
+  PLAY_HUB_PATH,
   renderLoopFps,
   type PhoneCourseStartIntent,
   type PhoneDisplayMode,
@@ -1424,7 +1425,7 @@ export function PhoneFitRun({
           saved={null}
           onAgain={() => setRunId((value) => value + 1)}
           onExit={() => {
-            window.location.assign("/games");
+            window.location.assign(PLAY_HUB_PATH);
           }}
         />
       ) : null}

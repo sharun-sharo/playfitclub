@@ -13,6 +13,7 @@ import { remainingDemoSeconds, spendActiveDemo } from "@/lib/fitrunner-v2/demo-b
 import { parseWeightKg } from "@/lib/fitrunner-v2/calories";
 import { cameraActiveStep, playCalories } from "@/lib/fitrunner-v2/play-calories";
 import { createOnce } from "@/lib/fitrunner-v2/run-save";
+import { PLAY_HUB_PATH } from "@/components/fitrunner-v2/phone-local-play";
 import { fitRunnerTuning as tuning, type GraphicsQuality, type LaneEasing } from "@/components/fitrunner-v2/tuning";
 import { FitRunnerTutorial } from "@/components/fitrunner-v2/tutorial-overlay";
 import { useTvSession, type LivesAck } from "@/components/fitrunner-v2/use-tv-session";
@@ -27,9 +28,9 @@ import type { PoseDiagnostics } from "@/lib/vision/pose-estimator";
 const CLIP_BUTTONS = ["StandUp", "WipeSweat", "LongJump"] as const;
 const QUALITIES = ["low", "medium", "high"] as const;
 
-/** Exit returns to the games list. */
+/** Exit returns to the play hub. */
 function gameOverExitPath() {
-  return "/games";
+  return PLAY_HUB_PATH;
 }
 
 export function FitRunnerV2({
