@@ -275,6 +275,8 @@ export function PhoneFitRun({
   useLayoutEffect(() => {
     let pinnedW = 0;
     let pinnedH = 0;
+    let pinnedLeft = 0;
+    let pinnedTop = 0;
     const apply = () => {
       const root = rootRef.current;
       const canvas = canvasRef.current;
@@ -300,10 +302,17 @@ export function PhoneFitRun({
           card.style.maxWidth = `${width}px`;
         }
       }
-      // After the CSS box changes size, nudge Fit Run so buffer/attrs catch up.
-      if (box.width !== pinnedW || box.height !== pinnedH) {
+      // After the CSS box or visualViewport offset changes, nudge Fit Run so buffer/attrs catch up.
+      const moved =
+        box.width !== pinnedW ||
+        box.height !== pinnedH ||
+        box.left !== pinnedLeft ||
+        box.top !== pinnedTop;
+      if (moved) {
         pinnedW = box.width;
         pinnedH = box.height;
+        pinnedLeft = box.left;
+        pinnedTop = box.top;
         window.requestAnimationFrame(() => {
           window.dispatchEvent(new Event("resize"));
         });

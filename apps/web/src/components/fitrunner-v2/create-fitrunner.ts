@@ -1474,6 +1474,8 @@ export async function startFitRunner(
       canvas.dataset.cameraFraming = portraitFollowActive ? "portrait" : "landscape";
       canvas.dataset.cameraFov = cam.fov.toFixed(1);
       canvas.dataset.cameraDistance = cam.distance.toFixed(2);
+      canvas.dataset.cameraLookAhead = cam.lookAhead.toFixed(2);
+      canvas.dataset.cameraHeight = cam.height.toFixed(2);
     }
 
     function publish(speed: number) {

@@ -228,6 +228,11 @@ export function applyPhonePlayViewport(node: HTMLElement, box: PhoneViewportBox)
   node.style.right = "auto";
   node.style.bottom = "auto";
   node.style.maxWidth = "none";
+  // Beat stylesheet min-height:100svh / 100dvh so the canvas cannot outgrow visualViewport
+  // (that mismatch shows as a black/sky seam under the course during RUNNING).
+  node.style.minWidth = "0";
+  node.style.minHeight = "0";
+  node.style.maxHeight = `${box.height}px`;
 }
 
 /** Same rule as the server seed: 0 is not a seed. The phone course does not wait on Railway. */

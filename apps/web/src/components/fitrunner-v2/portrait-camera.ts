@@ -21,15 +21,18 @@ export function landscapeFollowCamera(): FollowCameraTuning {
 
 /**
  * Extra asphalt beyond each road edge in the portrait frustum.
- * Hybrid: roadEdge ± a thin margin (0–0.1). Slight lip crop is OK for presence.
+ * Aggressive hybrid: roadEdge ± 0 (thin lip crop OK for presence).
  */
-export const PORTRAIT_ROAD_MARGIN_M = 0.05;
+export const PORTRAIT_ROAD_MARGIN_M = 0;
 
 /** Prefer a short pull-back; raise FOV before pushing distance past the cap. */
-export const PORTRAIT_FOV_PREF = 70;
-export const PORTRAIT_FOV_MAX = 78;
-export const PORTRAIT_DISTANCE_MIN = 11.5;
-export const PORTRAIT_DISTANCE_MAX = 14;
+export const PORTRAIT_FOV_PREF = 78;
+export const PORTRAIT_FOV_MAX = 85;
+export const PORTRAIT_DISTANCE_MIN = 10;
+export const PORTRAIT_DISTANCE_MAX = 12;
+
+/** Look-ahead as a fraction of distance (≤ 1.0). */
+export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.9;
 
 /**
  * Full road span plus a small margin. Lane centers stay at ±laneSpacing;
@@ -72,8 +75,8 @@ function fovForHorizontalWidth(aspect: number, depth: number, width: number) {
 
 /**
  * Portrait follow cam for Mobile Only tall viewports.
- * Hybrid cover: road edge ± thin margin, short distance (~12–14 m) and wide FOV (~70+)
- * so the runner reads larger. Look-ahead stays ~1× distance (not 18 m).
+ * Aggressive hybrid: road edge cover, short distance (~10–12 m) and wide FOV (~78–85)
+ * so the runner reads larger. Look-ahead stays ≤ distance (~0.9×).
  */
 export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSpacing): FollowCameraTuning {
   const safeAspect = aspect > 0.05 && aspect < 1 ? aspect : 9 / 16;
@@ -89,10 +92,10 @@ export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSp
     distance = PORTRAIT_DISTANCE_MIN;
   }
 
-  const lookAhead = clamp(distance * 1.0, 9, 14);
-  const lookHeight = 1.05;
-  // Softer than the first portrait ship so near asphalt is less empty/foreshortened.
-  const height = lookHeight + (distance + lookAhead) * 0.055;
+  const lookAhead = clamp(distance * PORTRAIT_LOOK_AHEAD_FACTOR, distance * 0.85, distance);
+  const lookHeight = 0.92;
+  // Low follow height cuts empty near-asphalt foreshortening at the bottom of the frame.
+  const height = lookHeight + (distance + lookAhead) * 0.038;
 
   return {
     fov: Math.round(fov * 10) / 10,

@@ -34,6 +34,7 @@ import {
   PHONE_LIVE_CAMERA,
   phoneHudCardWidth,
   phoneLiveCameraKeepsFrames,
+  applyPhonePlayViewport,
   phonePlayViewportBox,
   phoneObstacleCounts,
   phoneRunSeed,
@@ -392,6 +393,22 @@ describe("phone local gestures", () => {
       offsetTop: 48,
     })).toEqual({ left: 0, top: 48, width: 1920, height: 980 });
     expect(phonePlayViewportBox({ innerWidth: 800, innerHeight: 400 })).toEqual({ left: 0, top: 0, width: 800, height: 400 });
+    const pinStyle: Record<string, string> = {};
+    applyPhonePlayViewport({ style: pinStyle } as unknown as HTMLElement, {
+      left: 0,
+      top: 40,
+      width: 390,
+      height: 700,
+    });
+    expect(pinStyle.height).toBe("700px");
+    expect(pinStyle.minHeight).toBe("0");
+    expect(pinStyle.maxHeight).toBe("700px");
+    expect(css).toContain("background: #8ec8ea");
+    expect(css).toContain("overscroll-behavior: none");
+    const phonePlayRule = css.slice(css.indexOf(".phone-play {"), css.indexOf("html:has(.phone-play)"));
+    expect(phonePlayRule).not.toContain("min-height: 100svh");
+    expect(css).toContain('[data-phone-phase="running"]');
+    expect(css).toContain("touch-action: none");
     expect(phoneRunSeed(0)).toBe(1);
     expect(phoneRunSeed(0x100000000)).toBe(1);
     expect(phoneRunSeed(42)).toBe(42);
