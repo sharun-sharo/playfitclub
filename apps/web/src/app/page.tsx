@@ -92,8 +92,8 @@ export default function HomePage() {
             </Reveal>
             <Reveal delay={1} className="fp-experience-art">
               <img
-                src="/marketing/play-with-your-moves.jpg"
-                alt="An illustration of Fit Run on a phone mirrored to a TV, with steps to calibrate, move left, move right, and squat."
+                src="/marketing/play-fitness-like-a-game.jpg"
+                alt="Play fitness like a game: body tracking on your phone, Fit Run on the TV, and steps to open, calibrate, move, and compete."
                 width={1024}
                 height={576}
                 loading="lazy"
