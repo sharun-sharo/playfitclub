@@ -75,7 +75,7 @@ function LoginForm() {
       <h1>Sign in</h1>
       <p className="fp-lead">The free demo runs on your phone and does not need an account. Sign in to keep personal bests.</p>
       <p>
-        <Link className="fp-text-link" href="/play/phone">
+        <Link className="fp-text-link" href="/play">
           Play Free
         </Link>
       </p>

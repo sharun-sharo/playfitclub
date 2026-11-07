@@ -4394,3 +4394,55 @@ html:has(.fp-console) body {
     transform: none;
   }
 }
+
+/* SEO landing pages */
+.fp-seo-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+  color: var(--fp-muted);
+}
+
+.fp-seo-crumbs li + li::before {
+  content: "/";
+  margin-right: 0.4rem;
+}
+
+.fp-seo-crumbs a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.fp-seo-figure {
+  margin: 2rem 0 0;
+}
+
+.fp-seo-figure img {
+  display: block;
+  width: 100%;
+  max-width: 960px;
+  height: auto;
+  border-radius: 12px;
+}
+
+.fp-seo-figure-secondary {
+  margin-top: 2rem;
+}
+
+.fp-seo-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.fp-seo-related a {
+  font-weight: 700;
+  text-decoration: underline;
+}

@@ -9,14 +9,29 @@ export const ANALYTICS_EVENTS = [
   "fit_run_selected",
   "phone_pairing_completed",
   "game_started",
+  "game_completed",
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
 
 const EVENT_NAMES = new Set<string>(ANALYTICS_EVENTS);
-const SURFACES = new Set(["home", "tv", "library", "pricing", "header", "nav", "footer", "register", "gyms", "account"]);
+const SURFACES = new Set([
+  "home",
+  "tv",
+  "library",
+  "pricing",
+  "header",
+  "nav",
+  "footer",
+  "register",
+  "gyms",
+  "account",
+  "play",
+  "landing",
+]);
 const PLANS = new Set(["individual_pro", "gym_starter", "gym_pro", "gym"]);
 const AUDIENCES = new Set(["player", "gym"]);
+const GAMES = new Set(["fit_run"]);
 
 const EVENT_FIELD: Record<AnalyticsEventName, { key: string; allowed: Set<string> } | null> = {
   play_clicked: { key: "surface", allowed: SURFACES },
@@ -25,7 +40,8 @@ const EVENT_FIELD: Record<AnalyticsEventName, { key: string; allowed: Set<string
   individual_plan_selected: { key: "plan", allowed: PLANS },
   gym_plan_selected: { key: "plan", allowed: PLANS },
   whatsapp_enquiry_clicked: { key: "audience", allowed: AUDIENCES },
-  game_started: { key: "game", allowed: new Set(["fit_run"]) },
+  game_started: { key: "game", allowed: GAMES },
+  game_completed: { key: "game", allowed: GAMES },
   pricing_viewed: null,
   login_completed: null,
   phone_pairing_completed: null,

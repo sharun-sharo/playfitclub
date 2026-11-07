@@ -78,7 +78,7 @@ export function SiteHeader() {
         ...(isSuperAdminRole(me.user.role) ? [{ href: "/admin", label: "Admin" }] : []),
       ]
     : [...baseLinks, { href: "/login", label: "Login" }];
-  const cta = { href: "/play/phone", label: "Play Free", external: false };
+  const cta = { href: "/play", label: "Play Free", external: false };
 
   function close() {
     setOpen(false);

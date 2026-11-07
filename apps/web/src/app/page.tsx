@@ -74,10 +74,15 @@ export default function HomePage() {
               <p className="fp-kicker">The experience</p>
               <h2 id="experience-title">This is what movement looks like now.</h2>
               <p className="fp-lead">
-                Fit Run is a 3D run in your browser. Choose Laptop, Mobile Only, or Phone+TV mirror. The camera on that device estimates your pose. Frames stay on the device.
+                Fit Run is a 3D online running game in your browser—an endless-style runner you play without downloading a game file. Choose Laptop, Mobile Only, or Phone+TV mirror. The camera on that device estimates your pose. Frames stay on the device.
               </p>
               <p className="fp-lead">
                 Stand so your head through your knees stay in frame, and leave room to jump and squat. Step or lean to change lanes. A jump clears a low barrier. A squat slides under a high one. Jump height is an estimate, not a measurement.
+              </p>
+              <p className="fp-lead">
+                Learn more about <Link href="/online-running-games">online running games</Link>,{" "}
+                <Link href="/browser-games">browser games without download</Link>,{" "}
+                <Link href="/webcam-games">webcam games</Link>, or <Link href="/fit-run">Fit Run</Link>.
               </p>
               <ul className="fp-moves" aria-label="Supported movement labels">
                 {moves.map((move) => (

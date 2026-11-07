@@ -8,6 +8,10 @@ import { whatsappUrl } from "@/lib/whatsapp";
 const links = [
   { href: "/", label: "Home" },
   { href: "/games", label: "Experience" },
+  { href: "/fit-run", label: "Fit Run" },
+  { href: "/online-running-games", label: "Online running games" },
+  { href: "/browser-games", label: "Browser games" },
+  { href: "/webcam-games", label: "Webcam games" },
   { href: "/#how-it-works", label: "How It Works" },
   { href: "/for-gyms", label: "For Gyms" },
   { href: "/pricing", label: "Pricing" },

@@ -5,7 +5,16 @@ import { Outfit, Oxanium } from "next/font/google";
 import { SiteAnalytics } from "@/components/analytics/site-analytics";
 import { ScreenRemote } from "@/components/tv/screen-remote";
 import { TvDiagnosticsOverlay } from "@/components/tv/tv-diagnostics-overlay";
-import { HOME_DESCRIPTION, HOME_TITLE, OG_IMAGE, SITE_ORIGIN, TITLE_TEMPLATE, organizationJsonLd } from "@/lib/site-metadata";
+import {
+  HOME_DESCRIPTION,
+  HOME_TITLE,
+  OG_IMAGE,
+  SITE_ORIGIN,
+  TITLE_TEMPLATE,
+  googleSiteVerification,
+  jsonLdScript,
+  organizationJsonLd,
+} from "@/lib/site-metadata";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -18,6 +27,8 @@ export const viewport: Viewport = {
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 const oxanium = Oxanium({ subsets: ["latin"], variable: "--font-oxanium" });
 
+const verificationToken = googleSiteVerification();
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
   applicationName: "PlayFit Club",
@@ -26,26 +37,30 @@ export const metadata: Metadata = {
     template: TITLE_TEMPLATE,
   },
   description: HOME_DESCRIPTION,
-  alternates: { canonical: "./" },
   robots: { index: true, follow: true },
   openGraph: {
     type: "website",
     siteName: "PlayFit Club",
     locale: "en_IN",
-    url: "./",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    url: SITE_ORIGIN,
     images: [OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     images: [OG_IMAGE],
   },
+  ...(verificationToken ? { verification: { google: verificationToken } } : {}),
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${outfit.variable} ${oxanium.variable} h-full`}>
       <body className="min-h-full antialiased">
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c") }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(organizationJsonLd) }} />
         {children}
         <ScreenRemote />
         {process.env.NODE_ENV !== "production" ? <TvDiagnosticsOverlay /> : null}
