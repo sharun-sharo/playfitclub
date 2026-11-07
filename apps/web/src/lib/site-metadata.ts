@@ -11,8 +11,8 @@ export const HOME_DESCRIPTION =
 
 export const OG_IMAGE = {
   url: "/marketing/hero-run-adventure.jpg",
-  width: 1024,
-  height: 682,
+  width: 864,
+  height: 1152,
   alt: "Woman running in a living room while Fit Run plays on the TV, with neon motion tracking under her feet.",
   type: "image/jpeg",
 };
