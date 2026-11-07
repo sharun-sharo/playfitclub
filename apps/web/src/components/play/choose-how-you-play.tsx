@@ -45,7 +45,11 @@ const CARDS = [
 const HOW_IT_WORKS = [
   { step: "1", title: "Allow Camera", detail: "Grant access when prompted" },
   { step: "2", title: "Stand in Frame", detail: "Center yourself and calibrate" },
-  { step: "3", title: "Start Playing", detail: "Move — your body is the controller" },
+  {
+    step: "3",
+    title: "Start Playing",
+    detail: "Step or lean left/right, or raise an arm sideways — then jump and squat",
+  },
 ] as const;
 
 function onChoose() {

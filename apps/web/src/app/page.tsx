@@ -17,7 +17,7 @@ export const metadata: Metadata = homeMetadata;
 
 const statements = [
   { title: "Your camera plays Fit Run.", copy: "Laptop webcam or phone camera tracks your body. There is no console and no extra sensor." },
-  { title: "Every move matters.", copy: "A lean changes lanes. A jump clears a low barrier. A squat slides under a high one." },
+  { title: "Every move matters.", copy: "Step or lean to change lanes. A jump clears a low barrier. A squat slides under a high one." },
   { title: "Three ways to play.", copy: "Laptop in the browser. Mobile Only on your phone. Or play on the phone and mirror that screen to a TV." },
 ];
 
@@ -77,7 +77,7 @@ export default function HomePage() {
                 Fit Run is a 3D run in your browser. Choose Laptop, Mobile Only, or Phone+TV mirror. The camera on that device estimates your pose. Frames stay on the device.
               </p>
               <p className="fp-lead">
-                Stand so your head through your knees stay in frame, and leave room to jump and squat. A lean changes lanes. A jump clears a low barrier. A squat slides under a high one. Jump height is an estimate, not a measurement.
+                Stand so your head through your knees stay in frame, and leave room to jump and squat. Step or lean to change lanes. A jump clears a low barrier. A squat slides under a high one. Jump height is an estimate, not a measurement.
               </p>
               <ul className="fp-moves" aria-label="Supported movement labels">
                 {moves.map((move) => (
@@ -165,7 +165,7 @@ export default function HomePage() {
             <Reveal className="fp-benefits" stagger>
               <article>
                 <h3>Move to play</h3>
-                <p>In Fit Run, a lean, a jump, and a squat are how you play.</p>
+                <p>In Fit Run, a step or lean, a jump, and a squat are how you play.</p>
               </article>
               <article>
                 <h3>Make every session a challenge</h3>

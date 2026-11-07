@@ -20,8 +20,8 @@ export function tutorialGestureFor(movementType: string): TutorialGesture | null
 export const TUTORIAL_LOCAL_KEY = "fitrunner-v2-tutorial-complete";
 
 export const GESTURE_STEPS: Array<{ gesture: TutorialGesture; prompt: string; diagram: TutorialGesture }> = [
-  { gesture: "left", prompt: "Raise your LEFT arm to move left.", diagram: "left" },
-  { gesture: "right", prompt: "Raise your RIGHT arm to move right.", diagram: "right" },
+  { gesture: "left", prompt: "Step, lean, or raise your LEFT arm to move left.", diagram: "left" },
+  { gesture: "right", prompt: "Step, lean, or raise your RIGHT arm to move right.", diagram: "right" },
   { gesture: "squat", prompt: "Squat down to duck under obstacles.", diagram: "squat" },
   { gesture: "jump", prompt: "Make a small jump to clear hurdles.", diagram: "jump" },
 ];

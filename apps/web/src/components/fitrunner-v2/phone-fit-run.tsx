@@ -1360,7 +1360,7 @@ export function PhoneFitRun({
               </section>
             ) : surface === "laptop" ? (
               <p className="phone-intro-tip">
-                Allow camera access, stand in frame, then wait for the countdown.
+                Allow camera access, stand in frame, then wait for the countdown. Step or lean left/right, or raise an arm sideways, to change lanes.
               </p>
             ) : null}
             {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}

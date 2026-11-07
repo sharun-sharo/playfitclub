@@ -38,7 +38,10 @@ export function GameLibrary({ heading = "h3", variant = "site" }: { heading?: "h
   return (
     <Reveal className="fp-library" stagger>
       {games.map((game) => {
-        const description = variant === "home" && game.title === "Fit Run" ? "A 3D run on a laptop or phone. Lean, jump, and squat." : game.description;
+        const description =
+          variant === "home" && game.title === "Fit Run"
+            ? "A 3D run on a laptop or phone. Step or lean, jump, and squat."
+            : game.description;
         const action = variant === "home" && game.href ? "Play Demo" : game.action;
         return (
           <article key={game.title} className="fp-library-card">

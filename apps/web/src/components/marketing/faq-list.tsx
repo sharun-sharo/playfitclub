@@ -9,7 +9,7 @@ const questions = [
   },
   {
     q: "How does camera-based gameplay work?",
-    a: "Choose Laptop, Mobile Only, or Phone+TV mirror, allow the camera, and stand so your body is in frame. The device estimates your pose in the browser. Frames stay on that device. Wait for the countdown, then lean, jump, and squat. A camera estimates a jump. It does not measure jump height, and it does not give medical advice.",
+    a: "Choose Laptop, Mobile Only, or Phone+TV mirror, allow the camera, and stand so your body is in frame. The device estimates your pose in the browser. Frames stay on that device. Wait for the countdown, then step or lean, jump, and squat. A camera estimates a jump. It does not measure jump height, and it does not give medical advice.",
   },
   {
     q: "Do I need a special controller?",
