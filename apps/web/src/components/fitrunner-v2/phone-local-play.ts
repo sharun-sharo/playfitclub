@@ -86,12 +86,12 @@ export const PHONE_TV_MIRROR_GUIDES = [
 export const LAPTOP_PLAY_NOTE =
   "Play in this browser. Your laptop camera tracks your body. Frames stay on this device.";
 /**
- * How to play Fit Run. Matches the detector: body step, shoulder lean, or arm
- * raise/sideways for lanes (physical left = robot left), squat for duck/roll, jump for jump.
+ * How to play Fit Run. Lane cards teach arm sideways (physical left = robot left).
+ * Body step/lean still work in the detector; squat ducks, jump clears.
  */
 export const FIT_RUN_HOW_TO_PLAY = [
-  "Raise left arm sideways or step left to move left",
-  "Raise right arm sideways or step right to move right",
+  "Raise your left arm sideways to move left",
+  "Raise your right arm sideways to move right",
   "Squat to duck under obstacles",
   "Jump to clear obstacles",
 ] as const;

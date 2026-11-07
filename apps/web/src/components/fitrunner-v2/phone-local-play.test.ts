@@ -208,8 +208,8 @@ describe("phone local gestures", () => {
     expect(LAPTOP_PLAY_PATH).toBe("/play/fit-run");
     expect(LAPTOP_PLAY_NOTE).toMatch(/laptop camera/i);
     expect(FIT_RUN_HOW_TO_PLAY).toEqual([
-      "Raise left arm sideways or step left to move left",
-      "Raise right arm sideways or step right to move right",
+      "Raise your left arm sideways to move left",
+      "Raise your right arm sideways to move right",
       "Squat to duck under obstacles",
       "Jump to clear obstacles",
     ]);
