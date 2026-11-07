@@ -16,7 +16,7 @@ export default function PhonePlayPage({
   searchParams: Promise<{ display?: string | string[] }>;
 }) {
   return (
-    <Suspense fallback={<div className="fixed inset-0 bg-[#8ec8ea]" />}>
+    <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
       <PhoneAccess searchParams={searchParams} />
     </Suspense>
   );

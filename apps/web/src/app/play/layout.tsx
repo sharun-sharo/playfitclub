@@ -7,5 +7,5 @@ export const metadata = noIndex(
 );
 
 export default function PlayLayout({ children }: { children: ReactNode }) {
-  return children;
+  return <div className="min-h-dvh bg-black text-white">{children}</div>;
 }

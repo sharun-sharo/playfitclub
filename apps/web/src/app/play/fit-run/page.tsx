@@ -11,7 +11,7 @@ export const metadata = noIndex(
 
 export default function FitRunPlayPage() {
   return (
-    <Suspense fallback={<div className="fixed inset-0 bg-[#8ec8ea]" />}>
+    <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
       <FitRunnerAccess />
     </Suspense>
   );
