@@ -9,7 +9,7 @@ test.describe("television browser compatibility", () => {
     await expect(hero).toBeVisible();
     await expect.poll(async () => hero.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(100);
     const source = await hero.evaluate((image: HTMLImageElement) => image.currentSrc);
-    expect(source).toContain("hero-run.jpg");
+    expect(source).toContain("hero-run-adventure.jpg");
     const box = await hero.boundingBox();
     expect(box && box.height).toBeGreaterThan(200);
 
