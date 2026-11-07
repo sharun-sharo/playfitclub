@@ -2,6 +2,28 @@
 
 import { useState, type Ref } from "react";
 
+function DistPinIcon() {
+  return (
+    <svg className="phone-compact-ico phone-compact-ico-dist" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8 1.5A4.3 4.3 0 0 0 3.7 5.8c0 2.7 3.3 7.4 4.1 8.4a.3.3 0 0 0 .4 0c.8-1 4.1-5.7 4.1-8.4A4.3 4.3 0 0 0 8 1.5Zm0 6.1a1.8 1.8 0 1 1 0-3.6 1.8 1.8 0 0 1 0 3.6Z"
+      />
+    </svg>
+  );
+}
+
+function CalFlameIcon() {
+  return (
+    <svg className="phone-compact-ico phone-compact-ico-cal" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8.1 1.2c.2 1.7-.4 2.8-1.4 3.8-.9.9-1.9 1.8-2.2 3.3A4.1 4.1 0 0 0 8 15a4.1 4.1 0 0 0 3.6-6.2c-.7-1.1-.6-2.2-.1-3.5.2-.6.5-1.2.7-1.9-1.4.5-2.4 1.2-3 2.1-.1-1.5-.4-2.8-1.1-4.3Z"
+      />
+    </svg>
+  );
+}
+
 export function PlayScoreCard({
   hidden,
   scoreRef,
@@ -48,16 +70,18 @@ export function PlayScoreCard({
       data-hud-layout={layout}
       hidden={hidden}
     >
-      <p className={compact ? "phone-compact-label" : "text-[10px] tracking-[0.18em] text-[#d6ff4a]"}>SCORE</p>
+      {compact ? null : <p className="text-[10px] tracking-[0.18em] text-[#d6ff4a]">SCORE</p>}
       <p ref={scoreRef} className={compact ? "phone-compact-score" : "font-display text-4xl leading-none"}>
         0
       </p>
       {compact ? (
         <div className="phone-compact-strip">
-          <span>
+          <span className="phone-compact-stat">
+            <DistPinIcon />
             <span className="phone-compact-k">Dist</span> <span ref={distanceRef}>0 m</span>
           </span>
-          <span>
+          <span className="phone-compact-stat">
+            <CalFlameIcon />
             <span className="phone-compact-k">Cal</span> <span data-calories="">{calories}</span>
           </span>
           <button
@@ -66,7 +90,14 @@ export function PlayScoreCard({
             aria-expanded={statsOpen}
             onClick={() => setStatsOpen((open) => !open)}
           >
-            {statsOpen ? "Less" : "Stats"}
+            {statsOpen ? "Less" : (
+              <>
+                <span className="phone-stats-ico" aria-hidden="true">
+                  ▦
+                </span>{" "}
+                Stats
+              </>
+            )}
           </button>
         </div>
       ) : null}
@@ -122,11 +153,13 @@ export function PlayScoreCard({
           {note}
         </p>
       ) : null}
-      {keyboard ? (
-        <p className="mt-3 text-[10px] leading-relaxed text-[#9aa8bd]" data-keyboard-hint="">
-          Keyboard · A D lanes · Space jump · S roll
-        </p>
-      ) : null}
+      <p
+        className={compact ? "phone-compact-keys" : "mt-3 text-[10px] leading-relaxed text-[#9aa8bd]"}
+        data-keyboard-hint=""
+        hidden={!keyboard}
+      >
+        Keyboard : A D lanes · Space jump · S roll
+      </p>
     </section>
   );
 }

@@ -21,20 +21,21 @@ export function landscapeFollowCamera(): FollowCameraTuning {
 
 /**
  * Extra asphalt beyond each road edge in the portrait frustum.
- * Aggressive hybrid: roadEdge ± 0 (thin lip crop OK for presence).
+ * Negative = crop outer asphalt so the cam can sit close while outer lane
+ * centers stay framed (gate feet may kiss the edge).
  */
-export const PORTRAIT_ROAD_MARGIN_M = 0;
+export const PORTRAIT_ROAD_MARGIN_M = -0.85;
 
 /** Prefer a short pull-back; raise FOV before pushing distance past the cap. */
-export const PORTRAIT_FOV_PREF = 85;
-export const PORTRAIT_FOV_MAX = 85;
-export const PORTRAIT_DISTANCE_MIN = 9;
-/** Typical phone target. Ultra-tall aspects may ease out to HARD_MAX for road cover. */
-export const PORTRAIT_DISTANCE_MAX = 10.5;
-export const PORTRAIT_DISTANCE_HARD_MAX = 11;
+export const PORTRAIT_FOV_PREF = 88;
+export const PORTRAIT_FOV_MAX = 95;
+export const PORTRAIT_DISTANCE_MIN = 6.5;
+/** Typical phone target for large runner presence. Ultra-tall may ease to HARD_MAX. */
+export const PORTRAIT_DISTANCE_MAX = 7.25;
+export const PORTRAIT_DISTANCE_HARD_MAX = 8.0;
 
 /** Look-ahead as a fraction of distance (~0.8–0.9×). */
-export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.88;
+export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.84;
 
 /**
  * Full road span plus a small margin. Lane centers stay at ±laneSpacing;
@@ -77,9 +78,9 @@ function fovForHorizontalWidth(aspect: number, depth: number, width: number) {
 
 /**
  * Portrait follow cam for Mobile Only tall viewports.
- * Presence push: short distance (~9–10.5 m), wide FOV (~85), look-ahead ~0.88×.
- * Raise look-at toward chest height with a shallow pitch so the near road slab
- * lip does not fill the bottom of the frame (lateral lock stays at X = 0).
+ * Presence push: short distance (~6.5–7.25 m), FOV ~88–95, look-ahead ~0.84×.
+ * Outer asphalt crop lets the runner fill the lower mid-frame while
+ * three lanes stay visible (lateral lock stays at X = 0).
  */
 export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSpacing): FollowCameraTuning {
   const safeAspect = aspect > 0.05 && aspect < 1 ? aspect : 9 / 16;
@@ -104,9 +105,9 @@ export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSp
   }
 
   const lookAhead = clamp(distance * PORTRAIT_LOOK_AHEAD_FACTOR, distance * 0.8, distance * 0.9);
-  // Chest-height look-at + shallow pitch crops the near asphalt lip without losing jump arc.
-  const lookHeight = 1.12;
-  const height = lookHeight + (distance + lookAhead) * 0.016;
+  // Mid-torso look-at + shallow pitch: feet near bottom, runner large in lower mid.
+  const lookHeight = 0.95;
+  const height = lookHeight + (distance + lookAhead) * 0.012;
 
   return {
     fov: Math.round(fov * 10) / 10,

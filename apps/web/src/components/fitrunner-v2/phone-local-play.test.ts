@@ -371,8 +371,9 @@ describe("phone local gestures", () => {
     );
     expect(choose).toContain("PHONE_TV_PLAY_PATH");
     expect(choose).toContain("PHONE_PLAY_PATH");
+    expect(fitRun).toContain('className="phone-pause-fab"');
+    expect(fitRun).toContain("Pause");
     const actions = fitRun.slice(fitRun.indexOf('className="phone-actions"'), fitRun.indexOf('data-phone-mirror=""'));
-    expect(actions).toContain("Pause");
     expect(actions).toContain("Sound on");
     expect(actions).not.toMatch(/jump/i);
     const spaceAt = fitRun.indexOf('event.code === "Space"');

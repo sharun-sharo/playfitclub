@@ -1135,6 +1135,30 @@ export function PhoneFitRun({
                 layout={wantsLandscape ? "full" : "compact"}
               />
             </div>
+            {!wantsLandscape && !gameOver && !demoOver ? (
+              <button
+                type="button"
+                className="phone-pause-fab"
+                aria-label={paused ? "Resume" : "Pause"}
+                aria-pressed={paused}
+                onClick={() => {
+                  if (calib.coursePaused) return;
+                  const nextPaused = !paused;
+                  gestureAudio({ buttonPaused: nextPaused, soundOn: !muted });
+                  handleRef.current?.setPaused(nextPaused);
+                }}
+              >
+                {paused ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M8 5.5v13l11-6.5L8 5.5Z" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" />
+                  </svg>
+                )}
+              </button>
+            ) : null}
           </div>
           <div className="phone-hud-spacer" />
           <div className="phone-hud-bottom">
@@ -1142,18 +1166,20 @@ export function PhoneFitRun({
               <LivesHearts hidden={Boolean(gameOver)} lives={lives} />
               {!gameOver && !demoOver ? (
                 <div className="phone-actions">
-                  <button
-                    type="button"
-                    aria-pressed={paused}
-                    onClick={() => {
-                      if (calib.coursePaused) return;
-                      const nextPaused = !paused;
-                      gestureAudio({ buttonPaused: nextPaused, soundOn: !muted });
-                      handleRef.current?.setPaused(nextPaused);
-                    }}
-                  >
-                    {paused ? "Resume" : "Pause"}
-                  </button>
+                  {wantsLandscape ? (
+                    <button
+                      type="button"
+                      aria-pressed={paused}
+                      onClick={() => {
+                        if (calib.coursePaused) return;
+                        const nextPaused = !paused;
+                        gestureAudio({ buttonPaused: nextPaused, soundOn: !muted });
+                        handleRef.current?.setPaused(nextPaused);
+                      }}
+                    >
+                      {paused ? "Resume" : "Pause"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     aria-pressed={!muted}
