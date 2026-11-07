@@ -21,6 +21,7 @@ import {
   PHONE_PLAYER_READY,
   PHONE_STABLE_MS,
   PHONE_STAGE_NOTE,
+  phoneCalibShowsGreen,
   PHONE_STAND_OK,
   PHONE_STAND_QUIET,
   PHONE_STAND_SENTENCE,
@@ -98,15 +99,16 @@ function sameZones(current: PhoneStandZones, next: PhoneStandZones) {
   return current.head === next.head && current.shoulders === next.shoulders && current.knees === next.knees;
 }
 
-function CalibGuide({ zones, holding }: { zones: PhoneStandZones; holding: boolean }) {
-  const shown = holding ? PHONE_STAND_OK : zones;
+function CalibGuide({ zones, green }: { zones: PhoneStandZones; green: boolean }) {
+  // Green only when the start gate is fully good — never force ok zones while Move closer / partial.
+  const shown = green ? PHONE_STAND_OK : zones;
   return (
     <svg
       className="phone-calib-guide"
       viewBox="-80 0 980 608"
       role="img"
       aria-label="Standing guide. Fit your head, shoulders, and knees inside the figure."
-      data-phone-stand={holding ? "hold" : "place"}
+      data-phone-stand={green ? "hold" : "place"}
     >
       <g className="phone-stand-body" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round">
         <path d="M400 124 V158" />
@@ -1132,6 +1134,7 @@ export function PhoneFitRun({
   const cameraLarge = phoneShowsCalibrationStage({ started, playing, phase: calib.phase });
   const waitingForCourse = !playing && (calib.phase === "running" || calib.countdown === "GO");
   const holding = poseCount <= 1 && phoneStandHolding(calib);
+  const standGreen = phoneCalibShowsGreen({ holding, zones: standZones, phase: calib.phase });
   const guidanceLine =
     phoneStandGuidance(calib, poseCount) ??
     phoneLiveFramingCue({ phase: calib.phase, framingCode: poseRef.current.framingCode, guidance: calib.guidance });
@@ -1158,9 +1161,9 @@ export function PhoneFitRun({
       {cameraLarge ? (
         <div className="phone-cal-stage" data-phone-calibration="black">
           <div className="phone-stand">
-            <CalibGuide zones={standZones} holding={holding} />
+            <CalibGuide zones={standZones} green={standGreen} />
             <p className="phone-stand-line">{PHONE_STAND_SENTENCE}</p>
-            <div className="phone-calib-copy" data-phone-ready={calib.phase === "ready" ? "1" : "0"} data-phone-holding={holding ? "1" : "0"} role="status">
+            <div className="phone-calib-copy" data-phone-ready={standGreen && calib.phase === "ready" ? "1" : "0"} data-phone-holding={standGreen ? "1" : "0"} role="status">
               {!trackerReady ? (
                 <p className="phone-calib-status" data-phone-status="" data-phone-tracker="loading">
                   {TRACKER_LOADING_MESSAGE}

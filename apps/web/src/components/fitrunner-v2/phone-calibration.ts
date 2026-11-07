@@ -74,8 +74,13 @@ export type PhoneGuidance = (typeof PHONE_GUIDANCE)[number];
 export const PHONE_STAND_SENTENCE =
   "Stand so your head and knees fit inside the figure. If your head or a knee would be cut off, step back. If you look tiny, step closer.";
 
-/** Quiet means the zone is not being judged yet. Missing means that part failed the same in-frame check. */
-export type PhoneZoneState = "quiet" | "ok" | "missing";
+/**
+ * Quiet = not judged yet (neutral).
+ * Warn = joint visible but the start gate is not fully good yet (amber).
+ * Missing = that part failed the in-frame check (red).
+ * Ok = green only when the full start gate passes (standing / Full body detected).
+ */
+export type PhoneZoneState = "quiet" | "warn" | "ok" | "missing";
 
 export interface PhoneStandZones {
   head: PhoneZoneState;
@@ -86,6 +91,15 @@ export interface PhoneStandZones {
 export const PHONE_STAND_QUIET: PhoneStandZones = { head: "quiet", shoulders: "quiet", knees: "quiet" };
 
 export const PHONE_STAND_OK: PhoneStandZones = { head: "ok", shoulders: "ok", knees: "ok" };
+
+/** True only when every stand zone is the strict green / ready state. */
+export function phoneStandAllGood(zones: PhoneStandZones) {
+  return zones.head === "ok" && zones.shoulders === "ok" && zones.knees === "ok";
+}
+
+function zonePart(present: boolean): PhoneZoneState {
+  return present ? "warn" : "missing";
+}
 
 /**
  * Phone start order. A practice jump is not one of these steps.
@@ -394,10 +408,11 @@ export function phoneBodyGate(input: {
   const rightKnee = placedJoint(input.landmarks, PHONE_START_LANDMARKS.rightKnee, minVisibility);
   const fullBody = Boolean(head && leftShoulder && rightShoulder && leftHip && rightHip && leftKnee && rightKnee);
   const straight = phoneShouldersLevel(input.landmarks, minVisibility);
-  const zones: PhoneStandZones = {
-    head: head ? "ok" : "missing",
-    shoulders: leftShoulder && rightShoulder ? "ok" : "missing",
-    knees: leftKnee && rightKnee ? "ok" : "missing",
+  // Amber/red until the full gate passes — never paint ok/green early.
+  const partialZones: PhoneStandZones = {
+    head: zonePart(Boolean(head)),
+    shoulders: zonePart(Boolean(leftShoulder && rightShoulder)),
+    knees: zonePart(Boolean(leftKnee && rightKnee)),
   };
   const headCut = cutOff(confidentJoint(input.landmarks, PHONE_START_LANDMARKS.head, minVisibility));
   const kneesCut =
@@ -405,9 +420,9 @@ export function phoneBodyGate(input: {
     cutOff(confidentJoint(input.landmarks, PHONE_START_LANDMARKS.rightKnee, minVisibility));
   if (!leftKnee || !rightKnee) {
     if (kneesCut || headCut) {
-      return { signal: "partial", fullBody: false, straight, guidance: "Move back", standing: false, zones };
+      return { signal: "partial", fullBody: false, straight, guidance: "Move back", standing: false, zones: partialZones };
     }
-    return { signal: "partial", fullBody: false, straight, guidance: "Keep your knees visible", standing: false, zones };
+    return { signal: "partial", fullBody: false, straight, guidance: "Keep your knees visible", standing: false, zones: partialZones };
   }
   if (!head || !leftShoulder || !rightShoulder || !leftHip || !rightHip) {
     const shouldersHigh = Boolean(leftShoulder && rightShoulder && Math.min(leftShoulder.y, rightShoulder.y) <= PHONE_EDGE);
@@ -417,7 +432,7 @@ export function phoneBodyGate(input: {
       straight,
       guidance: !head || shouldersHigh ? "Move back" : "Hold still",
       standing: false,
-      zones,
+      zones: partialZones,
     };
   }
   const shoulderX = (leftShoulder.x + rightShoulder.x) / 2;
@@ -428,13 +443,13 @@ export function phoneBodyGate(input: {
   const span = Math.max(leftKnee.y, rightKnee.y) - head.y;
   const center = (shoulderX + hipX) / 2;
   if (torso <= PHONE_TORSO_FAR || span <= PHONE_SPAN_FAR) {
-    return { signal: "partial", fullBody, straight, guidance: "Move closer", standing: false, zones };
+    return { signal: "partial", fullBody, straight, guidance: "Move closer", standing: false, zones: partialZones };
   }
   if (center < PHONE_CENTER_MIN || center > PHONE_CENTER_MAX) {
-    return { signal: "partial", fullBody, straight, guidance: "Center your body", standing: false, zones };
+    return { signal: "partial", fullBody, straight, guidance: "Center your body", standing: false, zones: partialZones };
   }
-  if (!straight) return { signal: "partial", fullBody, straight: false, guidance: "Hold still", standing: false, zones };
-  return { signal: "full", fullBody: true, straight: true, guidance: "Full body detected", standing: true, zones };
+  if (!straight) return { signal: "partial", fullBody, straight: false, guidance: "Hold still", standing: false, zones: partialZones };
+  return { signal: "full", fullBody: true, straight: true, guidance: "Full body detected", standing: true, zones: PHONE_STAND_OK };
 }
 
 export function phoneBodyReading(input: {
@@ -455,7 +470,8 @@ export function phoneStandHolding(state: Pick<PhoneCalibState, "phase" | "status
 
 /**
  * Words under the figure. During the hold, a short jitter keeps "Hold still"
- * so the line matches the green figure. The hold clock itself is unchanged.
+ * while the silhouette stays green only if zones are still fully ok.
+ * The hold clock itself is unchanged.
  */
 export function phoneStandGuidance(
   state: Pick<PhoneCalibState, "phase" | "status" | "holdStartedAt" | "guidance">,
@@ -467,8 +483,19 @@ export function phoneStandGuidance(
 }
 
 /**
+ * Green silhouette / status only when the strict start gate is fully good
+ * (same standing state that can open Ready / countdown). Holding alone is not enough.
+ */
+export function phoneCalibShowsGreen(input: { holding: boolean; zones: PhoneStandZones; phase?: PhoneCalibPhase }) {
+  if (!phoneStandAllGood(input.zones)) return false;
+  if (input.holding) return true;
+  return input.phase === "ready" || input.phase === "countdown";
+}
+
+/**
  * Live Move back / Move closer / Full body detected only when needed.
  * Hidden during active running play; shown on calibration / adjust / reposition.
+ * "Full body detected" requires the phone gate guidance — framing "good" alone is not enough.
  */
 export function phoneLiveFramingCue(input: {
   phase: PhoneCalibPhase;
@@ -476,11 +503,10 @@ export function phoneLiveFramingCue(input: {
   guidance: PhoneGuidance | null;
 }): LiveFramingCue | null {
   if (input.phase === "running" || input.phase === "countdown" || input.phase === "warning") return null;
-  if (input.guidance === "Move back" || input.guidance === "Move closer" || input.guidance === "Full body detected") {
-    return input.guidance;
-  }
-  const announceReady = input.phase === "finding" || input.phase === "adjust" || input.phase === "calibrating" || input.phase === "ready" || input.phase === "reposition";
-  return liveFramingCue({ code: input.framingCode, announceReady });
+  if (input.guidance === "Move back" || input.guidance === "Move closer") return input.guidance;
+  if (input.guidance === "Full body detected") return "Full body detected";
+  // Distance-only cues from framing; never promote framing "good" to Full body detected.
+  return liveFramingCue({ code: input.framingCode, announceReady: false });
 }
 
 function clearEdges(state: PhoneCalibState): PhoneCalibState {

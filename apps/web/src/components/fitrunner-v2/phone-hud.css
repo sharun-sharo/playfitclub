@@ -655,18 +655,30 @@ html:-webkit-full-screen .phone-play,
   opacity: 0.16;
 }
 
-.phone-calib-guide [data-phone-zone-state="missing"] {
+/* Amber: body parts seen but gate not fully good (too far / off-center / not straight). */
+.phone-calib-guide [data-phone-zone-state="warn"] {
   color: #ffb020;
+}
+
+.phone-calib-guide [data-phone-zone-state="warn"] .phone-zone-spot {
+  opacity: 0.35;
+}
+
+/* Red: required joint missing or cut off. */
+.phone-calib-guide [data-phone-zone-state="missing"] {
+  color: #ff5a5a;
 }
 
 .phone-calib-guide [data-phone-zone-state="missing"] .phone-zone-spot {
   opacity: 0.45;
 }
 
+/* Green only when data-phone-stand=hold — set only for the strict full-body gate. */
 .phone-calib-guide[data-phone-stand="hold"] {
   color: #39e07a;
 }
 
+.phone-calib-guide[data-phone-stand="hold"] [data-phone-zone-state="warn"],
 .phone-calib-guide[data-phone-stand="hold"] [data-phone-zone-state="missing"] {
   color: inherit;
 }

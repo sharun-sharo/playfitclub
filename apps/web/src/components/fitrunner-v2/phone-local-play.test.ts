@@ -354,7 +354,14 @@ describe("phone local gestures", () => {
     expect(guide).not.toContain("100%");
     expect(guide).not.toContain("height: 100vh");
     expect(guide).not.toContain("width: 100vw");
+    // Green only on hold; warn=amber, missing=red — not green for partial framing.
+    expect(css).toContain('[data-phone-zone-state="warn"]');
+    expect(css).toContain("#ffb020");
+    expect(css).toContain("#ff5a5a");
+    expect(css).toContain('.phone-calib-guide[data-phone-stand="hold"]');
+    expect(css).toContain("#39e07a");
     const fitRun = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "phone-fit-run.tsx"), "utf8");
+    expect(fitRun).toContain("phoneCalibShowsGreen");
     expect(fitRun).toContain(">Head<");
     expect(fitRun).toContain(">Shoulders<");
     expect(fitRun).toContain(">Knees<");

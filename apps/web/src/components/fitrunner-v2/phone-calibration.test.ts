@@ -3,10 +3,12 @@ import type { FramingLandmark } from "@/lib/vision/framing";
 import {
   createPhoneCalibration,
   phoneBodyReading,
+  phoneCalibShowsGreen,
   phoneFramingGuidance,
   phoneFullscreenKeepsPlay,
   phoneFullBody,
   phoneLiveFramingCue,
+  phoneStandAllGood,
   phoneStandGuidance,
   phoneStandHolding,
   PHONE_ANKLES_NOT_REQUIRED,
@@ -287,6 +289,9 @@ describe("phone calibration", () => {
     expect(phoneLiveFramingCue({ phase: "adjust", framingCode: "too_close", guidance: "Move back" })).toBe("Move back");
     expect(phoneLiveFramingCue({ phase: "adjust", framingCode: "too_far", guidance: null })).toBe("Move closer");
     expect(phoneLiveFramingCue({ phase: "ready", framingCode: "good", guidance: "Full body detected" })).toBe("Full body detected");
+    // Framing "good" alone must not claim Full body detected — phone gate must agree.
+    expect(phoneLiveFramingCue({ phase: "adjust", framingCode: "good", guidance: null })).toBeNull();
+    expect(phoneLiveFramingCue({ phase: "adjust", framingCode: "good", guidance: "Keep your knees visible" })).toBeNull();
     expect(phoneLiveFramingCue({ phase: "running", framingCode: "too_close", guidance: "Move back" })).toBeNull();
   });
 
@@ -295,13 +300,16 @@ describe("phone calibration", () => {
       "Stand so your head and knees fit inside the figure. If your head or a knee would be cut off, step back. If you look tiny, step closer.",
     );
     const quiet = { head: "quiet", shoulders: "quiet", knees: "quiet" };
-    const seen = { head: "ok", shoulders: "ok", knees: "ok" };
+    const ready = { head: "ok", shoulders: "ok", knees: "ok" };
+    const warnAll = { head: "warn", shoulders: "warn", knees: "warn" };
     expect(phoneBodyReading({ poseCount: 0, landmarks: null, framingCode: null }).zones).toEqual(quiet);
     expect(phoneBodyReading({ poseCount: 2, landmarks: standing(), framingCode: "good" }).zones).toEqual(quiet);
 
     const good = phoneBodyReading({ poseCount: 1, landmarks: standing(), framingCode: null });
     expect(good.signal).toBe("full");
-    expect(good.zones).toEqual(seen);
+    expect(good.zones).toEqual(ready);
+    expect(phoneStandAllGood(good.zones)).toBe(true);
+    expect(phoneCalibShowsGreen({ holding: true, zones: good.zones })).toBe(true);
 
     const covered = standing((points) => {
       points[25] = { x: 0.45, y: 0.72, visibility: 0.2 };
@@ -309,14 +317,16 @@ describe("phone calibration", () => {
     });
     const legs = phoneBodyReading({ poseCount: 1, landmarks: covered, framingCode: null });
     expect(legs.guidance).toBe("Keep your knees visible");
-    expect(legs.zones).toEqual({ head: "ok", shoulders: "ok", knees: "missing" });
+    expect(legs.zones).toEqual({ head: "warn", shoulders: "warn", knees: "missing" });
+    expect(phoneCalibShowsGreen({ holding: true, zones: legs.zones })).toBe(false);
 
     const noHead = standing((points) => {
       points[0] = { x: 0.5, y: -0.06, visibility: 0.95 };
     });
     const headless = phoneBodyReading({ poseCount: 1, landmarks: noHead, framingCode: null });
     expect(headless.guidance).toBe("Move back");
-    expect(headless.zones).toEqual({ head: "missing", shoulders: "ok", knees: "ok" });
+    expect(headless.zones).toEqual({ head: "missing", shoulders: "warn", knees: "warn" });
+    expect(phoneCalibShowsGreen({ holding: true, zones: headless.zones })).toBe(false);
 
     const far = standing((points) => {
       points[0] = { x: 0.5, y: 0.46, visibility: 0.95 };
@@ -329,7 +339,9 @@ describe("phone calibration", () => {
     });
     const distant = phoneBodyReading({ poseCount: 1, landmarks: far, framingCode: null });
     expect(distant.guidance).toBe("Move closer");
-    expect(distant.zones).toEqual(seen);
+    expect(distant.zones).toEqual(warnAll);
+    expect(phoneStandAllGood(distant.zones)).toBe(false);
+    expect(phoneCalibShowsGreen({ holding: true, zones: distant.zones })).toBe(false);
 
     const dim = standing((points) => {
       for (const point of points) point.visibility = point.visibility ? 0.2 : 0;
