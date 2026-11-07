@@ -19,7 +19,7 @@ export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
     <footer className="fp-footer">
       <section className="fp-wrap fp-footer-apps" aria-labelledby="mobile-apps-title">
         <h2 id="mobile-apps-title">Your Fitness Game. Now Going Mobile.</h2>
-        <p className="fp-footer-apps-copy">PlayFit Club iOS and Android apps are coming soon. Until then, play directly from your mobile browser.</p>
+        <p className="fp-footer-apps-copy">PlayFit Club iOS and Android apps are coming soon. Until then, play in your browser on a laptop or phone.</p>
         <div className="fp-store-badges">
           <StoreBadge name="App Store" label="Coming soon on the App Store">
             <AppStoreMark />
@@ -59,7 +59,7 @@ export function SiteFooter({ prefix = "" }: { prefix?: "" | "/" }) {
           <TrackedExternal href={whatsappUrl("general")} events={[{ name: "whatsapp_enquiry_clicked", params: { audience: "player" } }]}>
             WhatsApp +91 95665 51345
           </TrackedExternal>
-          <p className="fp-muted">Page views and the listed button clicks are measured. Camera frames and pose stay on the phone. Contact details are not sent to analytics.</p>
+          <p className="fp-muted">Page views and the listed button clicks are measured. Camera frames and pose stay on your device. Contact details are not sent to analytics.</p>
         </div>
       </div>
       <div className="fp-wrap fp-copy">

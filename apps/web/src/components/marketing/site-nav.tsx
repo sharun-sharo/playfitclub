@@ -153,7 +153,7 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
               </NavLink>
             );
           })}
-          <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/games" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
+          <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
             Play Now
           </Link>
         </nav>
@@ -186,7 +186,7 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
               })}
             </nav>
             <div className="fp-menu-actions">
-              <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/games" onClick={() => play("nav")}>
+              <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={() => play("nav")}>
                 Play Now
               </Link>
               <button type="button" className="fp-btn fp-btn-ghost" onClick={() => close(true)}>

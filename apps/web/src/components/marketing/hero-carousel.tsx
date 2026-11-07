@@ -216,7 +216,7 @@ export function HeroShowcase() {
         <div className="fp-hero-story">
           <p className="fp-hero-sub fp-hero-rise">Turn your workout into an adventure.</p>
           <p className="fp-hero-body fp-hero-rise">
-            Fit Run plays on your phone in landscape. The camera tracks your body. Mirror the phone to a TV if you want a bigger picture. Fit Fight and Fit Dance are coming soon.
+            Play Fit Run on a laptop, on your phone, or on your phone mirrored to a TV. Your camera tracks your body. Fit Fight and Fit Dance are coming soon.
           </p>
         </div>
         <div className="fp-actions">

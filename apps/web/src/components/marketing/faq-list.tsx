@@ -5,31 +5,31 @@ import { useId, useState } from "react";
 const questions = [
   {
     q: "What is PlayFit Club?",
-    a: "PlayFit Club is a fitness arcade. Fit Run, a three-lane 3D run, plays on your phone. The front camera tracks your body. A TV or laptop shows the game only when you mirror that phone.",
+    a: "PlayFit Club is a fitness arcade. Fit Run, a three-lane 3D run, plays in the browser on a laptop or phone. The camera on that device tracks your body. For a bigger picture, mirror the phone to a TV. There is no separate TV browser game.",
   },
   {
     q: "How does camera-based gameplay work?",
-    a: "Open the game on your phone, tap Play Demo, and allow the camera. The phone estimates your pose in the browser. Frames stay on the phone. Turn sideways, stand so your body is in frame, wait for the countdown, then lean, jump, and squat. A phone camera estimates a jump. It does not measure jump height, and it does not give medical advice.",
+    a: "Choose Laptop, Mobile Only, or Phone+TV mirror, allow the camera, and stand so your body is in frame. The device estimates your pose in the browser. Frames stay on that device. Wait for the countdown, then lean, jump, and squat. A camera estimates a jump. It does not measure jump height, and it does not give medical advice.",
   },
   {
     q: "Do I need a special controller?",
-    a: "No. There is no console, no extra sensor, and no pairing code. The phone runs Fit Run. Tap Play Demo, allow the front camera, and turn the phone sideways.",
+    a: "No. There is no console, no extra sensor, and no pairing code. Your laptop webcam or phone camera runs Fit Run in the browser. Tap Play Demo, choose a play mode, and allow the camera.",
   },
   {
     q: "Can I play using my phone and a TV?",
-    a: "Yes. The game stays on the phone. Mirror that phone with Smart View, Cast, Screen Mirroring, or HDMI. The camera needs a secure page.",
+    a: "Yes. The game and camera stay on the phone. Mirror that phone with Smart View, Cast, Screen Mirroring, or HDMI. PlayFit does not run a separate game in a TV browser. The camera needs a secure page.",
   },
   {
     q: "What devices are supported?",
-    a: "Use a phone with a front camera. Play in landscape in the phone browser or the installed page, with your body in frame from head through knees, good light, and space to jump and squat. If the camera misses you, allow the camera, turn sideways, and step back until your body fits.",
+    a: "Use a laptop with a webcam, or a phone with a front camera, in the browser or installed page. Keep your body in frame from head through knees, with good light and space to jump and squat. Mobile Only plays in portrait. Laptop and Phone+TV mirror use landscape. If the camera misses you, allow the camera and step back until your body fits.",
   },
   {
     q: "Can I play with friends?",
-    a: "Fit Run is single player. One phone runs the game. A second phone does not join the same run. Mirroring only copies that phone’s screen.",
+    a: "Fit Run is single player. One laptop or phone runs the game. A second device does not join the same run. Mirroring only copies that phone’s screen.",
   },
   {
     q: "Is PlayFit Club suitable for gyms?",
-    a: "A gym can buy member accounts so people play Fit Run at home on their own phones. Gym Starter is ₹19,999 per year for up to 49 accounts. Gym Pro is ₹39,999 per year for 50 to 99 accounts. The gym does not host the game. A WhatsApp enquiry does not assign accounts or start a subscription.",
+    a: "A gym can buy member accounts so people play Fit Run at home on their own laptop or phone. Gym Starter is ₹19,999 per year for up to 49 accounts. Gym Pro is ₹39,999 per year for 50 to 99 accounts. The gym does not host the game. A WhatsApp enquiry does not assign accounts or start a subscription.",
   },
   {
     q: "Is PlayFit Club free to play?",
