@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { isSuperAdminRole } from "@fitplay/shared";
 import { trackEvent } from "@/components/analytics/track-event";
 import { BrandLogo } from "@/components/marketing/brand-logo";
@@ -135,7 +135,7 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
     : [...baseLinks, { href: "/login", label: "Login" }];
 
   return (
-    <header className="fp-nav fp-nav-market">
+    <header className="fp-nav fp-nav-market" data-menu-open={open ? "true" : "false"}>
       <div className="fp-nav-bar">
         <BrandLogo href={prefix || "/"} variant={logo} />
         <nav className="fp-nav-desktop" aria-label="Primary">
@@ -148,7 +148,7 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
             );
           })}
           <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
-            Play Now
+            <span className="fp-nav-cta-label">Play Now</span>
           </Link>
         </nav>
         <button
@@ -170,10 +170,16 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
         {open ? (
           <div ref={panelRef} id={menuId} className="fp-menu" role="dialog" aria-modal="true" aria-label="Menu">
             <nav aria-label="Mobile">
-              {links.map((link) => {
+              {links.map((link, index) => {
                 const href = hrefFor(link.href, prefix);
                 return (
-                  <NavLink key={link.label} href={href} current={isCurrent(href, pathname)} onClick={() => close(false)}>
+                  <NavLink
+                    key={link.label}
+                    href={href}
+                    current={isCurrent(href, pathname)}
+                    onClick={() => close(false)}
+                    style={{ "--fp-nav-i": index } as CSSProperties}
+                  >
                     {link.label}
                   </NavLink>
                 );
@@ -181,7 +187,7 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
             </nav>
             <div className="fp-menu-actions">
               <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={() => play("nav")}>
-                Play Now
+                <span className="fp-nav-cta-label">Play Now</span>
               </Link>
               <button type="button" className="fp-btn fp-btn-ghost" onClick={() => close(true)}>
                 Close menu
@@ -194,16 +200,28 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
   );
 }
 
-function NavLink({ href, onClick, current, children }: { href: string; onClick?: () => void; current?: boolean; children: string }) {
+function NavLink({
+  href,
+  onClick,
+  current,
+  children,
+  style,
+}: {
+  href: string;
+  onClick?: () => void;
+  current?: boolean;
+  children: string;
+  style?: CSSProperties;
+}) {
   if (href.startsWith("#") || href.startsWith("/#")) {
     return (
-      <a className="fp-nav-link" href={href} onClick={onClick} aria-current={current ? "page" : undefined}>
+      <a className="fp-nav-link" href={href} onClick={onClick} aria-current={current ? "page" : undefined} style={style}>
         {children}
       </a>
     );
   }
   return (
-    <Link className="fp-nav-link" href={href} onClick={onClick} aria-current={current ? "page" : undefined}>
+    <Link className="fp-nav-link" href={href} onClick={onClick} aria-current={current ? "page" : undefined} style={style}>
       {children}
     </Link>
   );
