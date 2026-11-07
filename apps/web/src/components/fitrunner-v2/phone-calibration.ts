@@ -723,6 +723,31 @@ export function stepPhoneCalibration(state: PhoneCalibState, sample: PhoneCalibS
   return { ...next, machine: phoneCalibMachine(next, sample, config.stableMs) };
 }
 
+/**
+ * Local `?keyboard=1` only. Skips Finding Player / Adjust Position / Calibrating:
+ * jumps straight into 3-2-1-GO, then keeps the course running with no body in frame.
+ * Production callers keep using stepPhoneCalibration.
+ */
+export function stepPhoneKeyboardCalibration(
+  state: PhoneCalibState,
+  now: number,
+  config: PhoneCalibConfig = PHONE_CALIB_CONFIG,
+): PhoneCalibState {
+  const sample: PhoneCalibSample = { now, signal: "full", framingPause: false };
+  const base = clearEdges(state);
+  if (
+    base.phase === "finding" ||
+    base.phase === "adjust" ||
+    base.phase === "calibrating" ||
+    base.phase === "ready" ||
+    base.phase === "reposition"
+  ) {
+    const started = beginCountdown(base, sample);
+    return { ...started, machine: "READY_TO_PLAY" };
+  }
+  return stepPhoneCalibration(base, sample, config);
+}
+
 export const PHONE_PLAY_STARTED_KEY = "fitplay.phone.playStarted";
 
 type PhonePlayStore = {

@@ -15,6 +15,7 @@ import {
   phoneStandHolding,
   startPhonePlay,
   stepPhoneCalibration,
+  stepPhoneKeyboardCalibration,
   PHONE_MOBILE_STAGE_NOTE,
   PHONE_PLAYER_READY,
   PHONE_STABLE_MS,
@@ -215,6 +216,7 @@ export function PhoneFitRun({
   const [calorieNote, setCalorieNote] = useState<string | null>(null);
   const [motionDiag, setMotionDiag] = useState(false);
   const [keyboardTest, setKeyboardTest] = useState(false);
+  const keyboardTestRef = useRef(false);
   const [diagLines, setDiagLines] = useState<string[]>(() => [
     ...phoneMotionDiagLines(emptyDiag()),
     ...phoneFrameDiagLines({ frameMs: null, longFrame: false }),
@@ -222,6 +224,11 @@ export function PhoneFitRun({
   weightRef.current = weightKg;
   mutedRef.current = muted;
   endedRef.current = Boolean(gameOver) || demoOver;
+
+  function readKeyboardTestFlag() {
+    if (typeof window === "undefined") return false;
+    return phoneKeyboardTestEnabled(window.location.search, window.location.hostname);
+  }
 
   function cameraStreamLive() {
     const tracks = streamRef.current?.getVideoTracks() ?? [];
@@ -235,13 +242,21 @@ export function PhoneFitRun({
     setCalorieNote((current) => (current === view.note ? current : view.note));
   };
 
+  useLayoutEffect(() => {
+    const keys = readKeyboardTestFlag();
+    keyboardTestRef.current = keys;
+    setKeyboardTest(keys);
+  }, []);
+
   useEffect(() => {
     const search = window.location.search;
     const host = window.location.hostname;
     const on = phoneMotionDiagEnabled(search, host);
     motionDiagRef.current = on;
     setMotionDiag(on);
-    setKeyboardTest(phoneKeyboardTestEnabled(search, host));
+    const keys = phoneKeyboardTestEnabled(search, host);
+    keyboardTestRef.current = keys;
+    setKeyboardTest(keys);
   }, []);
 
   useLayoutEffect(() => {
@@ -528,6 +543,7 @@ export function PhoneFitRun({
     const video = videoRef.current;
     const poseCanvas = poseCanvasRef.current;
     const stream = streamRef.current;
+    /** Keyboard test can run with no stream; pose pipeline stays off until a camera opens. */
     if (!video || !poseCanvas || !stream) return;
     let cancelled = false;
     const estimator = new PoseEstimator();
@@ -662,26 +678,31 @@ export function PhoneFitRun({
       });
       const now = performance.now();
       const estimator = estimatorRef.current;
+      const keyboardBypass = keyboardTestRef.current || readKeyboardTestFlag();
       const holdStarted = calibRef.current.holdStartedAt;
       const stableFor = holdStarted === null ? 0 : now - holdStarted;
-      if (reading.signal === "none") baselineSamplesRef.current = [];
-      else if (estimator && !estimator.hasSessionBaseline() && stableFor >= PHONE_STABLE_MS && reading.standing && marks) {
-        const poseSample = neutralFromLandmarks(marks);
-        if (poseSample) {
-          baselineSamplesRef.current.push(poseSample);
-          if (baselineSamplesRef.current.length > 11) baselineSamplesRef.current.shift();
+      if (!keyboardBypass) {
+        if (reading.signal === "none") baselineSamplesRef.current = [];
+        else if (estimator && !estimator.hasSessionBaseline() && stableFor >= PHONE_STABLE_MS && reading.standing && marks) {
+          const poseSample = neutralFromLandmarks(marks);
+          if (poseSample) {
+            baselineSamplesRef.current.push(poseSample);
+            if (baselineSamplesRef.current.length > 11) baselineSamplesRef.current.shift();
+          }
+          if (baselineSamplesRef.current.length >= 5) estimator.commitSessionBaseline(baselineSamplesRef.current);
         }
-        if (baselineSamplesRef.current.length >= 5) estimator.commitSessionBaseline(baselineSamplesRef.current);
       }
-      const collecting = stableFor >= PHONE_STABLE_MS && !estimator?.hasSessionBaseline();
-      const next = stepPhoneCalibration(calibRef.current, {
-        now,
-        signal: reading.signal,
-        guidance: reading.guidance,
-        framingPause: pose.framingPause,
-        baselineReady: collecting ? false : undefined,
-      });
-      if ((next.phase === "finding" || next.phase === "reposition") && estimator?.hasSessionBaseline()) {
+      const collecting = !keyboardBypass && stableFor >= PHONE_STABLE_MS && !estimator?.hasSessionBaseline();
+      const next = keyboardBypass
+        ? stepPhoneKeyboardCalibration(calibRef.current, now)
+        : stepPhoneCalibration(calibRef.current, {
+            now,
+            signal: reading.signal,
+            guidance: reading.guidance,
+            framingPause: pose.framingPause,
+            baselineReady: collecting ? false : undefined,
+          });
+      if (!keyboardBypass && (next.phase === "finding" || next.phase === "reposition") && estimator?.hasSessionBaseline()) {
         estimator.clearSessionBaseline();
         baselineSamplesRef.current = [];
       }
@@ -781,10 +802,11 @@ export function PhoneFitRun({
         canvas?.dataset.course === "live" &&
         canvas.dataset.paused !== "1" &&
         canvas.dataset.demoOver !== "1";
-      const delta = cameraActiveStep({ deltaMs: now - last, keyboardOnly: !live, courseLive });
+      const keysOnly = keyboardTestRef.current || !live;
+      const delta = cameraActiveStep({ deltaMs: now - last, keyboardOnly: keysOnly, courseLive: !keysOnly && courseLive });
       last = now;
-      if (live && delta > 0) cameraActiveRef.current += delta;
-      publishCaloriesRef.current(live ? cameraActiveRef.current : 0, live);
+      if (!keysOnly && live && delta > 0) cameraActiveRef.current += delta;
+      publishCaloriesRef.current(keysOnly ? 0 : live ? cameraActiveRef.current : 0, !keysOnly && live);
     }, 200);
     return () => window.clearInterval(timer);
   }, [playing, paused, demoOver, runId]);
@@ -897,6 +919,22 @@ export function PhoneFitRun({
     );
   }
 
+  function beginPhoneSession(keyboardBypass = false) {
+    poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
+    const initial = createPhoneCalibration();
+    calibRef.current = keyboardBypass ? stepPhoneKeyboardCalibration(initial, performance.now()) : initial;
+    setCalib(calibRef.current);
+    setStandZones(keyboardBypass ? PHONE_STAND_OK : PHONE_STAND_QUIET);
+    setPoseCount(0);
+    setStreamToken((value) => value + 1);
+  }
+
+  function attachPhoneCamera(stream: MediaStream) {
+    const previous = streamRef.current;
+    streamRef.current = stream;
+    if (previous && previous !== stream) releaseCamera(previous, null);
+  }
+
   async function startFromTap() {
     const audio = audioRef.current ?? createFitRunAudio();
     audioRef.current = audio;
@@ -906,6 +944,8 @@ export function PhoneFitRun({
     const root = rootRef.current;
     if (!video || !root || startingRef.current) return;
     startingRef.current = true;
+    const keys = keyboardTestRef.current || readKeyboardTestFlag();
+    keyboardTestRef.current = keys;
     const play = startPhonePlay({
       requestCamera: () => openCamera(video),
       stage: phoneStageCaps(root, {
@@ -923,23 +963,41 @@ export function PhoneFitRun({
       },
     });
     try {
-      const stream = await play.camera;
-      if (!aliveRef.current) {
-        releaseCamera(stream, null);
+      /**
+       * Local `?keyboard=1`: start countdown immediately. Camera is best-effort and
+       * must not block on permission, Finding Player, or framing.
+       */
+      if (keys) {
+        beginPhoneSession(true);
+        void play.camera.then(
+          (stream) => {
+            if (!aliveRef.current) {
+              releaseCamera(stream, null);
+              return;
+            }
+            attachPhoneCamera(stream);
+            setStreamToken((value) => value + 1);
+          },
+          () => {
+            /* keyboard play continues without a camera */
+          },
+        );
         return;
       }
-      const previous = streamRef.current;
-      streamRef.current = stream;
-      if (previous && previous !== stream) releaseCamera(previous, null);
-      poseRef.current = { poseCount: 0, framingCode: null, framingPause: false };
-      calibRef.current = createPhoneCalibration();
-      setCalib(calibRef.current);
-      setStandZones(PHONE_STAND_QUIET);
-      setPoseCount(0);
-      setStreamToken((value) => value + 1);
-    } catch (error) {
+      try {
+        const stream = await play.camera;
+        if (!aliveRef.current) {
+          releaseCamera(stream, null);
+          return;
+        }
+        attachPhoneCamera(stream);
+      } catch (error) {
+        if (!aliveRef.current) return;
+        setCameraError(phoneCameraFailure(error, surface));
+        return;
+      }
       if (!aliveRef.current) return;
-      setCameraError(phoneCameraFailure(error, surface));
+      beginPhoneSession();
     } finally {
       startingRef.current = false;
     }
@@ -991,6 +1049,7 @@ export function PhoneFitRun({
       data-phone-play=""
       data-phone-orient="landscape"
       data-phone-phase={calib.phase}
+      data-phone-keyboard={keyboardTest ? "1" : "0"}
       data-phone-display={surface === "phone" ? display : undefined}
       data-phone-landscape={wantsLandscape ? "1" : "0"}
     >

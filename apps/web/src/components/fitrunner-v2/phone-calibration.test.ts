@@ -24,6 +24,7 @@ import {
   requestPhoneStage,
   startPhonePlay,
   stepPhoneCalibration,
+  stepPhoneKeyboardCalibration,
   type PhoneCalibSample,
   type PhoneCalibState,
 } from "./phone-calibration";
@@ -588,5 +589,35 @@ describe("phone calibration", () => {
     rememberPhonePlayStarted(storage);
     expect(readPhonePlayStarted(storage)).toBe(true);
     expect(bag.get(PHONE_PLAY_STARTED_KEY)).toBe("1");
+  });
+
+  it("keyboard bypass skips Finding Player and reaches GO without a body", () => {
+    let state = createPhoneCalibration();
+    state = stepPhoneKeyboardCalibration(state, 0);
+    expect(state.phase).toBe("countdown");
+    expect(state.countdown).toBe("3");
+    expect(state.status).toBe("Ready");
+    state = stepPhoneKeyboardCalibration(state, 1000);
+    expect(state.countdown).toBe("2");
+    state = stepPhoneKeyboardCalibration(state, 2000);
+    expect(state.countdown).toBe("1");
+    state = stepPhoneKeyboardCalibration(state, 3000);
+    expect(state.phase).toBe("running");
+    expect(state.countdown).toBe("GO");
+    expect(state.startCourse).toBe(true);
+    expect(state.runStarted).toBe(true);
+    state = stepPhoneKeyboardCalibration(state, 10_000);
+    expect(state.phase).toBe("running");
+    expect(state.coursePaused).toBe(false);
+    expect(state.startCourse).toBe(false);
+  });
+
+  it("production stepPhoneCalibration still waits for a body", () => {
+    let state = createPhoneCalibration();
+    state = step(state, { now: 0, signal: "none" });
+    state = step(state, { now: 5000, signal: "none" });
+    expect(state.phase).toBe("finding");
+    expect(state.status).toBe("Finding Player");
+    expect(state.startCourse).toBe(false);
   });
 });
