@@ -369,13 +369,32 @@ html:has(.fp) {
   --fp-hero-ink: #142019;
   --fp-hero-lime: #beff39;
   --fp-hero-teal: #086b63;
+  --fp-hero-glow: rgba(190, 255, 57, 0.55);
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
   min-height: auto;
   padding: calc(var(--fp-nav-safe) + 0.7rem) 0 1.25rem;
   background:
     radial-gradient(520px 200px at 12% 86%, rgba(198, 245, 49, 0.55), transparent 70%),
     radial-gradient(460px 180px at 92% 8%, rgba(255, 186, 64, 0.48), transparent 68%),
     linear-gradient(135deg, #d4f3ff 0%, #fff6df 46%, #e9ffe8 100%);
+  background-size: 100% 100%, 100% 100%, 140% 140%;
+  background-position: 0% 100%, 100% 0%, 50% 50%;
   color: #142018;
+}
+
+.fp-hero::before {
+  content: "";
+  position: absolute;
+  inset: -8% -6%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 48% at 18% 78%, rgba(190, 255, 57, 0.28), transparent 70%),
+    radial-gradient(38% 42% at 88% 18%, rgba(255, 196, 92, 0.22), transparent 72%),
+    radial-gradient(50% 40% at 52% 8%, rgba(180, 236, 255, 0.35), transparent 70%);
+  opacity: 0.85;
 }
 
 .fp-hero > .fp-wrap {
@@ -413,16 +432,21 @@ html:has(.fp) {
   color: #14211a;
 }
 
-.fp-hero-copy h1 span {
+.fp-hero-copy h1 .fp-hero-line {
   display: block;
   white-space: nowrap;
+}
+
+.fp-hero-copy h1 .fp-hero-neon {
+  display: inline;
+  white-space: inherit;
 }
 
 .fp-hero-copy .fp-hero-lead {
   position: relative;
   max-width: 38rem;
   margin: 1.15rem 0 0;
-  padding-bottom: 0.85rem;
+  padding-bottom: 0;
   color: #14211a;
   font-family: var(--font-fp-sans), "Segoe UI", sans-serif;
   font-size: clamp(1.25rem, 2.4vw, 1.38rem);
@@ -435,14 +459,28 @@ html:has(.fp) {
 }
 
 .fp-hero-copy .fp-hero-lead::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
+  content: none;
+}
+
+.fp-hero-divider {
+  display: block;
   width: 3.25rem;
   height: 3px;
-  background: #bfff32;
-  pointer-events: none;
+  margin-top: 0.85rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #d6ff4a 0%, #beff39 55%, #9eef20 100%);
+  box-shadow:
+    0 0 6px rgba(190, 255, 57, 0.95),
+    0 0 16px rgba(190, 255, 57, 0.55),
+    0 0 28px rgba(190, 255, 57, 0.28);
+  transform-origin: left center;
+}
+
+.fp-hero-neon {
+  color: inherit;
+  text-shadow:
+    0 0 10px rgba(190, 255, 57, 0.28),
+    0 0 22px rgba(190, 255, 57, 0.14);
 }
 
 .fp-hero-story {
@@ -2196,15 +2234,29 @@ a.fp-btn-dark:hover {
   .fp-hero-rise,
   .fp-hero-cta,
   .fp-hero-lead,
+  .fp-hero-divider,
+  .fp-hero-neon,
   .fp-library-card,
   .fp-library-visual img,
   .fp-plan,
   .fp-hero-progress,
-  .fp-hero-progress span {
+  .fp-hero-progress span,
+  .fp-hero,
+  .fp-hero::before {
     animation: none;
     transition: none;
     transform: none;
     opacity: 1;
+  }
+
+  .fp-hero-neon {
+    text-shadow: none;
+  }
+
+  .fp-hero-divider {
+    box-shadow:
+      0 0 4px rgba(190, 255, 57, 0.55),
+      0 0 10px rgba(190, 255, 57, 0.28);
   }
 
   .fp-hero-slide,
@@ -2850,28 +2902,56 @@ html:has(.fp-console) body {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .fp-hero {
+    animation: fp-hero-atmosphere 18s ease-in-out infinite alternate;
+  }
+
+  .fp-hero::before {
+    animation: fp-hero-haze 14s ease-in-out infinite alternate;
+  }
+
+  .fp-hero-neon {
+    animation: fp-neon-soft 3.6s ease-in-out infinite;
+  }
+
+  .fp-hero-divider {
+    animation: fp-divider-glow 2.8s ease-in-out infinite;
+  }
+
   html:not(.fp-hero-seen) .fp-hero-copy h1 .fp-hero-line {
-    animation: fp-line-in 500ms cubic-bezier(0.22, 0.84, 0.32, 1) both;
+    animation: fp-line-in 560ms cubic-bezier(0.22, 0.84, 0.32, 1) both;
   }
 
   html:not(.fp-hero-seen) .fp-hero-copy h1 .fp-hero-line:nth-child(2) {
-    animation-delay: 120ms;
+    animation-delay: 110ms;
   }
 
   html:not(.fp-hero-seen) .fp-hero-lead {
-    animation: fp-line-in 500ms cubic-bezier(0.22, 0.84, 0.32, 1) 240ms both;
+    animation: fp-line-in 520ms cubic-bezier(0.22, 0.84, 0.32, 1) 240ms both;
+  }
+
+  html:not(.fp-hero-seen) .fp-hero-divider {
+    animation:
+      fp-divider-in 480ms cubic-bezier(0.22, 0.84, 0.32, 1) 380ms both,
+      fp-divider-glow 2.8s ease-in-out 860ms infinite;
   }
 
   html:not(.fp-hero-seen) .fp-hero-rise {
-    animation: fp-rise-in 420ms cubic-bezier(0.22, 0.84, 0.32, 1) both;
+    animation: fp-rise-in 460ms cubic-bezier(0.22, 0.84, 0.32, 1) both;
   }
 
-  html:not(.fp-hero-seen) .fp-hero-story .fp-hero-rise:nth-child(1) { animation-delay: 1240ms; }
-  html:not(.fp-hero-seen) .fp-hero-story .fp-hero-rise:nth-child(2) { animation-delay: 1360ms; }
-  html:not(.fp-hero-seen) .fp-hero-story .fp-hero-rise:nth-child(3) { animation-delay: 1480ms; }
-  html:not(.fp-hero-seen) .fp-hero .fp-actions .fp-hero-rise:nth-child(1) { animation-delay: 1600ms; }
-  html:not(.fp-hero-seen) .fp-hero .fp-actions .fp-hero-rise:nth-child(2) { animation-delay: 1720ms; }
-  html:not(.fp-hero-seen) .fp-hero .fp-actions .fp-hero-rise:nth-child(3) { animation-delay: 1840ms; }
+  html:not(.fp-hero-seen) .fp-hero-story .fp-hero-rise:nth-child(1) { animation-delay: 500ms; }
+  html:not(.fp-hero-seen) .fp-hero-story .fp-hero-rise:nth-child(2) { animation-delay: 620ms; }
+  html:not(.fp-hero-seen) .fp-hero-story .fp-hero-rise:nth-child(3) { animation-delay: 740ms; }
+  html:not(.fp-hero-seen) .fp-hero .fp-actions .fp-hero-rise:nth-child(1) { animation-delay: 760ms; }
+  html:not(.fp-hero-seen) .fp-hero .fp-actions .fp-hero-rise:nth-child(2) { animation-delay: 880ms; }
+  html:not(.fp-hero-seen) .fp-hero .fp-actions .fp-hero-rise:nth-child(3) { animation-delay: 1000ms; }
+
+  html:not(.fp-hero-seen) .fp-hero-neon {
+    animation:
+      fp-neon-in 700ms cubic-bezier(0.22, 0.84, 0.32, 1) 180ms both,
+      fp-neon-soft 3.6s ease-in-out 900ms infinite;
+  }
 
   .fp-reveal:not(.fp-reveal-stagger),
   .fp-reveal-stagger > * {
@@ -2952,6 +3032,78 @@ html:has(.fp-console) body {
 @keyframes fp-rise-in {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: none; }
+}
+
+@keyframes fp-divider-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.35) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fp-divider-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 6px rgba(190, 255, 57, 0.75),
+      0 0 14px rgba(190, 255, 57, 0.4),
+      0 0 24px rgba(190, 255, 57, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 8px rgba(214, 255, 74, 1),
+      0 0 20px rgba(190, 255, 57, 0.65),
+      0 0 36px rgba(190, 255, 57, 0.32);
+  }
+}
+
+@keyframes fp-neon-soft {
+  0%,
+  100% {
+    text-shadow:
+      0 0 8px rgba(190, 255, 57, 0.22),
+      0 0 18px rgba(190, 255, 57, 0.1);
+  }
+  50% {
+    text-shadow:
+      0 0 12px rgba(190, 255, 57, 0.42),
+      0 0 26px rgba(190, 255, 57, 0.2);
+  }
+}
+
+@keyframes fp-neon-in {
+  from {
+    text-shadow: none;
+  }
+  to {
+    text-shadow:
+      0 0 10px rgba(190, 255, 57, 0.28),
+      0 0 22px rgba(190, 255, 57, 0.14);
+  }
+}
+
+@keyframes fp-hero-atmosphere {
+  0% {
+    background-position: 0% 100%, 100% 0%, 42% 48%;
+  }
+  100% {
+    background-position: 8% 88%, 92% 10%, 58% 52%;
+  }
+}
+
+@keyframes fp-hero-haze {
+  0% {
+    opacity: 0.72;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0.95;
+    transform: translate3d(-1.5%, 1%, 0) scale(1.04);
+  }
 }
 
 @keyframes fp-hero-progress {

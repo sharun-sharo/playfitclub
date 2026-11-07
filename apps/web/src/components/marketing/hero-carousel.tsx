@@ -9,6 +9,14 @@ import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
 const slides = [
   {
+    id: "living-room",
+    name: "TV living room",
+    live: "Phone and TV. Mirror play.",
+    jpeg: "/marketing/hero-tv-living-room.jpg",
+    png: "/marketing/hero-tv-living-room.jpg",
+    alt: "Phone plus TV mirror play. A woman jogs in a living room while Fit Run plays on the TV and a phone on the table tracks her moves.",
+  },
+  {
     id: "laptop",
     name: "Laptop",
     live: "Laptop. Webcam play.",
@@ -23,14 +31,6 @@ const slides = [
     jpeg: "/marketing/hero-mobile-squat.jpg",
     png: "/marketing/hero-mobile-squat.jpg",
     alt: "Mobile-only play. A woman in a teal shirt squats in front of a phone screen running Fit Run as the camera.",
-  },
-  {
-    id: "living-room",
-    name: "TV living room",
-    live: "Phone and TV. Mirror play.",
-    jpeg: "/marketing/hero-tv-living-room.jpg",
-    png: "/marketing/hero-tv-living-room.jpg",
-    alt: "Phone plus TV mirror play. A woman jogs in a living room while Fit Run plays on the TV and a phone on the table tracks her moves.",
   },
 ] as const;
 
@@ -209,10 +209,15 @@ export function HeroShowcase() {
     <>
       <div className="fp-hero-copy">
         <h1 id="hero-title">
-          <span className="fp-hero-line">You Move.</span>
-          <span className="fp-hero-line">The Game Moves.</span>
+          <span className="fp-hero-line">
+            You <span className="fp-hero-neon">Move</span>.
+          </span>
+          <span className="fp-hero-line">
+            The <span className="fp-hero-neon">Game</span> <span className="fp-hero-neon">Moves</span>.
+          </span>
         </h1>
         <p className="fp-hero-lead">No buttons. No controllers. Just your body in action.</p>
+        <span className="fp-hero-divider" aria-hidden="true" />
         <div className="fp-hero-story">
           <p className="fp-hero-sub fp-hero-rise">Turn your workout into an adventure.</p>
           <p className="fp-hero-body fp-hero-rise">
