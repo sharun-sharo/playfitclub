@@ -1,5 +1,5 @@
 import { TrackedLink } from "@/components/analytics/tracked-link";
-import { PHONE_PLAY_PATH } from "@/components/fitrunner-v2/phone-local-play";
+import { PLAY_HUB_PATH } from "@/components/fitrunner-v2/phone-local-play";
 import { Reveal } from "@/components/marketing/reveal";
 
 const games = [
@@ -7,7 +7,7 @@ const games = [
     title: "Fit Run",
     description: "Run, jump, squat, and dodge obstacles using your real body movements.",
     status: "Available",
-    href: PHONE_PLAY_PATH,
+    href: PLAY_HUB_PATH,
     image: "/marketing/fit-run.jpg",
     alt: "Illustration of a woman running in a living room. A phone shows a body outline and a television shows a running game.",
     action: "Play Fit Run",

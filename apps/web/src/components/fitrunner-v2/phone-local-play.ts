@@ -5,8 +5,25 @@ import { BODY_LEFT_MESSAGE } from "../../lib/vision/camera-status";
 import { containFrame } from "../../lib/vision/preview-fit";
 import { isTelevisionUserAgent } from "./tv-graphics";
 
+/** Choose Your Play Mode hub. Marketing CTAs land here before phone or laptop Fit Run. */
+export const PLAY_HUB_PATH = "/play";
+
 /** Phone runs Fit Run here. A TV or laptop shows this screen through the phone's own mirror. */
 export const PHONE_PLAY_PATH = "/play/phone";
+
+/** Play on TV chooser lands here: same phone game, with mirror-to-TV how-to. */
+export const PHONE_TV_PLAY_PATH = "/play/phone?display=tv";
+
+/** Laptop browser Fit Run. Camera and 3D course stay on this device. */
+export const LAPTOP_PLAY_PATH = "/play/fit-run";
+
+export type PhoneDisplayMode = "phone" | "tv";
+
+/** Reads `?display=tv` from the phone play URL. Anything else is Mobile Only. */
+export function phoneDisplayMode(value: string | string[] | undefined | null): PhoneDisplayMode {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (raw ?? "").trim().toLowerCase() === "tv" ? "tv" : "phone";
+}
 
 /** Shown beside the intro QR. The address itself stays inside the code. */
 export const PHONE_LAPTOP_QR_LINE = "If you opened this on a laptop, scan this with your phone.";
@@ -24,22 +41,75 @@ export function phonePlayQrPayload(origin: string) {
   return `${base}${PHONE_PLAY_PATH}`;
 }
 
-/** The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror. */
+/** Mobile Only intro. No TV mirror how-to on this path. */
 export const PHONE_MIRROR_NOTE =
-  "The game stays on this phone. A TV or laptop shows this screen only through the phone's own mirror.";
+  "The game stays on this phone. Your phone camera tracks your moves.";
 
-/** Phone mirror controls. This site does not cast the game. */
+/** Play on TV intro. Game still runs on the phone; the TV only shows a mirrored phone screen. */
+export const PHONE_TV_MIRROR_NOTE =
+  "The game runs on this phone and uses the phone camera. Mirror this phone screen to your TV — PlayFit does not cast a separate stream.";
+
+/** Platform titles kept for tests and compact references. Detailed steps live in PHONE_TV_MIRROR_GUIDES. */
 export const PHONE_MIRROR_GUIDE = ["Samsung Smart View", "Android Cast", "iPhone Screen Mirroring"] as const;
 
 export const PHONE_MIRROR_LINE = PHONE_MIRROR_GUIDE.join(" ");
 
-/** Shown in portrait when landscape lock is unavailable. */
+/** Step-by-step phone → TV mirroring. Shown only on the Play on TV intro. */
+export const PHONE_TV_MIRROR_GUIDES = [
+  {
+    title: "Samsung Smart View",
+    steps: [
+      "Swipe down from the top of your phone to open Quick Settings.",
+      "Tap Smart View (or Screen Mirroring).",
+      "Select your Samsung TV, then confirm on the TV if asked.",
+    ],
+  },
+  {
+    title: "Android Cast",
+    steps: [
+      "Swipe down twice and tap Cast / Screen Cast (or open Settings → Connected devices → Cast).",
+      "Select your Chromecast or Cast-ready TV.",
+      "Choose Cast screen / Entire screen so the TV shows this phone.",
+    ],
+  },
+  {
+    title: "iPhone Screen Mirroring",
+    steps: [
+      "Open Control Center (swipe down from the top-right, or up from the bottom on older iPhones).",
+      "Tap Screen Mirroring.",
+      "Select your Apple TV or AirPlay-compatible TV, then enter the code if shown.",
+    ],
+  },
+] as const;
+
+/** Laptop Fit Run intro. Pose stays on this browser. */
+export const LAPTOP_PLAY_NOTE =
+  "Play in this browser. Your laptop camera tracks your body. Frames stay on this device.";
+/**
+ * How to play Fit Run. Matches the detector: shoulder lean or arm raise/sideways
+ * for lanes (physical left = robot left), squat for duck/roll, jump for jump.
+ */
+export const FIT_RUN_HOW_TO_PLAY = [
+  "Raise your left arm sideways to move left",
+  "Raise your right arm sideways to move right",
+  "Squat to duck under obstacles",
+  "Jump to clear obstacles",
+] as const;
+
+/** Shown in portrait when landscape lock is unavailable (Play on TV path). */
 export const PHONE_ROTATE_LINE = "Turn your phone sideways.";
 
-/** Phone visitors open the phone game. A laptop or television keeps the laptop Fit Run page. */
-export function homePlayHref(input: { userAgent: string; coarsePointer: boolean; viewportWidth: number }) {
-  if (isPhonePlayVisitor(input)) return PHONE_PLAY_PATH;
-  return "/play/fit-run";
+/**
+ * Play on TV keeps landscape. Mobile Only (`display=phone`) is portrait-first:
+ * no landscape lock and no sideways prompt.
+ */
+export function phonePrefersLandscape(display: PhoneDisplayMode) {
+  return display === "tv";
+}
+
+/** Marketing and device links open the Choose Your Play Mode hub. */
+export function homePlayHref(_input?: { userAgent: string; coarsePointer: boolean; viewportWidth: number }) {
+  return PLAY_HUB_PATH;
 }
 
 export function isPhonePlayVisitor(input: { userAgent: string; coarsePointer: boolean; viewportWidth: number }) {
@@ -233,10 +303,11 @@ export function dispatchLocalGesture(movementType: string, game: LocalGameContro
 }
 
 /** Camera copy for this page. The laptop join page keeps its own lines. */
-export function phoneCameraFailure(error: unknown) {
+export function phoneCameraFailure(error: unknown, device: "phone" | "laptop" = "phone") {
+  const where = device === "laptop" ? "laptop" : "phone";
   const name = error instanceof Error ? error.name : "";
-  if (name === "NotAllowedError" || name === "PermissionDeniedError") return "Allow the camera on your phone, then try again.";
-  if (name === "NotFoundError" || name === "DevicesNotFoundError" || name === "OverconstrainedError") return "No camera was found on this phone.";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") return `Allow the camera on your ${where}, then try again.`;
+  if (name === "NotFoundError" || name === "DevicesNotFoundError" || name === "OverconstrainedError") return `No camera was found on this ${where}.`;
   if (name === "NotReadableError" || name === "TrackStartError" || name === "AbortError") return "The camera is in use by another app. Close it, then try again.";
   if (name === "SecurityError") return "This page is not secure yet. Open the https link, then try again.";
   return "The camera could not start. Try again.";
@@ -246,6 +317,15 @@ export function phoneCameraFailure(error: unknown) {
 export function phoneAsksForLandscape(width: number, height: number) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
   return height >= width;
+}
+
+/**
+ * Rotate-to-landscape prompt. Only for Play on TV (or any path that prefers landscape).
+ * Mobile Only stays in portrait without this banner.
+ */
+export function phoneAsksForLandscapeRotate(display: PhoneDisplayMode, width: number, height: number) {
+  if (!phonePrefersLandscape(display)) return false;
+  return phoneAsksForLandscape(width, height);
 }
 
 /**

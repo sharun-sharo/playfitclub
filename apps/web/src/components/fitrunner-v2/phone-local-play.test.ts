@@ -12,6 +12,8 @@ import {
   dispatchLocalGesture,
   KEYBOARD_GAME_ACTIONS,
   phoneAsksForLandscape,
+  phoneAsksForLandscapeRotate,
+  phonePrefersLandscape,
   phoneCameraFailure,
   phoneFrameWarning,
   phoneGestureCandidate,
@@ -36,7 +38,15 @@ import {
   phoneObstacleCounts,
   phoneRunSeed,
   PHONE_MIRROR_GUIDE,
+  FIT_RUN_HOW_TO_PLAY,
   PHONE_MIRROR_NOTE,
+  PHONE_TV_MIRROR_GUIDES,
+  PHONE_TV_MIRROR_NOTE,
+  PHONE_TV_PLAY_PATH,
+  phoneDisplayMode,
+  LAPTOP_PLAY_NOTE,
+  LAPTOP_PLAY_PATH,
+  PLAY_HUB_PATH,
   PHONE_PLAY_PATH,
   PHONE_PIXEL_RATIO_CAP,
   PHONE_ROTATE_LINE,
@@ -148,6 +158,11 @@ describe("phone local gestures", () => {
   it("keeps the phone page on landscape copy, the mirror steps, and the existing calorie dash", () => {
     expect(phoneAsksForLandscape(390, 844)).toBe(true);
     expect(phoneAsksForLandscape(844, 390)).toBe(false);
+    expect(phonePrefersLandscape("tv")).toBe(true);
+    expect(phonePrefersLandscape("phone")).toBe(false);
+    expect(phoneAsksForLandscapeRotate("tv", 390, 844)).toBe(true);
+    expect(phoneAsksForLandscapeRotate("phone", 390, 844)).toBe(false);
+    expect(phoneAsksForLandscapeRotate("tv", 844, 390)).toBe(false);
     expect(PHONE_ROTATE_LINE).toBe("Turn your phone sideways.");
     expect(phoneSetupLine("looking", null)).toBe(PHONE_STAND_LINE);
     expect(phoneSetupLine("detected", "Great! Stay still while we calibrate.")).toBe("Great! Stay still while we calibrate.");
@@ -158,11 +173,39 @@ describe("phone local gestures", () => {
     expect(phoneFrameWarning({ playing: false, banner: true, pause: true })).toBeNull();
     expect(phoneFrameWarning({ playing: true, banner: true, pause: false })).toMatch(/left the frame/i);
     expect(PHONE_MIRROR_GUIDE).toEqual(["Samsung Smart View", "Android Cast", "iPhone Screen Mirroring"]);
-    expect(PHONE_MIRROR_NOTE).toMatch(/phone's own mirror/);
-    expect(`${PHONE_MIRROR_NOTE} ${PHONE_MIRROR_GUIDE.join(" ")}`).not.toMatch(/\/tv\/play|WebRTC|every TV|TV browser/i);
-    expect(homePlayHref({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", coarsePointer: true, viewportWidth: 390 })).toBe("/play/phone");
-    expect(homePlayHref({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", coarsePointer: false, viewportWidth: 1440 })).toBe("/play/fit-run");
-    expect(homePlayHref({ userAgent: "Mozilla/5.0 (SMART-TV; Tizen 6.0)", coarsePointer: true, viewportWidth: 1920 })).toBe("/play/fit-run");
+    expect(PHONE_MIRROR_NOTE).toMatch(/game stays on this phone/i);
+    expect(PHONE_MIRROR_NOTE).not.toMatch(/Smart View|Cast|AirPlay|Screen Mirroring/i);
+    expect(PHONE_TV_PLAY_PATH).toBe("/play/phone?display=tv");
+    expect(phoneDisplayMode("tv")).toBe("tv");
+    expect(phoneDisplayMode("TV")).toBe("tv");
+    expect(phoneDisplayMode("phone")).toBe("phone");
+    expect(phoneDisplayMode(undefined)).toBe("phone");
+    expect(phoneDisplayMode(["tv"])).toBe("tv");
+    expect(PHONE_TV_MIRROR_NOTE).toMatch(/mirror this phone screen to your TV/i);
+    expect(PHONE_TV_MIRROR_NOTE).toMatch(/does not cast a separate stream/i);
+    expect(PHONE_TV_MIRROR_GUIDES.map((guide) => guide.title)).toEqual([...PHONE_MIRROR_GUIDE]);
+    for (const guide of PHONE_TV_MIRROR_GUIDES) {
+      expect(guide.steps.length).toBeGreaterThanOrEqual(3);
+      expect(guide.steps.join(" ")).toMatch(/TV|Chromecast|Apple TV|AirPlay/i);
+    }
+    expect(`${PHONE_MIRROR_NOTE} ${PHONE_TV_MIRROR_NOTE} ${PHONE_MIRROR_GUIDE.join(" ")}`).not.toMatch(
+      /\/tv\/play|WebRTC|every TV|TV browser/i,
+    );
+    expect(homePlayHref({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", coarsePointer: true, viewportWidth: 390 })).toBe("/play");
+    expect(homePlayHref({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", coarsePointer: false, viewportWidth: 1440 })).toBe("/play");
+    expect(homePlayHref({ userAgent: "Mozilla/5.0 (SMART-TV; Tizen 6.0)", coarsePointer: true, viewportWidth: 1920 })).toBe("/play");
+    expect(homePlayHref()).toBe("/play");
+    expect(PLAY_HUB_PATH).toBe("/play");
+    expect(PHONE_PLAY_PATH).toBe("/play/phone");
+    expect(LAPTOP_PLAY_PATH).toBe("/play/fit-run");
+    expect(LAPTOP_PLAY_NOTE).toMatch(/laptop camera/i);
+    expect(FIT_RUN_HOW_TO_PLAY).toEqual([
+      "Raise your left arm sideways to move left",
+      "Raise your right arm sideways to move right",
+      "Squat to duck under obstacles",
+      "Jump to clear obstacles",
+    ]);
+    expect(FIT_RUN_HOW_TO_PLAY).toHaveLength(4);
     expect(phonePlayQrPayload("https://playfitclub.com")).toBe(`https://playfitclub.com${PHONE_PLAY_PATH}`);
     expect(phonePlayQrPayload("https://playfitclub.com/")).toBe(`https://playfitclub.com${PHONE_PLAY_PATH}`);
     expect(phonePlayQrPayload("https://preview.example")).toBe(`https://preview.example${PHONE_PLAY_PATH}`);
@@ -301,6 +344,22 @@ describe("phone local gestures", () => {
     expect(fitRun).not.toContain(">Ankles<");
     expect(fitRun).toContain("PHONE_STAND_SENTENCE");
     expect(fitRun).not.toContain("drawConnectors");
+    expect(fitRun).not.toContain("PhoneLaptopQr");
+    expect(fitRun).not.toContain("phonePlayQrPayload");
+    expect(fitRun).not.toMatch(/from \"qrcode\"|from 'qrcode'/);
+    expect(fitRun).toContain("PHONE_TV_MIRROR_GUIDES");
+    expect(fitRun).toContain('data-phone-display={surface === "phone" ? display : undefined}');
+    expect(fitRun).toContain('lockTo: wantsLandscape ? "landscape" : false');
+    expect(fitRun).toContain("phonePrefersLandscape");
+    expect(fitRun).toContain("Play on TV");
+    expect(css).toContain('data-phone-landscape="0"');
+    expect(css).toContain(".phone-tv-mirror");
+    const choose = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../play/choose-how-you-play.tsx"),
+      "utf8",
+    );
+    expect(choose).toContain("PHONE_TV_PLAY_PATH");
+    expect(choose).toContain("PHONE_PLAY_PATH");
     const actions = fitRun.slice(fitRun.indexOf('className="phone-actions"'), fitRun.indexOf('data-phone-mirror=""'));
     expect(actions).toContain("Pause");
     expect(actions).toContain("Sound on");

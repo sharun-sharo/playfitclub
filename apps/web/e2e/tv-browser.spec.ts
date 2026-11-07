@@ -16,12 +16,19 @@ test.describe("television browser compatibility", () => {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
 
-    await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Play Now" })).toHaveAttribute("href", "/games");
+    await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Play Now" })).toHaveAttribute("href", "/play");
     await expect(page.getByRole("link", { name: "Play at home", exact: true })).toHaveCount(0);
+    await page.goto("/play");
+    await expect(page.getByRole("heading", { name: "Choose Your Play Mode" })).toBeVisible();
+    await expect(page.locator("[data-choose-card]")).toHaveCount(3);
+    await expect(page.getByRole("link", { name: "Play on Laptop" })).toHaveAttribute("href", "/play/fit-run");
+    await expect(page.getByRole("link", { name: "Play on Phone" })).toHaveAttribute("href", "/play/phone");
+    await expect(page.getByRole("link", { name: "Play on TV" })).toHaveAttribute("href", "/play/phone?display=tv");
+    await expect(page.locator("[data-qr], canvas[aria-label*='QR' i], a[href*='/join']")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /join|pair/i })).toHaveCount(0);
     await page.goto("/play/fit-run");
-    await expect(page.getByRole("heading", { name: "Play on a big screen" })).toBeVisible();
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Scan with your phone" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Play on this laptop" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "PLAY NOW" })).toBeVisible();
     await expect(page.locator("[data-fitrunner-graphics-error]")).toHaveCount(0);
   });
 
@@ -53,6 +60,5 @@ test.describe("television browser compatibility", () => {
     await expect(alert).toContainText("WebGL 2");
     await expect(alert).toContainText("Tizen packaged app");
     await expect(page.locator("canvas[data-fitrunner-v2]")).toBeHidden();
-    await expect(page.getByRole("heading", { name: "Play on a big screen" })).toBeVisible();
   });
 });

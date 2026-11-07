@@ -1,11 +1,12 @@
-import { PlayLobby } from "@/components/play/play-lobby";
+import { ChooseHowYouPlay } from "@/components/play/choose-how-you-play";
 import { noIndex } from "@/lib/site-metadata";
+import "@/components/play/choose-how-you-play.css";
 
 export const metadata = noIndex(
-  "Play",
-  "A join code and QR appear on this screen so a phone can pair. This is a live session, not a public page.",
+  "Choose Your Play Mode",
+  "No controllers. No wearables. Just you and your movements. Pick phone or laptop Fit Run.",
 );
 
 export default function PlayPage() {
-  return <PlayLobby />;
+  return <ChooseHowYouPlay />;
 }

@@ -4,7 +4,6 @@ import { Play } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
-import { PHONE_PLAY_PATH } from "@/components/fitrunner-v2/phone-local-play";
 import { HeroPicture } from "@/components/marketing/hero-picture";
 import { ensureMotionStyles } from "@/components/marketing/motion-css";
 
@@ -224,7 +223,7 @@ export function HeroShowcase() {
           <span className="fp-hero-cta fp-hero-rise">
             <Link
               className="fp-btn fp-btn-primary"
-              href={PHONE_PLAY_PATH}
+              href="/games"
               onClick={() => {
                 trackEvent("play_clicked", { surface: "home" });
                 trackEvent("fit_run_selected", { surface: "home-phone" });

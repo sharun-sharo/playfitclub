@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
 import { applyObstacleHit, beginRun, emptyRun, HIT_INVULNERABILITY_MS, RUN_LIVES, type RunLives } from "@fitplay/shared";
 import { createFitRunAudio, fitRunBedAction, hearFitRunMove, type FitRunAudio } from "@/components/fitrunner-v2/fit-run-audio";
 import { GameOverScreen } from "@/components/fitrunner-v2/game-over";
@@ -16,6 +15,7 @@ import {
   phoneStandHolding,
   startPhonePlay,
   stepPhoneCalibration,
+  PHONE_MOBILE_STAGE_NOTE,
   PHONE_PLAYER_READY,
   PHONE_STABLE_MS,
   PHONE_STAGE_NOTE,
@@ -41,15 +41,18 @@ import {
   phoneMotionDiagLines,
   phoneObstacleCounts,
   phonePlayCalories,
+  phonePrefersLandscape,
   phoneRunSeed,
-  PHONE_LAPTOP_QR_LINE,
-  PHONE_LAPTOP_QR_NAME,
-  PHONE_MIRROR_GUIDE,
+  FIT_RUN_HOW_TO_PLAY,
+  LAPTOP_PLAY_NOTE,
   PHONE_MIRROR_NOTE,
-  phonePlayQrPayload,
+  PHONE_ROTATE_LINE,
+  PHONE_TV_MIRROR_GUIDES,
+  PHONE_TV_MIRROR_NOTE,
   PHONE_TEST_CONTROLS,
   PHONE_TEST_CONTROLS_LABEL,
   renderLoopFps,
+  type PhoneDisplayMode,
   type PhoneMotionDiag,
   type PhoneMotionLogRecord,
 } from "@/components/fitrunner-v2/phone-local-play";
@@ -124,40 +127,6 @@ function CalibGuide({ zones, holding }: { zones: PhoneStandZones; holding: boole
   );
 }
 
-function PhoneLaptopQr() {
-  const [qr, setQr] = useState("");
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const payload = phonePlayQrPayload(window.location.origin);
-    if (!payload) return;
-    let cancel = false;
-    void QRCode.toDataURL(payload, { margin: 1, width: 480, color: { dark: "#1c1f24", light: "#ffffff" } })
-      .then((url) => {
-        if (!cancel) setQr(url);
-      })
-      .catch(() => {
-        if (!cancel) setFailed(true);
-      });
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
-  if (failed) return null;
-
-  return (
-    <figure className="phone-laptop-qr" data-phone-laptop-qr="">
-      {qr ? (
-        <img className="phone-laptop-qr-image" src={qr} alt={PHONE_LAPTOP_QR_NAME} width={180} height={180} />
-      ) : (
-        <div className="phone-laptop-qr-image" aria-hidden="true" />
-      )}
-      <figcaption>{PHONE_LAPTOP_QR_LINE}</figcaption>
-    </figure>
-  );
-}
-
 const emptyDiag = (): PhoneMotionDiag => ({
   buffer: null,
   renderFps: null,
@@ -169,7 +138,19 @@ const emptyDiag = (): PhoneMotionDiag => ({
   reject: null,
 });
 
-export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | null }) {
+export function PhoneFitRun({
+  demoLimitSeconds,
+  surface = "phone",
+  display = "phone",
+}: {
+  demoLimitSeconds: number | null;
+  surface?: "phone" | "laptop";
+  /** Phone route only: `tv` shows mirror-to-TV steps; Mobile Only keeps the plain intro. */
+  display?: PhoneDisplayMode;
+}) {
+  const showTvMirror = surface === "phone" && display === "tv";
+  /** Mobile Only stays portrait. TV + laptop still request landscape on Play. */
+  const wantsLandscape = surface === "laptop" || phonePrefersLandscape(display);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -340,7 +321,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       window.removeEventListener("resize", apply);
       window.removeEventListener("orientationchange", apply);
     };
-  }, []);
+  }, [wantsLandscape]);
 
   useEffect(() => {
     const mark = () => {
@@ -890,11 +871,14 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
     startingRef.current = true;
     const play = startPhonePlay({
       requestCamera: () => openCamera(video),
-      stage: phoneStageCaps(root),
+      stage: phoneStageCaps(root, {
+        lockTo: wantsLandscape ? "landscape" : false,
+        incompleteNote: wantsLandscape ? PHONE_STAGE_NOTE : PHONE_MOBILE_STAGE_NOTE,
+      }),
       onLeaveIntro: () => {
         setCameraError("");
         setStarted(true);
-        setStageNote(PHONE_STAGE_NOTE);
+        setStageNote(wantsLandscape ? PHONE_STAGE_NOTE : PHONE_MOBILE_STAGE_NOTE);
       },
       onStage: (stage) => {
         if (!aliveRef.current) return;
@@ -918,7 +902,7 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       setStreamToken((value) => value + 1);
     } catch (error) {
       if (!aliveRef.current) return;
-      setCameraError(phoneCameraFailure(error));
+      setCameraError(phoneCameraFailure(error, surface));
     } finally {
       startingRef.current = false;
     }
@@ -964,7 +948,15 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
   const showCourseHud = playing && calib.phase !== "reposition" && calib.phase !== "countdown" && calib.phase !== "ready" && calib.phase !== "finding" && calib.phase !== "adjust" && calib.phase !== "calibrating";
 
   return (
-    <div ref={rootRef} className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white" data-phone-play="" data-phone-orient="landscape" data-phone-phase={calib.phase}>
+    <div
+      ref={rootRef}
+      className="phone-play fixed inset-0 overflow-hidden bg-[#8ec8ea] text-white"
+      data-phone-play=""
+      data-phone-orient="landscape"
+      data-phone-phase={calib.phase}
+      data-phone-display={surface === "phone" ? display : undefined}
+      data-phone-landscape={wantsLandscape ? "1" : "0"}
+    >
       <canvas ref={canvasRef} data-fitrunner-v2="" aria-label="Fit Run" className="h-full w-full" hidden={Boolean(graphicsError)} />
       <div className="phone-camera-park" data-phone-preview="sliver">
         <div className="phone-cal-flip">
@@ -1018,6 +1010,11 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
       <div className="phone-hud-layer" hidden={!showCourseHud}>
           <div className="phone-hud-top">
             <div className="phone-banners">
+              {wantsLandscape ? (
+                <p className="phone-rotate" role="status">
+                  {PHONE_ROTATE_LINE}
+                </p>
+              ) : null}
               {calib.phase === "warning" ? (
                 <p data-phone-frame="" role="status" className="phone-frame">
                   {BODY_LEFT_MESSAGE}
@@ -1077,22 +1074,67 @@ export function PhoneFitRun({ demoLimitSeconds }: { demoLimitSeconds: number | n
           </div>
         </div>
       {!started && !graphicsError && !gameOver && !demoOver ? (
-        <div className="phone-mirror-screen" data-phone-mirror="">
+        <div
+          className="phone-mirror-screen"
+          data-phone-mirror=""
+          data-play-surface={surface}
+          data-phone-display={surface === "phone" ? display : undefined}
+        >
           <div className="phone-mirror-copy">
             <p className="text-xs tracking-[0.16em] text-[#d6ff4a]">Fit Run</p>
-            <h1 className="mt-3 font-display text-4xl text-white">Play on this phone</h1>
-            <p className="mt-3 max-w-md text-base text-white/80">{PHONE_MIRROR_NOTE}</p>
-            <ul className="mt-4 space-y-1 text-sm text-[#d6ff4a]">
-              {PHONE_MIRROR_GUIDE.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <h1 className="mt-3 font-display text-4xl text-white">
+              {surface === "laptop" ? "Play on this laptop" : showTvMirror ? "Play on TV" : "Play on this phone"}
+            </h1>
+            <p className="mt-3 max-w-md text-base text-white/80">
+              {surface === "laptop" ? LAPTOP_PLAY_NOTE : showTvMirror ? PHONE_TV_MIRROR_NOTE : PHONE_MIRROR_NOTE}
+            </p>
+            <button type="button" className="phone-start phone-start-top" onClick={() => void startFromTap()}>
+              {cameraError ? "Try again" : "PLAY NOW"}
+            </button>
+            <section className="phone-howto" aria-label="How to play Fit Run">
+              <h2 className="phone-howto-title">How to play</h2>
+              <ol className="phone-howto-grid">
+                {FIT_RUN_HOW_TO_PLAY.map((line, index) => (
+                  <li key={line} className="phone-howto-item">
+                    <span className="phone-howto-index" aria-hidden="true">
+                      {index + 1}
+                    </span>
+                    <span className="phone-howto-text">{line}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+            {showTvMirror ? (
+              <section className="phone-tv-mirror" aria-label="How to mirror this phone to a TV">
+                <h2 className="phone-tv-mirror-title">Mirror phone to TV</h2>
+                <p className="phone-tv-mirror-lead">
+                  Use your phone&apos;s built-in screen mirror. The game stays on this phone.
+                </p>
+                <div className="phone-tv-mirror-list">
+                  {PHONE_TV_MIRROR_GUIDES.map((guide) => (
+                    <article key={guide.title} className="phone-tv-mirror-card">
+                      <h3 className="phone-tv-mirror-platform">{guide.title}</h3>
+                      <ol className="phone-tv-mirror-steps">
+                        {guide.steps.map((step, index) => (
+                          <li key={step} className="phone-tv-mirror-step">
+                            <span className="phone-tv-mirror-index" aria-hidden="true">
+                              {index + 1}
+                            </span>
+                            <span className="phone-tv-mirror-text">{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : surface === "laptop" ? (
+              <p className="phone-intro-tip">
+                Allow camera access, stand in frame, then wait for the countdown.
+              </p>
+            ) : null}
             {cameraError ? <p className="mt-4 max-w-md text-base text-white">{cameraError}</p> : null}
             {startError ? <p className="mt-4 max-w-md text-base text-white">{startError}</p> : null}
-            <button type="button" className="phone-start" onClick={() => void startFromTap()}>
-              {cameraError ? "Try again" : "Play"}
-            </button>
-            <PhoneLaptopQr />
           </div>
         </div>
       ) : null}

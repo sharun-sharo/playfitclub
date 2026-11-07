@@ -13,6 +13,7 @@ import {
   PHONE_LOSS_GRACE_MS,
   PHONE_PLAYER_READY,
   PHONE_PLAY_STARTED_KEY,
+  PHONE_MOBILE_STAGE_NOTE,
   PHONE_STAGE_NOTE,
   PHONE_STAND_SENTENCE,
   PHONE_START_LANDMARKS,
@@ -410,6 +411,32 @@ describe("phone calibration", () => {
         },
       }),
     ).resolves.toEqual({ fullscreen: true, orientationLocked: true, note: null });
+  });
+
+  it("skips orientation.lock for Mobile Only and uses the non-sideways incomplete note", async () => {
+    const locks: string[] = [];
+    await expect(
+      requestPhoneStage({
+        fullscreen: async () => undefined,
+        lockTo: false,
+        incompleteNote: PHONE_MOBILE_STAGE_NOTE,
+        orientationLock: async (orientation) => {
+          locks.push(orientation);
+        },
+      }),
+    ).resolves.toEqual({ fullscreen: true, orientationLocked: false, note: null });
+    expect(locks).toEqual([]);
+    await expect(
+      requestPhoneStage({
+        lockTo: false,
+        incompleteNote: PHONE_MOBILE_STAGE_NOTE,
+      }),
+    ).resolves.toEqual({
+      fullscreen: false,
+      orientationLocked: false,
+      note: PHONE_MOBILE_STAGE_NOTE,
+    });
+    expect(PHONE_MOBILE_STAGE_NOTE).not.toMatch(/sideways/i);
   });
 
   it("requests fullscreen and landscape lock before the camera, and still starts when the lock hangs", async () => {

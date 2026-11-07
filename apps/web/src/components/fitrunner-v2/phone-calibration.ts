@@ -45,6 +45,9 @@ export const PHONE_PLAYER_READY = "PLAYER READY";
 
 export const PHONE_STAGE_NOTE = "Turn the phone sideways, and use the browser fullscreen control if you want.";
 
+/** Mobile Only: no sideways ask. Fullscreen is optional. */
+export const PHONE_MOBILE_STAGE_NOTE = "Use the browser fullscreen control if you want.";
+
 export const PHONE_STATUSES = ["Finding Player", "Adjust Position", "Calibrating", "Ready"] as const;
 export type PhoneStatus = (typeof PHONE_STATUSES)[number];
 
@@ -151,9 +154,15 @@ export interface PhoneCalibSample {
   baselineReady?: boolean;
 }
 
+export type PhoneOrientationLock = "landscape" | "portrait";
+
 export interface PhoneStageCaps {
   fullscreen?: () => Promise<void>;
-  orientationLock?: (orientation: "landscape") => Promise<void>;
+  orientationLock?: (orientation: PhoneOrientationLock) => Promise<void>;
+  /** Which lock to request. `false` skips orientation.lock (Mobile Only). Default landscape when a lock fn is present. */
+  lockTo?: PhoneOrientationLock | false;
+  /** Shown when fullscreen and/or lock did not both succeed. Null hides the note. */
+  incompleteNote?: string | null;
 }
 
 export type PhoneFullscreenOptions = { navigationUI?: "hide" | "show" | "auto" };
@@ -780,30 +789,47 @@ function settleStageCall(call: (() => Promise<void> | void) | undefined): Promis
 }
 
 /**
- * Fullscreen and landscape lock are both invoked in this turn. A hung fullscreen
- * must not delay the lock. The returned promise waits to report the outcome and
- * may never settle; callers still start calibration.
+ * Fullscreen and optional orientation lock are both invoked in this turn. A hung
+ * fullscreen must not delay the lock. The returned promise waits to report the
+ * outcome and may never settle; callers still start calibration.
  */
 export function requestPhoneStage(caps: PhoneStageCaps): Promise<{ fullscreen: boolean; orientationLocked: boolean; note: string | null }> {
+  const lockTo = caps.lockTo === false ? false : (caps.lockTo ?? (typeof caps.orientationLock === "function" ? "landscape" : false));
   const fullscreen = settleStageCall(caps.fullscreen);
   const orientationLocked = settleStageCall(
-    typeof caps.orientationLock === "function" ? () => caps.orientationLock!("landscape") : undefined,
+    lockTo && typeof caps.orientationLock === "function" ? () => caps.orientationLock!(lockTo) : undefined,
   );
-  return Promise.all([fullscreen, orientationLocked]).then(([full, locked]) => ({
-    fullscreen: full,
-    orientationLocked: locked,
-    note: full && locked ? null : PHONE_STAGE_NOTE,
-  }));
+  const incomplete = caps.incompleteNote === undefined ? PHONE_STAGE_NOTE : caps.incompleteNote;
+  return Promise.all([fullscreen, orientationLocked]).then(([full, locked]) => {
+    const stageReady = lockTo ? full && locked : full;
+    return {
+      fullscreen: full,
+      orientationLocked: locked,
+      note: stageReady ? null : incomplete,
+    };
+  });
 }
 
-export function phoneStageCaps(root: PhoneFullscreenTarget | null | undefined): PhoneStageCaps {
+export function phoneStageCaps(
+  root: PhoneFullscreenTarget | null | undefined,
+  options?: { lockTo?: PhoneOrientationLock | false; incompleteNote?: string | null },
+): PhoneStageCaps {
   const documentElement = typeof document === "undefined" ? null : (document.documentElement as PhoneFullscreenTarget);
   const fullscreen =
     canRequestPhoneFullscreen(root) || canRequestPhoneFullscreen(documentElement)
       ? () => requestPhoneFullscreen(root, documentElement)
       : undefined;
+  const lockTo = options?.lockTo === undefined ? "landscape" : options.lockTo;
   const orientation =
     typeof screen === "undefined" ? undefined : (screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> });
-  const orientationLock = orientation && typeof orientation.lock === "function" ? (mode: "landscape") => orientation.lock!(mode) : undefined;
-  return { fullscreen, orientationLock };
+  const orientationLock =
+    lockTo && orientation && typeof orientation.lock === "function"
+      ? (mode: PhoneOrientationLock) => orientation.lock!(mode)
+      : undefined;
+  return {
+    fullscreen,
+    orientationLock,
+    lockTo,
+    incompleteNote: options?.incompleteNote,
+  };
 }

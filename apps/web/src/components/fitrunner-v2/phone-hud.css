@@ -110,6 +110,11 @@ html:-webkit-full-screen .phone-play,
   }
 }
 
+/* Mobile Only: portrait-first. Hide the TV sideways banner even if present. */
+.phone-play[data-phone-landscape="0"] .phone-rotate {
+  display: none;
+}
+
 .phone-score-row {
   position: absolute;
   top: max(10px, env(safe-area-inset-top, 0px));
@@ -513,6 +518,21 @@ html:-webkit-full-screen .phone-play,
   pointer-events: none;
 }
 
+/* Basic portrait shell for Mobile Only — after the base guide block so source contracts stay intact. */
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-calib-guide {
+  height: min(52vh, 22rem);
+  max-width: min(58vw, 14rem);
+  max-height: calc(100dvh - 10rem);
+}
+
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] [data-fitrunner-play-hud] {
+  max-height: min(280px, 34vh);
+}
+
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-hud-bottom {
+  gap: 0.45rem;
+}
+
 .phone-calib-copy {
   position: absolute;
   right: max(1rem, env(safe-area-inset-right, 0px));
@@ -650,8 +670,253 @@ html:-webkit-full-screen .phone-play,
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(100%, 40rem);
+  width: min(100%, 42rem);
   margin-block: auto;
+}
+
+/* Shared intro type — modest bump for Mobile Only + TV (Tailwind utilities on brand/title/lead). */
+.phone-mirror-copy > p:first-child {
+  font-size: 0.875rem;
+  letter-spacing: 0.16em;
+}
+
+.phone-mirror-copy > h1 {
+  font-size: clamp(2.35rem, 7vw, 2.85rem);
+  line-height: 1.1;
+}
+
+.phone-mirror-copy > h1 + p {
+  max-width: 28rem;
+  font-size: 1.125rem;
+  line-height: 1.45;
+}
+
+.phone-howto {
+  width: min(100%, 36rem);
+  margin-top: 1.5rem;
+  text-align: left;
+}
+
+.phone-intro-tip {
+  margin-top: 1rem;
+  max-width: 28rem;
+  color: #d6ff4a;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+
+.phone-howto-title {
+  margin: 0 0 0.7rem;
+  color: #d6ff4a;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.phone-howto-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 520px) {
+  .phone-howto-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+}
+
+.phone-howto-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(214, 255, 74, 0.22);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.phone-howto-index {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: #beff39;
+  color: #1c1f24;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.phone-howto-text {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(1.05rem, 2.8vw, 1.15rem);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.phone-tv-mirror {
+  width: min(100%, 36rem);
+  margin-top: 1.35rem;
+  text-align: left;
+}
+
+.phone-tv-mirror-title {
+  margin: 0 0 0.45rem;
+  color: #d6ff4a;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.phone-tv-mirror-lead {
+  margin: 0 0 0.85rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 1.05rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.phone-tv-mirror-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.phone-tv-mirror-card {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(214, 255, 74, 0.22);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.phone-tv-mirror-platform {
+  margin: 0 0 0.65rem;
+  color: #d6ff4a;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.phone-tv-mirror-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phone-tv-mirror-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.phone-tv-mirror-index {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  margin-top: 0.05rem;
+  border-radius: 999px;
+  background: #beff39;
+  color: #1c1f24;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.phone-tv-mirror-text {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* Play on TV intro — arm's-length readable; Mobile Only keeps the shared sizes above. */
+.phone-mirror-screen[data-phone-display="tv"] .phone-mirror-copy {
+  width: min(100%, 46rem);
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-mirror-copy > p:first-child {
+  font-size: 1rem;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-mirror-copy > h1 {
+  font-size: clamp(2.75rem, 8vw, 3.35rem);
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-mirror-copy > h1 + p {
+  max-width: 32rem;
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-howto,
+.phone-mirror-screen[data-phone-display="tv"] .phone-tv-mirror {
+  width: min(100%, 42rem);
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-howto-title,
+.phone-mirror-screen[data-phone-display="tv"] .phone-tv-mirror-title {
+  font-size: 0.95rem;
+  letter-spacing: 0.14em;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-howto-text {
+  font-size: clamp(1.15rem, 3vw, 1.3rem);
+  line-height: 1.45;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-howto-index {
+  width: 1.7rem;
+  height: 1.7rem;
+  font-size: 0.95rem;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-tv-mirror-lead {
+  font-size: 1.15rem;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-tv-mirror-platform {
+  font-size: 1.2rem;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-tv-mirror-text {
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-tv-mirror-index {
+  width: 1.55rem;
+  height: 1.55rem;
+  font-size: 0.88rem;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-start {
+  margin-top: 1.6rem;
+  padding: 0.95rem 1.65rem;
+  font-size: 1.15rem;
+}
+
+.phone-mirror-screen[data-phone-display="tv"] .phone-start-top {
+  margin-top: 1.35rem;
 }
 
 .phone-laptop-qr {
@@ -691,6 +956,13 @@ html:-webkit-full-screen .phone-play,
   font-size: 1rem;
   font-weight: 700;
   pointer-events: auto;
+}
+
+.phone-start-top {
+  width: min(100%, 36rem);
+  margin-top: 1.35rem;
+  padding: 0.95rem 1.65rem;
+  letter-spacing: 0.08em;
 }
 
 .phone-calib-copy .phone-start {
