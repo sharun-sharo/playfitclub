@@ -30,7 +30,7 @@ const places = ["Independent gyms", "Premium fitness studios", "Personal trainin
 export default function ForGymsPage() {
   return (
     <MarketingFrame classic>
-      <SiteNav prefix="/" logo="default" />
+      <SiteNav prefix="/" logo="footer" />
       <main>
         <section className="fp-wrap fp-page" aria-labelledby="gym-hero-title">
           <p className="fp-kicker">For gyms</p>

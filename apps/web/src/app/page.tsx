@@ -32,7 +32,7 @@ export default function HomePage() {
       <a className="fp-skip" href="#content">
         Skip to content
       </a>
-      <SiteNav logo="default" />
+      <SiteNav logo="footer" />
       <main id="content">
         <section className="fp-hero" aria-labelledby="hero-title">
           <div className="fp-wrap">

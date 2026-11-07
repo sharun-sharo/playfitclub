@@ -2,7 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  BicepsFlexed,
+  Building2,
+  ChevronsRight,
+  Gamepad2,
+  Home,
+  LayoutDashboard,
+  Play,
+  Shield,
+  Tag,
+  User,
+  type LucideIcon,
+} from "lucide-react";
 import { isSuperAdminRole } from "@fitplay/shared";
 import { trackEvent } from "@/components/analytics/track-event";
 import { BrandLogo } from "@/components/marketing/brand-logo";
@@ -11,12 +24,12 @@ interface Me {
   user: { displayName: string; role: string } | null;
 }
 
-const baseLinks = [
-  { href: "/", label: "Home" },
-  { href: "/games", label: "Experience" },
-  { href: "/#how-it-works", label: "How It Works" },
-  { href: "/for-gyms", label: "For Gyms" },
-  { href: "/pricing", label: "Pricing" },
+const baseLinks: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/", label: "Home", icon: Home },
+  { href: "/games", label: "Experience", icon: Gamepad2 },
+  { href: "/#how-it-works", label: "How It Works", icon: BicepsFlexed },
+  { href: "/for-gyms", label: "For Gyms", icon: Building2 },
+  { href: "/pricing", label: "Pricing", icon: Tag },
 ];
 
 function hrefFor(href: string, prefix: "" | "/") {
@@ -126,53 +139,63 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
     close(false);
   }
 
-  const links = me?.user
+  const accountLinks = me?.user
     ? [
-        ...baseLinks,
-        { href: "/dashboard", label: "Account" },
-        ...(isSuperAdminRole(me.user.role) ? [{ href: "/admin", label: "Admin" }] : []),
+        { href: "/dashboard", label: "Account", icon: LayoutDashboard },
+        ...(isSuperAdminRole(me.user.role) ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
       ]
-    : [...baseLinks, { href: "/login", label: "Login" }];
+    : [];
+
+  const links = [...baseLinks, ...accountLinks];
+  const authLink = me?.user ? null : { href: "/login", label: "Login", icon: User };
 
   return (
     <header className="fp-nav fp-nav-market" data-menu-open={open ? "true" : "false"}>
-      <div className="fp-announce">
-        <p>
-          <span className="fp-announce-text">PlayFit Club is coming to iOS & Android!</span>
-          <span className="fp-announce-label">Launching Soon</span>
-        </p>
-      </div>
       <div className="fp-nav-bar">
-        <BrandLogo href={prefix || "/"} variant={logo} />
-        <nav className="fp-nav-desktop" aria-label="Primary">
-          {links.map((link) => {
-            const href = hrefFor(link.href, prefix);
-            return (
-              <NavLink key={link.label} href={href} current={isCurrent(href, pathname)}>
-                {link.label}
-              </NavLink>
-            );
-          })}
-          <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={() => trackEvent("play_clicked", { surface: "nav" })}>
-            <span className="fp-nav-cta-label">Play Now</span>
-          </Link>
-        </nav>
-        <button
-          ref={toggleRef}
-          type="button"
-          className="fp-menu-toggle"
-          aria-expanded={open}
-          aria-controls={menuId}
-          aria-haspopup="dialog"
-          onClick={() => setOpen((value) => !value)}
-        >
-          <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
-          <span className="fp-burger" data-open={open ? "true" : "false"} aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
-        </button>
+        <div className="fp-nav-shell">
+          <BrandLogo href={prefix || "/"} variant={logo} />
+          <nav className="fp-nav-desktop" aria-label="Primary">
+            <div className="fp-nav-links">
+              {links.map((link) => {
+                const href = hrefFor(link.href, prefix);
+                return (
+                  <NavLink key={link.label} href={href} current={isCurrent(href, pathname)} icon={link.icon}>
+                    {link.label}
+                  </NavLink>
+                );
+              })}
+              {authLink ? (
+                <NavLink
+                  href={hrefFor(authLink.href, prefix)}
+                  current={isCurrent(authLink.href, pathname)}
+                  icon={authLink.icon}
+                  className="fp-nav-login"
+                >
+                  {authLink.label}
+                </NavLink>
+              ) : null}
+            </div>
+          </nav>
+          <button
+            ref={toggleRef}
+            type="button"
+            className="fp-menu-toggle"
+            aria-expanded={open}
+            aria-controls={menuId}
+            aria-haspopup="dialog"
+            onClick={() => setOpen((value) => !value)}
+          >
+            <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
+            <span className="fp-burger" data-open={open ? "true" : "false"} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </button>
+        </div>
+        <div className="fp-nav-actions">
+          <PlayNowLink onClick={() => trackEvent("play_clicked", { surface: "nav" })} />
+        </div>
         {open ? (
           <div ref={panelRef} id={menuId} className="fp-menu" role="dialog" aria-modal="true" aria-label="Menu">
             <nav aria-label="Mobile">
@@ -183,6 +206,7 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
                     key={link.label}
                     href={href}
                     current={isCurrent(href, pathname)}
+                    icon={link.icon}
                     onClick={() => close(false)}
                     style={{ "--fp-nav-i": index } as CSSProperties}
                   >
@@ -190,11 +214,20 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
                   </NavLink>
                 );
               })}
+              {authLink ? (
+                <NavLink
+                  href={hrefFor(authLink.href, prefix)}
+                  current={isCurrent(authLink.href, pathname)}
+                  icon={authLink.icon}
+                  onClick={() => close(false)}
+                  style={{ "--fp-nav-i": links.length } as CSSProperties}
+                >
+                  {authLink.label}
+                </NavLink>
+              ) : null}
             </nav>
             <div className="fp-menu-actions">
-              <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={() => play("nav")}>
-                <span className="fp-nav-cta-label">Play Now</span>
-              </Link>
+              <PlayNowLink onClick={() => play("nav")} />
               <button type="button" className="fp-btn fp-btn-ghost" onClick={() => close(true)}>
                 Close menu
               </button>
@@ -206,29 +239,53 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
   );
 }
 
+function PlayNowLink({ onClick }: { onClick: () => void }) {
+  return (
+    <Link className="fp-btn fp-btn-primary fp-nav-cta" href="/play" onClick={onClick}>
+      <span className="fp-nav-cta-inner">
+        <Play className="fp-nav-cta-play" aria-hidden="true" strokeWidth={2.5} />
+        <span className="fp-nav-cta-label">PLAY NOW</span>
+        <ChevronsRight className="fp-nav-cta-chevrons" aria-hidden="true" strokeWidth={2.5} />
+      </span>
+    </Link>
+  );
+}
+
 function NavLink({
   href,
   onClick,
   current,
   children,
   style,
+  icon: Icon,
+  className,
 }: {
   href: string;
   onClick?: () => void;
   current?: boolean;
   children: string;
   style?: CSSProperties;
+  icon?: LucideIcon;
+  className?: string;
 }) {
+  const content: ReactNode = (
+    <>
+      {Icon ? <Icon className="fp-nav-icon" aria-hidden="true" strokeWidth={2} /> : null}
+      <span className="fp-nav-label">{children}</span>
+    </>
+  );
+  const classes = ["fp-nav-link", className].filter(Boolean).join(" ");
+
   if (href.startsWith("#") || href.startsWith("/#")) {
     return (
-      <a className="fp-nav-link" href={href} onClick={onClick} aria-current={current ? "page" : undefined} style={style}>
-        {children}
+      <a className={classes} href={href} onClick={onClick} aria-current={current ? "page" : undefined} style={style}>
+        {content}
       </a>
     );
   }
   return (
-    <Link className="fp-nav-link" href={href} onClick={onClick} aria-current={current ? "page" : undefined} style={style}>
-      {children}
+    <Link className={classes} href={href} onClick={onClick} aria-current={current ? "page" : undefined} style={style}>
+      {content}
     </Link>
   );
 }

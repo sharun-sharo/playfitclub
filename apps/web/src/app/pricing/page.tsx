@@ -41,7 +41,7 @@ const compare = [
 export default function PricingPage() {
   return (
     <MarketingFrame classic>
-      <SiteNav prefix="/" logo="default" />
+      <SiteNav prefix="/" logo="footer" />
       <PricingViewed />
       <main className="fp-wrap fp-page">
         <p className="fp-kicker">Listed subscriptions</p>
@@ -63,7 +63,7 @@ export default function PricingPage() {
               <li>Fit Run on your phone</li>
               <li>No paid features</li>
             </ul>
-            <TrackedLink className="fp-btn fp-btn-primary" href="/play/phone" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
+            <TrackedLink className="fp-btn fp-btn-primary" href="/play" events={[{ name: "play_clicked", params: { surface: "pricing" } }]}>
               Play Demo
             </TrackedLink>
           </article>
