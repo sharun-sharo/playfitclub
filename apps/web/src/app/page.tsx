@@ -90,16 +90,6 @@ export default function HomePage() {
                 </TrackedLink>
               </div>
             </Reveal>
-            <Reveal delay={1} className="fp-experience-art">
-              <img
-                src="/marketing/move-in-real-life.png"
-                alt="Move in real life, see it in the game: a runner with body tracking beside a TV showing Fit Run mirroring her movement."
-                width={819}
-                height={545}
-                loading="lazy"
-                decoding="async"
-              />
-            </Reveal>
           </div>
         </section>
 

@@ -136,12 +136,6 @@ export function SiteNav({ prefix = "", logo = "footer" }: { prefix?: "" | "/"; l
 
   return (
     <header className="fp-nav fp-nav-market">
-      <div className="fp-announce">
-        <p>
-          <span className="fp-announce-text">PlayFit Club is coming to iOS & Android!</span>
-          <span className="fp-announce-label">Launching Soon</span>
-        </p>
-      </div>
       <div className="fp-nav-bar">
         <BrandLogo href={prefix || "/"} variant={logo} />
         <nav className="fp-nav-desktop" aria-label="Primary">
