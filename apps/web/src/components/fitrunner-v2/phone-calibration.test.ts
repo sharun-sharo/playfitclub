@@ -192,6 +192,51 @@ describe("phone calibration", () => {
     expect(state.shown).toEqual(["3", "2", "1", "GO"]);
   });
 
+  it("does not recalibrate while framing is good / full body during play", () => {
+    let state = reachGo();
+    expect(state.phase).toBe("running");
+    // Let the GO flash clear (countdownMs) so later asserts see a quiet running HUD.
+    state = step(state, full(5700 + PHONE_CALIB_CONFIG.countdownMs));
+    expect(state.countdown).toBeNull();
+
+    // Latched framingPause after recovery (canResume) must not force Adjust.
+    for (let t = 7000; t <= 12000; t += 200) {
+      state = step(state, { ...full(t), framingPause: true });
+      expect(state.phase).toBe("running");
+      expect(state.coursePaused).toBe(false);
+      expect(state.status).toBeNull();
+      expect(state.countdown).toBeNull();
+    }
+
+    // Brief partial flicker while pause is latched still needs sustained loss.
+    state = step(state, { now: 12200, signal: "partial", guidance: "Hold still", framingPause: true });
+    expect(state.phase).toBe("warning");
+    state = step(state, { ...full(12400), framingPause: true });
+    expect(state.phase).toBe("running");
+    expect(state.coursePaused).toBe(false);
+  });
+
+  it("still repositions after sustained loss when the body is actually gone", () => {
+    let state = reachGo();
+    state = step(state, { now: 5800, signal: "none", framingPause: true });
+    expect(state.phase).toBe("reposition");
+    expect(state.coursePaused).toBe(true);
+    expect(state.status).toBe("Finding Player");
+  });
+
+  it("requires sustained partial+pause before adjust during play, not one frame", () => {
+    let state = reachGo();
+    state = step(state, { now: 5800, signal: "partial", guidance: "Move closer", framingPause: true });
+    expect(state.phase).toBe("warning");
+    expect(state.coursePaused).toBe(false);
+    state = step(state, { now: 8799, signal: "partial", guidance: "Move closer", framingPause: true });
+    expect(state.phase).toBe("warning");
+    state = step(state, { now: 8800, signal: "partial", guidance: "Move closer", framingPause: true });
+    expect(state.phase).toBe("reposition");
+    expect(state.status).toBe("Adjust Position");
+    expect(state.coursePaused).toBe(true);
+  });
+
   it("requires head, shoulders, hips, and knees, and does not require ankles", () => {
     expect(PHONE_VISIBILITY_FLOOR).toBe(0.45);
     expect(PHONE_START_LANDMARKS).toEqual({

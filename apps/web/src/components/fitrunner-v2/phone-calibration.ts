@@ -674,7 +674,15 @@ function stepPosition(state: PhoneCalibState, sample: PhoneCalibSample, config: 
 }
 
 function stepRun(state: PhoneCalibState, sample: PhoneCalibSample, config: PhoneCalibConfig): PhoneCalibState {
-  const lost = sample.signal === "none" || sample.framingPause === true;
+  /**
+   * Full-body / green gate wins during play. A latched framingPause can remain
+   * true after the pose is good again (canResume) until resumeTracking runs —
+   * that must not force Adjust/recalibrate while the player is still framed.
+   * Intentional out-of-frame: signal none (sustained) or pause while not full.
+   */
+  const bodyGone = sample.signal === "none";
+  const framingLost = sample.framingPause === true && sample.signal !== "full";
+  const lost = bodyGone || framingLost;
   if (!lost) {
     if (state.countdown === "GO" && state.countdownShownAt !== null && sample.now - state.countdownShownAt < config.countdownMs) {
       return { ...state, phase: "running", coursePaused: false, lostSince: null, startCourse: false, resumeCourse: false };
@@ -692,7 +700,8 @@ function stepRun(state: PhoneCalibState, sample: PhoneCalibSample, config: Phone
     };
   }
   const lostSince = state.lostSince ?? sample.now;
-  const graceDone = sample.framingPause === true || sample.now - lostSince >= config.lossGraceMs;
+  // Framing monitor already waited pauseMs; only skip phone grace when the body is actually gone.
+  const graceDone = (bodyGone && sample.framingPause === true) || sample.now - lostSince >= config.lossGraceMs;
   if (!graceDone) {
     return {
       ...state,

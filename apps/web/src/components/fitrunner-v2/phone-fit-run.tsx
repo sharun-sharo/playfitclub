@@ -661,10 +661,17 @@ export function PhoneFitRun({
         {
           onUi: (state) => {
             if (cancelled) return;
+            const paused = state.framing?.pause === true;
+            const canResume = state.framing?.canResume === true;
+            // Pause latch survives after framing is good again. Clear it in-play
+            // instead of forcing a full recalibrate loop while the body is green.
+            if (paused && canResume && movesRef.current) {
+              estimator.resumeTracking();
+            }
             poseRef.current = {
               poseCount: state.poseCount,
               framingCode: state.framing?.code ?? null,
-              framingPause: state.framing?.pause === true,
+              framingPause: paused && !canResume,
             };
             setPoseCount((current) => (current === state.poseCount ? current : state.poseCount));
             if (!motionDiagRef.current) return;
@@ -797,7 +804,10 @@ export function PhoneFitRun({
             framingPause: pose.framingPause,
             baselineReady: collecting ? false : undefined,
           });
-      if (!keyboardBypass && (next.phase === "finding" || next.phase === "reposition") && estimator?.hasSessionBaseline()) {
+      // Only wipe the session baseline on a real loss (nobody in frame).
+      // Reposition while still framed must keep the baseline — EMA body-scale
+      // drift must not restart the calibration UI either.
+      if (!keyboardBypass && reading.signal === "none" && next.status === "Finding Player" && estimator?.hasSessionBaseline()) {
         estimator.clearSessionBaseline();
         baselineSamplesRef.current = [];
       }
@@ -808,6 +818,8 @@ export function PhoneFitRun({
       if (courseBegunRef.current && handle && next.coursePaused !== trackingPauseRef.current) {
         trackingPauseRef.current = next.coursePaused;
         handle.setPaused(next.coursePaused);
+        // Stop play-profile pause accrual during adjust/reposition recovery.
+        estimatorRef.current?.setRaceLive(!next.coursePaused);
       }
       movesRef.current = (next.phase === "running" || next.phase === "warning") && !next.coursePaused;
       setCalib((current) => (sameCalib(current, next) ? current : next));
