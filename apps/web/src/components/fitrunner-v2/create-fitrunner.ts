@@ -2119,6 +2119,8 @@ export async function startFitRunner(
         cam.lookHeight + jumpLift * cam.jumpLook,
         runner.position.z - cam.lookAhead,
       );
+      canvas.dataset.cameraTrackX = trackX.toFixed(2);
+      canvas.dataset.cameraPosX = camera.position.x.toFixed(2);
 
       sun.position.set(runner.position.x + 6, 14, runner.position.z + 8);
       sun.target.position.set(runner.position.x, 0.4, runner.position.z - 4);

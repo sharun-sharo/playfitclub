@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { roadLayout } from "./road-width";
 import { fitRunnerTuning } from "./tuning";
 import {
   distanceForHorizontalWidth,
@@ -8,14 +7,16 @@ import {
   landscapeFollowCamera,
   portraitFollowCamera,
   portraitRequiredWidthM,
-  PORTRAIT_CAMERA_LOCK_X,
+  PORTRAIT_CAMERA_HEIGHT,
   PORTRAIT_DISTANCE_HARD_MAX,
   PORTRAIT_DISTANCE_MAX,
   PORTRAIT_DISTANCE_MIN,
+  PORTRAIT_FOLLOW_HALF_WIDTH_M,
+  PORTRAIT_FOLLOW_SMOOTH,
   PORTRAIT_FOV_MAX,
   PORTRAIT_FOV_PREF,
   PORTRAIT_LOOK_AHEAD_FACTOR,
-  PORTRAIT_ROAD_MARGIN_M,
+  PORTRAIT_LOOK_HEIGHT,
   resolveFollowCamera,
   shouldUsePortraitFollowCamera,
 } from "./portrait-camera";
@@ -28,24 +29,28 @@ const ASPECTS = [
 ] as const;
 
 describe("portrait follow camera frustum", () => {
-  it("keeps asphalt reach near the historical ~4.45 m road edge with an outer lip crop", () => {
-    expect(roadLayout().roadEdge).toBeCloseTo(4.45, 5);
-    expect(PORTRAIT_ROAD_MARGIN_M).toBeGreaterThanOrEqual(-1);
-    expect(PORTRAIT_ROAD_MARGIN_M).toBeLessThan(0);
-    expect(portraitRequiredWidthM()).toBeCloseTo((4.45 + PORTRAIT_ROAD_MARGIN_M) * 2, 5);
-    // Outer lane centers (±3 m) stay inside the required half-width.
-    expect(portraitRequiredWidthM() / 2).toBeGreaterThan(fitRunnerTuning.laneSpacing + 0.45);
+  it("frames character-centered width, not the full static 3-lane road", () => {
+    expect(PORTRAIT_FOLLOW_HALF_WIDTH_M).toBeGreaterThan(0.85);
+    expect(PORTRAIT_FOLLOW_HALF_WIDTH_M).toBeLessThan(fitRunnerTuning.laneSpacing);
+    expect(portraitRequiredWidthM()).toBeCloseTo(Math.min(PORTRAIT_FOLLOW_HALF_WIDTH_M, fitRunnerTuning.laneSpacing * 0.4) * 2, 5);
+    expect(portraitRequiredWidthM() / 2).toBeLessThan(fitRunnerTuning.laneSpacing);
+    expect(portraitRequiredWidthM() / 2).toBeGreaterThan(0.85);
   });
 
-  it("keeps aggressive presence: ~6.5–7.25 m distance, FOV ~88–95, look-ahead ~0.8–0.9×", () => {
+  it("keeps bottom-near OTS presence: ~2.15–2.5 m distance, torso+ look-at, FOV ~68–82", () => {
     const need = portraitRequiredWidthM();
-    expect(PORTRAIT_FOV_PREF).toBeGreaterThanOrEqual(86);
-    expect(PORTRAIT_FOV_MAX).toBeLessThanOrEqual(95);
-    expect(PORTRAIT_DISTANCE_MIN).toBeGreaterThanOrEqual(6.5);
-    expect(PORTRAIT_DISTANCE_MAX).toBeLessThanOrEqual(7.25);
-    expect(PORTRAIT_DISTANCE_HARD_MAX).toBeLessThanOrEqual(8);
-    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeLessThanOrEqual(0.9);
-    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeGreaterThanOrEqual(0.8);
+    expect(PORTRAIT_FOV_PREF).toBeGreaterThanOrEqual(64);
+    expect(PORTRAIT_FOV_MAX).toBeLessThanOrEqual(82);
+    expect(PORTRAIT_DISTANCE_MIN).toBeGreaterThanOrEqual(2);
+    expect(PORTRAIT_DISTANCE_MAX).toBeLessThanOrEqual(2.5);
+    expect(PORTRAIT_DISTANCE_HARD_MAX).toBeLessThanOrEqual(2.9);
+    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeLessThanOrEqual(0.65);
+    expect(PORTRAIT_LOOK_AHEAD_FACTOR).toBeGreaterThanOrEqual(0.5);
+    // Look-at at/above torso so the nearer runner sits below center (bottom of frame).
+    expect(PORTRAIT_LOOK_HEIGHT).toBeGreaterThanOrEqual(1.15);
+    expect(PORTRAIT_CAMERA_HEIGHT).toBeGreaterThan(PORTRAIT_LOOK_HEIGHT);
+    expect(PORTRAIT_CAMERA_HEIGHT).toBeLessThan(1.9);
+    expect(PORTRAIT_FOLLOW_SMOOTH).toBeGreaterThan(fitRunnerTuning.camera.smooth);
 
     for (const { name, aspect } of ASPECTS) {
       const cam = portraitFollowCamera(aspect);
@@ -55,29 +60,29 @@ describe("portrait follow camera frustum", () => {
       expect(atLook, name).toBeGreaterThan(need);
       expect(cam.fov, name).toBeGreaterThanOrEqual(PORTRAIT_FOV_PREF - 0.05);
       expect(cam.fov, name).toBeLessThanOrEqual(PORTRAIT_FOV_MAX + 0.05);
-      expect(cam.distance, name).toBeGreaterThan(fitRunnerTuning.camera.distance);
+      // Much nearer than the rejected ~5.5–7.25 m sky-heavy framing.
+      expect(cam.distance, name).toBeLessThan(2.9);
       expect(cam.distance, name).toBeGreaterThanOrEqual(PORTRAIT_DISTANCE_MIN - 0.01);
       expect(cam.distance, name).toBeLessThanOrEqual(PORTRAIT_DISTANCE_HARD_MAX + 0.01);
-      expect(cam.lookAhead, name).toBeLessThanOrEqual(cam.distance * 0.9 + 0.01);
-      expect(cam.lookAhead / cam.distance, name).toBeGreaterThanOrEqual(0.79);
-      expect(cam.lookAhead / cam.distance, name).toBeLessThanOrEqual(0.91);
-      expect(cam.height, name).toBeLessThan(1.4);
-      expect(cam.lookHeight, name).toBeGreaterThanOrEqual(0.85);
-      expect(cam.lookHeight, name).toBeLessThanOrEqual(1.1);
-      // Shallow pitch: near slab lip should not dominate the bottom of the frame.
-      expect(cam.height - cam.lookHeight, name).toBeLessThanOrEqual((cam.distance + cam.lookAhead) * 0.02);
+      expect(cam.lookAhead, name).toBeLessThanOrEqual(cam.distance * 0.65 + 0.01);
+      expect(cam.lookAhead / cam.distance, name).toBeGreaterThanOrEqual(0.49);
+      expect(cam.lookAhead / cam.distance, name).toBeLessThanOrEqual(0.66);
+      expect(cam.lookHeight, name).toBe(PORTRAIT_LOOK_HEIGHT);
+      expect(cam.height, name).toBe(PORTRAIT_CAMERA_HEIGHT);
+      expect(cam.height, name).toBeGreaterThan(cam.lookHeight);
+      expect(cam.smooth, name).toBe(PORTRAIT_FOLLOW_SMOOTH);
     }
   });
 
-  it("targets ~7.25 m / FOV ~88–95 at a typical phone portrait (390×844)", () => {
+  it("targets ~2.15–2.5 m / bottom-near OTS framing at a typical phone portrait (390×844)", () => {
     const cam = portraitFollowCamera(390 / 844);
-    expect(cam.fov).toBeGreaterThanOrEqual(86);
-    expect(cam.distance).toBeGreaterThanOrEqual(6.5);
-    expect(cam.distance).toBeLessThanOrEqual(7.25);
-    expect(cam.lookAhead).toBeLessThanOrEqual(cam.distance * 0.9);
-    expect(cam.height).toBeLessThan(1.3);
-    expect(cam.lookHeight).toBeGreaterThanOrEqual(0.85);
-    expect(cam.lookHeight).toBeLessThanOrEqual(1.1);
+    expect(cam.fov).toBeGreaterThanOrEqual(66);
+    expect(cam.distance).toBeGreaterThanOrEqual(2.15);
+    expect(cam.distance).toBeLessThanOrEqual(2.5);
+    expect(cam.lookAhead).toBeLessThanOrEqual(cam.distance * 0.65);
+    expect(cam.lookHeight).toBeGreaterThanOrEqual(1.15);
+    expect(cam.height).toBe(PORTRAIT_CAMERA_HEIGHT);
+    expect(cam.height).toBeGreaterThan(cam.lookHeight);
   });
 
   it("leaves landscape framing on wide aspects and when framing is not requested", () => {
@@ -91,23 +96,21 @@ describe("portrait follow camera frustum", () => {
     expect(shouldUsePortraitFollowCamera("portrait-when-tall", 16 / 9)).toBe(false);
   });
 
-  it("locks portrait Mobile Only follow X to road center; landscape still tracks lane X", () => {
+  it("tracks runner lane X in portrait and landscape so the character stays centered", () => {
     const left = -fitRunnerTuning.laneSpacing;
     const right = fitRunnerTuning.laneSpacing;
-    expect(PORTRAIT_CAMERA_LOCK_X).toBe(0);
-    expect(followCameraTrackX(true, left)).toBe(0);
+    expect(followCameraTrackX(true, left)).toBe(left);
     expect(followCameraTrackX(true, 0)).toBe(0);
-    expect(followCameraTrackX(true, right)).toBe(0);
+    expect(followCameraTrackX(true, right)).toBe(right);
     expect(followCameraTrackX(false, left)).toBe(left);
     expect(followCameraTrackX(false, right)).toBe(right);
   });
 
-  it("covers required portrait width from locked center without chasing outer lanes", () => {
+  it("covers required character-centered width at player depth", () => {
     const need = portraitRequiredWidthM();
     const cam = portraitFollowCamera(390 / 844);
-    // Camera X = 0: frustum at player depth must still span the required half-width.
     expect(horizontalFrustumWidth(390 / 844, cam.fov, cam.distance)).toBeGreaterThanOrEqual(need - 0.05);
-    expect(need / 2).toBeCloseTo(roadLayout().roadEdge + PORTRAIT_ROAD_MARGIN_M, 5);
+    expect(need / 2).toBeCloseTo(Math.min(PORTRAIT_FOLLOW_HALF_WIDTH_M, fitRunnerTuning.laneSpacing * 0.4), 5);
   });
 
   it("matches the distance helper against the width helper", () => {

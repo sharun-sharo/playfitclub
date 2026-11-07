@@ -1,4 +1,3 @@
-import { roadLayout } from "@/components/fitrunner-v2/road-width";
 import { fitRunnerTuning as tuning } from "@/components/fitrunner-v2/tuning";
 
 /** Follow-cam knobs shared by landscape and portrait framing. */
@@ -20,30 +19,45 @@ export function landscapeFollowCamera(): FollowCameraTuning {
 }
 
 /**
- * Extra asphalt beyond each road edge in the portrait frustum.
- * Negative = crop outer asphalt so the cam can sit close while outer lane
- * centers stay framed (gate feet may kiss the edge).
+ * Character-centered framing half-width (meters). Camera tracks lane X, so we
+ * only need the runner plus a peek of adjacent asphalt — not the full 3-lane
+ * static road span.
  */
-export const PORTRAIT_ROAD_MARGIN_M = -0.85;
+export const PORTRAIT_FOLLOW_HALF_WIDTH_M = 0.95;
 
 /** Prefer a short pull-back; raise FOV before pushing distance past the cap. */
-export const PORTRAIT_FOV_PREF = 88;
-export const PORTRAIT_FOV_MAX = 95;
-export const PORTRAIT_DISTANCE_MIN = 6.5;
-/** Typical phone target for large runner presence. Ultra-tall may ease to HARD_MAX. */
-export const PORTRAIT_DISTANCE_MAX = 7.25;
-export const PORTRAIT_DISTANCE_HARD_MAX = 8.0;
+export const PORTRAIT_FOV_PREF = 68;
+export const PORTRAIT_FOV_MAX = 82;
+/**
+ * Subway-style over-the-shoulder: far nearer than the ~5.5 m sky-heavy
+ * baseline so the runner fills the lower frame.
+ */
+export const PORTRAIT_DISTANCE_MIN = 2.15;
+/** Typical phone target for large bottom-near runner. Ultra-tall may ease to HARD_MAX. */
+export const PORTRAIT_DISTANCE_MAX = 2.5;
+export const PORTRAIT_DISTANCE_HARD_MAX = 2.85;
 
-/** Look-ahead as a fraction of distance (~0.8–0.9×). */
-export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.84;
+/** Look-ahead as a fraction of distance — short so the view stays on the near road. */
+export const PORTRAIT_LOOK_AHEAD_FACTOR = 0.58;
 
 /**
- * Full road span plus a small margin. Lane centers stay at ±laneSpacing;
- * asphalt reaches roadEdge from center (historically ~4.45 m).
+ * Camera sits above mid-torso. Look-at is above torso height so the nearer
+ * runner falls below the look ray → large presence at the bottom of the
+ * portrait frame (not mid-frame with empty sky).
+ */
+export const PORTRAIT_CAMERA_HEIGHT = 1.62;
+export const PORTRAIT_LOOK_HEIGHT = 1.32;
+
+/** Slightly snappier lateral follow so lane changes stay centered without jitter. */
+export const PORTRAIT_FOLLOW_SMOOTH = 8.5;
+
+/**
+ * Horizontal meters the portrait frustum should cover at player depth.
+ * Centered on the runner (camera tracks lane X).
  */
 export function portraitRequiredWidthM(laneSpacing = tuning.laneSpacing) {
-  const road = roadLayout(laneSpacing);
-  return (road.roadEdge + PORTRAIT_ROAD_MARGIN_M) * 2;
+  const half = Math.min(PORTRAIT_FOLLOW_HALF_WIDTH_M, laneSpacing * 0.4);
+  return half * 2;
 }
 
 /** Horizontal world meters visible at a given depth along the view for a PerspectiveCamera. */
@@ -78,9 +92,9 @@ function fovForHorizontalWidth(aspect: number, depth: number, width: number) {
 
 /**
  * Portrait follow cam for Mobile Only tall viewports.
- * Presence push: short distance (~6.5–7.25 m), FOV ~88–95, look-ahead ~0.84×.
- * Outer asphalt crop lets the runner fill the lower mid-frame while
- * three lanes stay visible (lateral lock stays at X = 0).
+ * Presence push: short distance (~2.15–2.45 m), OTS height, look-at at torso+
+ * so the runner is large near the bottom with less empty sky.
+ * Camera tracks the runner's lane X so the character stays centered.
  */
 export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSpacing): FollowCameraTuning {
   const safeAspect = aspect > 0.05 && aspect < 1 ? aspect : 9 / 16;
@@ -92,7 +106,7 @@ export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSp
   if (distance > PORTRAIT_DISTANCE_MAX) {
     distance = PORTRAIT_DISTANCE_MAX;
     fov = clamp(fovForHorizontalWidth(safeAspect, distance, need), PORTRAIT_FOV_PREF, PORTRAIT_FOV_MAX);
-    // FOV already at the ceiling: ease distance out just enough to keep the outer lanes.
+    // FOV already at the ceiling: ease distance out just enough for character context.
     if (fov >= PORTRAIT_FOV_MAX - 0.05 && horizontalFrustumWidth(safeAspect, fov, distance) < need - 0.05) {
       distance = clamp(
         distanceForHorizontalWidth(safeAspect, fov, need),
@@ -104,18 +118,15 @@ export function portraitFollowCamera(aspect: number, laneSpacing = tuning.laneSp
     distance = PORTRAIT_DISTANCE_MIN;
   }
 
-  const lookAhead = clamp(distance * PORTRAIT_LOOK_AHEAD_FACTOR, distance * 0.8, distance * 0.9);
-  // Mid-torso look-at + shallow pitch: feet near bottom, runner large in lower mid.
-  const lookHeight = 0.95;
-  const height = lookHeight + (distance + lookAhead) * 0.012;
+  const lookAhead = clamp(distance * PORTRAIT_LOOK_AHEAD_FACTOR, distance * 0.5, distance * 0.65);
 
   return {
     fov: Math.round(fov * 10) / 10,
     distance: Math.round(distance * 100) / 100,
-    height: Math.round(height * 100) / 100,
+    height: PORTRAIT_CAMERA_HEIGHT,
     lookAhead: Math.round(lookAhead * 100) / 100,
-    lookHeight,
-    smooth: tuning.camera.smooth,
+    lookHeight: PORTRAIT_LOOK_HEIGHT,
+    smooth: PORTRAIT_FOLLOW_SMOOTH,
     fovGain: Math.min(tuning.camera.fovGain, 2.5),
     landingDip: tuning.camera.landingDip,
     jumpLook: tuning.camera.jumpLook,
@@ -127,14 +138,12 @@ export function shouldUsePortraitFollowCamera(framing: "landscape" | "portrait-w
 }
 
 /**
- * Mobile Only portrait: keep the follow-cam and look-at on road center (X = 0)
- * so all three lanes stay framed. Landscape / TV still tracks the runner's lane X.
- * Runner localSteps still move the character; only lateral camera follow is disabled.
+ * Mobile Only portrait and landscape both track the runner's lane X so the
+ * character stays centered when switching left / center / right.
+ * (Portrait lateral lock at X = 0 was removed — static 3-lane framing rejected.)
  */
-export const PORTRAIT_CAMERA_LOCK_X = 0;
-
-export function followCameraTrackX(portraitLocked: boolean, runnerX: number): number {
-  return portraitLocked ? PORTRAIT_CAMERA_LOCK_X : runnerX;
+export function followCameraTrackX(_portraitMode: boolean, runnerX: number): number {
+  return runnerX;
 }
 
 export function resolveFollowCamera(
