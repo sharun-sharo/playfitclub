@@ -289,9 +289,14 @@ export function PhoneFitRun({
       if (canvas) applyPhonePlayViewport(canvas, box);
       const card = root?.querySelector("[data-fitrunner-play-hud]");
       if (card instanceof HTMLElement) {
-        const width = phoneHudCardWidth(box.width);
-        card.style.width = `${width}px`;
-        card.style.maxWidth = `${width}px`;
+        if (card.dataset.hudLayout === "compact") {
+          card.style.width = "";
+          card.style.maxWidth = "";
+        } else {
+          const width = phoneHudCardWidth(box.width);
+          card.style.width = `${width}px`;
+          card.style.maxWidth = `${width}px`;
+        }
       }
     };
     apply();
@@ -460,7 +465,14 @@ export function PhoneFitRun({
               if (!cancelled) setGraphicsError(message);
             },
           },
-          { holdCourse: true, demoLimitSeconds, drawProfile: "phone", acceptKeyboard: false },
+          {
+            holdCourse: true,
+            demoLimitSeconds,
+            drawProfile: "phone",
+            acceptKeyboard: false,
+            /** Mobile Only portrait framing. Laptop + Play on TV keep landscape. */
+            cameraFraming: wantsLandscape ? "landscape" : "portrait-when-tall",
+          },
         ),
       )
       .then((next) => {
@@ -484,7 +496,7 @@ export function PhoneFitRun({
       handle?.dispose();
       handleRef.current = null;
     };
-  }, [demoLimitSeconds, runId]);
+  }, [demoLimitSeconds, runId, wantsLandscape]);
 
   useEffect(() => {
     if (streamToken === 0) return;
@@ -1036,6 +1048,7 @@ export function PhoneFitRun({
                 note={calorieNote}
                 keyboard={false}
                 className="phone-score"
+                layout={wantsLandscape ? "full" : "compact"}
               />
             </div>
           </div>

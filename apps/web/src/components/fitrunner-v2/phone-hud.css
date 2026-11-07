@@ -525,7 +525,7 @@ html:-webkit-full-screen .phone-play,
   max-height: calc(100dvh - 10rem);
 }
 
-.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] [data-fitrunner-play-hud] {
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] [data-fitrunner-play-hud]:not([data-hud-layout="compact"]) {
   max-height: min(280px, 34vh);
 }
 
@@ -967,4 +967,112 @@ html:-webkit-full-screen .phone-play,
 
 .phone-calib-copy .phone-start {
   pointer-events: auto;
+}
+
+/* Compact Mobile Only HUD — keeps the road clear; details stay behind Stats. */
+.phone-play [data-fitrunner-play-hud][data-hud-layout="compact"] {
+  position: relative;
+  left: auto;
+  top: auto;
+  z-index: auto;
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  align-self: flex-start;
+  width: min(11.5rem, calc(100vw - 1.25rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  max-width: min(11.5rem, calc(100vw - 1.25rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  min-width: 0;
+  max-height: none;
+  margin: 0;
+  padding: 0.4rem 0.55rem 0.45rem;
+  overflow: visible;
+  pointer-events: none;
+  border: 1px solid rgba(214, 255, 74, 0.28);
+  border-radius: 0.75rem;
+  background: #10141ce6;
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+  color: #fff;
+}
+
+.phone-compact-label {
+  margin: 0;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  color: #d6ff4a;
+}
+
+.phone-compact-score {
+  margin: 0.05rem 0 0;
+  font-family: var(--font-display, ui-rounded, system-ui);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.phone-compact-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.3rem;
+  font-size: 0.625rem;
+  line-height: 1.2;
+  color: #d5deea;
+}
+
+.phone-compact-k {
+  color: #9aa8bd;
+}
+
+.phone-stats-toggle {
+  pointer-events: auto;
+  margin-left: auto;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: #10141ccc;
+  color: #fff;
+  font-size: 0.625rem;
+  line-height: 1.2;
+}
+
+.phone-compact-details {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.05rem 0.55rem;
+  margin: 0.35rem 0 0;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.625rem;
+  line-height: 1.25;
+  color: #d5deea;
+}
+
+.phone-compact-details[hidden] {
+  display: none;
+}
+
+.phone-compact-note {
+  margin: 0.3rem 0 0;
+  font-size: 0.5625rem;
+  line-height: 1.25;
+  color: #9aa8bd;
+}
+
+.phone-compact-note[hidden] {
+  display: none;
+}
+
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-score-row {
+  top: max(8px, env(safe-area-inset-top, 0px));
+  left: max(8px, env(safe-area-inset-left, 0px));
+  max-width: calc(100% - 1rem);
+}
+
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-controls {
+  gap: 0.35rem;
+}
+
+.phone-play[data-phone-display="phone"][data-phone-orient="portrait"] .phone-actions button {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.6875rem;
 }

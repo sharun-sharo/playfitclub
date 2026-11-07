@@ -28,6 +28,11 @@ import {
   type PhoneDrawHysteresis,
   type PhoneDrawPreset,
 } from "@/components/fitrunner-v2/phone-draw";
+import {
+  landscapeFollowCamera,
+  resolveFollowCamera,
+  type FollowCameraTuning,
+} from "@/components/fitrunner-v2/portrait-camera";
 import { cameraAspectFromCss, fitRunnerDrawingSize, fitRunnerPixelRatio, fitRunnerQuality, graphicsFailureMessage, isTelevisionBrowser } from "@/components/fitrunner-v2/tv-graphics";
 import { fitRunnerTuning as tuning, type GraphicsQuality } from "@/components/fitrunner-v2/tuning";
 import { clearanceWindowsMs, type GradePopup, type InputSource } from "@/lib/fitrunner-v2/combo";
@@ -362,13 +367,24 @@ function readPhoneDeviceHints() {
 export async function startFitRunner(
   canvas: HTMLCanvasElement,
   hud: FitRunnerHud,
-  options?: { holdCourse?: boolean; demoLimitSeconds?: number | null; drawProfile?: "phone"; acceptKeyboard?: boolean },
+  options?: {
+    holdCourse?: boolean;
+    demoLimitSeconds?: number | null;
+    drawProfile?: "phone";
+    acceptKeyboard?: boolean;
+    /**
+     * Mobile Only portrait uses a taller follow cam. Laptop and Play on TV keep
+     * the existing landscape framing even when drawProfile is phone.
+     */
+    cameraFraming?: "landscape" | "portrait-when-tall";
+  },
 ): Promise<FitRunnerHandle> {
   const holdCourse = options?.holdCourse === true;
   const acceptKeyboard = options?.acceptKeyboard !== false;
   const rawLimit = options?.demoLimitSeconds;
   const demoLimit = typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : null;
   const phoneDraw = options?.drawProfile === "phone";
+  const cameraFraming = options?.cameraFraming ?? "landscape";
   const television =
     phoneDraw
       ? false
@@ -438,8 +454,14 @@ export async function startFitRunner(
   scene.background = new THREE.Color("#8ec8ea");
   scene.fog = new THREE.Fog("#d5eef8", 34, 74);
 
-  const camera = new THREE.PerspectiveCamera(tuning.camera.fov, 1, 0.1, COURSE_CAMERA_FAR);
-  camera.position.set(0, tuning.camera.height, tuning.camera.distance);
+  let followCam: FollowCameraTuning = landscapeFollowCamera();
+  let portraitFollowActive = false;
+  const camera = new THREE.PerspectiveCamera(followCam.fov, 1, 0.1, COURSE_CAMERA_FAR);
+  camera.position.set(0, followCam.height, followCam.distance);
+
+  function activeFollowCam(): FollowCameraTuning {
+    return portraitFollowActive ? followCam : landscapeFollowCamera();
+  }
 
   scene.add(new THREE.HemisphereLight("#e7f6ff", "#e4c48a", 0.92));
   if (!television) scene.add(new THREE.AmbientLight("#fff8ee", 0.2));
@@ -1126,7 +1148,7 @@ export async function startFitRunner(
           activeClip = "Run";
           if (courseMode === "live") {
             landingLife = 0.28;
-            cameraDip = tuning.camera.landingDip;
+            cameraDip = activeFollowCam().landingDip;
             landing.position.set(runner.position.x, 0.05, runner.position.z);
             landing.scale.setScalar(0.55);
           }
@@ -1433,7 +1455,14 @@ export async function startFitRunner(
       canvas.dataset.buffer = `${renderer.domElement.width}x${renderer.domElement.height}`;
       if (phoneDraw) canvas.dataset.drawPreset = phonePreset;
       camera.aspect = aspect;
+      followCam = resolveFollowCamera(cameraFraming, aspect);
+      portraitFollowActive = cameraFraming === "portrait-when-tall" && aspect < 1;
+      const cam = activeFollowCam();
+      camera.fov = cam.fov;
       camera.updateProjectionMatrix();
+      canvas.dataset.cameraFraming = portraitFollowActive ? "portrait" : "landscape";
+      canvas.dataset.cameraFov = cam.fov.toFixed(1);
+      canvas.dataset.cameraDistance = cam.distance.toFixed(2);
     }
 
     function publish(speed: number) {
@@ -1785,10 +1814,11 @@ export async function startFitRunner(
         visual.rotation.z = THREE.MathUtils.damp(visual.rotation.z, sideLeanTarget(), tuning.leanDamp, dt);
         runner.position.x = visualLane * tuning.laneSpacing;
         updateVertical(dt);
-        const desired = new THREE.Vector3(runner.position.x, tuning.camera.height, runner.position.z + tuning.camera.distance);
-        const follow = 1 - Math.exp(-tuning.camera.smooth * dt);
+        const cam = activeFollowCam();
+        const desired = new THREE.Vector3(runner.position.x, cam.height, runner.position.z + cam.distance);
+        const follow = 1 - Math.exp(-cam.smooth * dt);
         camera.position.lerp(desired, follow);
-        camera.lookAt(runner.position.x, tuning.camera.lookHeight, runner.position.z - tuning.camera.lookAhead);
+        camera.lookAt(runner.position.x, cam.lookHeight, runner.position.z - cam.lookAhead);
         blob.position.set(runner.position.x, 0.02, runner.position.z);
       }
       mixer.update(dt);
@@ -2055,22 +2085,23 @@ export async function startFitRunner(
 
       shake = Math.max(0, shake - dt);
       cameraDip = THREE.MathUtils.damp(cameraDip, 0, 4.5, dt);
-      const targetFov = tuning.camera.fov + tuning.camera.fovGain * (speed / tuning.maxSpeed);
+      const cam = activeFollowCam();
+      const targetFov = cam.fov + cam.fovGain * (speed / tuning.maxSpeed);
       if (Math.abs(camera.fov - targetFov) > 0.05) {
         camera.fov = targetFov;
         camera.updateProjectionMatrix();
       }
       const desired = new THREE.Vector3(
         runner.position.x + Math.sin(elapsed * 48) * shake,
-        tuning.camera.height - cameraDip,
-        runner.position.z + tuning.camera.distance,
+        cam.height - cameraDip,
+        runner.position.z + cam.distance,
       );
-      const follow = 1 - Math.exp(-tuning.camera.smooth * dt);
+      const follow = 1 - Math.exp(-cam.smooth * dt);
       camera.position.lerp(desired, follow);
       camera.lookAt(
         runner.position.x,
-        tuning.camera.lookHeight + jumpLift * tuning.camera.jumpLook,
-        runner.position.z - tuning.camera.lookAhead,
+        cam.lookHeight + jumpLift * cam.jumpLook,
+        runner.position.z - cam.lookAhead,
       );
 
       sun.position.set(runner.position.x + 6, 14, runner.position.z + 8);
