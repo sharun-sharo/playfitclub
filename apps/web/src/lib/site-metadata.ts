@@ -19,7 +19,6 @@ export const OG_IMAGE = {
 
 export const PUBLIC_PATHS = [
   "/",
-  "/play",
   "/games",
   "/fit-run",
   "/online-running-games",

@@ -57,6 +57,17 @@ describe("analytics events", () => {
     expect(duplicate.bootstrap?.sendPageView).toBe(false);
   });
 
+  it("accepts game_completed without camera or pose payloads", () => {
+    const event = buildEvent("game_completed", { game: "fit_run", landmarks: "[]", frame: "base64" });
+    expect(event).toEqual({ name: "game_completed", params: { game: "fit_run" } });
+    expect(JSON.stringify(event)).not.toContain("landmarks");
+    expect(JSON.stringify(event)).not.toContain("base64");
+    expect(buildEvent("play_clicked", { surface: "landing" })).toEqual({
+      name: "play_clicked",
+      params: { surface: "landing" },
+    });
+  });
+
   it("distinguishes player and gym enquiries without a phone number", () => {
     const player = buildEvent("whatsapp_enquiry_clicked", { audience: "player", phone: "919566551345" });
     const gym = buildEvent("whatsapp_enquiry_clicked", { audience: "gym", phone: "919566551345", email: "gym@example.com" });

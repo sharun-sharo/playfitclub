@@ -5,6 +5,7 @@ import { trackEvent } from "@/components/analytics/track-event";
 
 let paired = false;
 let roundOpen = false;
+let completed = false;
 
 function notePair() {
   const stage = document.querySelector("[data-phone-stage]")?.getAttribute("data-phone-stage");
@@ -29,6 +30,17 @@ function noteRound() {
   trackEvent("game_started", { game: "fit_run" });
 }
 
+function noteComplete() {
+  const over = document.querySelector("[data-game-over]");
+  if (!over) {
+    completed = false;
+    return;
+  }
+  if (completed) return;
+  completed = true;
+  trackEvent("game_completed", { game: "fit_run" });
+}
+
 export function PairingSignal() {
   useEffect(() => {
     notePair();
@@ -42,8 +54,17 @@ export function PairingSignal() {
 export function RoundSignal() {
   useEffect(() => {
     noteRound();
-    const observer = new MutationObserver(noteRound);
-    observer.observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ["hidden"] });
+    noteComplete();
+    const observer = new MutationObserver(() => {
+      noteRound();
+      noteComplete();
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ["hidden", "data-game-over"],
+    });
     return () => observer.disconnect();
   }, []);
   return null;

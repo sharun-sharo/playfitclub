@@ -60,7 +60,7 @@ export default function PrivacyPage() {
 
         <h2>Analytics</h2>
         <p>
-          The site measures page views and these actions after they succeed: play, pricing viewed, individual plan selected, gym plan selected, get started, WhatsApp enquiry (player or gym only), login completed, Fit Run selected, phone pairing completed, and game started. Google Analytics uses measurement ID G-736X842XQL when no other measurement ID is configured. Vercel Analytics also receives the page path. Addresses are reduced to a path, and tokens, codes, email addresses, and phone numbers are removed from them.
+          The site measures page views and these actions after they succeed: play, pricing viewed, individual plan selected, gym plan selected, get started, WhatsApp enquiry (player or gym only), login completed, Fit Run selected, phone pairing completed, game started, and game completed. Google Analytics uses measurement ID G-736X842XQL when no other measurement ID is configured. Vercel Analytics also receives the page path. Addresses are reduced to a path, and tokens, codes, email addresses, and phone numbers are removed from them.
         </p>
         <p>
           Analytics is not part of the camera or pose processing. Names, phone numbers, emails, sign-in details, camera frames, and pose points are not sent to analytics.

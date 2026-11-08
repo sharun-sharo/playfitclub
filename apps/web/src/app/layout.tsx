@@ -37,6 +37,7 @@ export const metadata: Metadata = {
     template: TITLE_TEMPLATE,
   },
   description: HOME_DESCRIPTION,
+  alternates: { canonical: SITE_ORIGIN },
   robots: { index: true, follow: true },
   openGraph: {
     type: "website",

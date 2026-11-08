@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { RoundSignal } from "@/components/analytics/product-signals";
 import { noIndex } from "@/lib/site-metadata";
 
 export const metadata = noIndex(
@@ -11,6 +12,7 @@ export default function PlayLayout({ children }: { children: ReactNode }) {
     <div className="min-h-dvh bg-black text-white">
       {/* Start the pose model download as soon as a play route paints. */}
       <link rel="preload" as="fetch" href="/mediapipe/pose_landmarker_lite.task" crossOrigin="anonymous" />
+      <RoundSignal />
       {children}
     </div>
   );
