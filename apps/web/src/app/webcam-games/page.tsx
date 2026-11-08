@@ -36,7 +36,7 @@ export default function WebcamGamesPage() {
       ]}
       image={{
         src: "/marketing/your-body-your-controller.png",
-        alt: "Diagram showing body movements mapped to Fit Run controls via camera tracking.",
+        alt: "PlayFit Club motion detection: a squat with neon skeleton tracking mirrored by the game avatar — Your Moves in the Game.",
         width: 819,
         height: 545,
       }}
