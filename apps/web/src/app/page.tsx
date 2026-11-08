@@ -98,7 +98,7 @@ export default function HomePage() {
             <Reveal className="fp-experience-visual">
               <figure className="fp-experience-figure">
                 <img
-                  src="/marketing/your-body-your-controller.png"
+                  src="/marketing/your-moves-in-the-game.png"
                   alt="PlayFit Club motion detection: a squat with neon skeleton tracking mirrored by the game avatar — Your Moves in the Game."
                   width={819}
                   height={545}
