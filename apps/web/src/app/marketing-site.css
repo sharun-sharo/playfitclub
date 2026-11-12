@@ -306,11 +306,18 @@ html:has(.fp-site) body {
     width: 100%;
   }
 
-  .fp-site .fp-hero .fp-actions .fp-btn,
-  .fp-site .fp-hero .fp-actions .fp-hero-cta,
-  .fp-site .fp-hero .fp-actions .fp-hero-cta .fp-btn {
+  .fp-site .fp-hero .fp-actions .fp-btn:not(.fp-play-demo),
+  .fp-site .fp-hero .fp-actions .fp-hero-cta:not(:has(.fp-play-demo)),
+  .fp-site .fp-hero .fp-actions .fp-hero-cta .fp-btn:not(.fp-play-demo) {
     width: 100%;
     white-space: normal;
+  }
+
+  .fp-site .fp-hero .fp-actions .fp-hero-cta:has(.fp-play-demo),
+  .fp-site .fp-hero .fp-actions .fp-hero-cta .fp-btn.fp-play-demo {
+    width: auto;
+    max-width: 100%;
+    white-space: nowrap;
   }
 }
 

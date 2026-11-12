@@ -1,6 +1,5 @@
 "use client";
 
-import { Play } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { trackEvent } from "@/components/analytics/track-event";
@@ -237,16 +236,24 @@ export function HeroShowcase() {
         <div className="fp-actions fp-hero-cta-row">
           <span className="fp-hero-cta fp-hero-rise">
             <Link
-              className="fp-btn fp-btn-primary"
+              className="fp-btn fp-btn-primary fp-play-demo"
               href="/games"
               onClick={() => {
                 trackEvent("play_clicked", { surface: "home" });
                 trackEvent("fit_run_selected", { surface: "home-phone" });
               }}
             >
-              <Play aria-hidden="true" />
-              Play Demo
+              <span className="fp-play-demo-inner">
+                <svg className="fp-play-demo-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M8.2 5.4c0-.9.98-1.45 1.74-.98l11.1 6.6c.74.44.74 1.52 0 1.96l-11.1 6.6c-.76.45-1.74-.1-1.74-.98V5.4Z" />
+                </svg>
+                <span className="fp-play-demo-label">PLAY DEMO</span>
+              </span>
             </Link>
+            <span className="fp-play-demo-accents" aria-hidden="true">
+              <span className="fp-play-demo-bar fp-play-demo-bar--inner" />
+              <span className="fp-play-demo-bar fp-play-demo-bar--outer" />
+            </span>
           </span>
         </div>
       </div>
